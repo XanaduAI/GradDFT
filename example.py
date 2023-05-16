@@ -141,14 +141,6 @@ class FeedForwardFunctional(nn.Module):
 
 FFFunctional = FeedForwardFunctional(layer_widths = [256, 256, 256])
 
-def f(inputs, params, localfeatures):
-    localweights = FFFunctional.apply(params, inputs)
-    return jnp.einsum('...r,...r->...r', localweights, localfeatures)
-
-
-functional = LocalFunctional(f)
-# Given rhoinputs, gridweights, params, localweights
-
 from pyscf import gto, dft
 mol = gto.M(atom = 'H 0 0 0; F 0 0 1.1', basis = 'augpc3', symmetry = True)
 
@@ -161,16 +153,22 @@ gridcoords, gridweights = grids.coords, grids.weights
 key = jax.random.PRNGKey(42) # Jax-style random seed
 rhoinput = jax.random.normal(key, shape=(*gridweights.shape, 7))
 
-key, = jax.random.split(key, 1)
-params = functional.init(key, rhoinput)
+params = FFFunctional.init(key, rhoinput)
 
-localweights = functional.apply(params, rhoinput)
+def f(inputs, params, localfeatures):
+    localweights = FFFunctional.apply(params, inputs)
+    return jnp.einsum('...r,...r->...r', localweights, localfeatures)
+
+
+functional = LocalFunctional(f)
+# Given rhoinputs, gridweights, params, localweights
 
 key, = jax.random.split(key, 1)
 localfeatures = jax.random.normal(
     key,
-    shape=(*gridweights.shape, localweights.shape[-1])
+    shape=(*gridweights.shape, 3)
 )
 
+#localweights = functional.apply(params, rhoinput)
 
 energy = functional.energy(rhoinput, gridweights, params, localfeatures)

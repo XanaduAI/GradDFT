@@ -2,9 +2,9 @@ from jax import numpy as jnp
 from flax import linen as nn
 from jax.lax import Precision
 from jax import vmap
-from pyrsistent import v
+from typing import Callable
 
-from utils import Scalar, Array, Callable
+from utils import Scalar, Array
 
 class LocalFunctional(nn.Module):
     ''' A base class of local functionals.
