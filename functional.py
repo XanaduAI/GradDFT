@@ -2,7 +2,7 @@ from jax import numpy as jnp
 from flax import linen as nn
 from jax.lax import Precision
 from jax import vmap
-from typing import Callable
+from typing import Callable, Optional
 
 from utils import Scalar, Array
 
@@ -18,13 +18,13 @@ class LocalFunctional(nn.Module):
         and output a scalar, as it will be vectorized.
     '''
 
-    f: Callable
+    f: staticmethod  # Decorator to define f as a static method
 
     def setup(self):
         pass
 
     @nn.compact
-    def __call__(self, rhoinputs, *args) -> Scalar:
+    def __call__(self, inputs) -> Scalar:
         '''Where the functional is called, mapping the density to the energy.
         Expected to be overwritten by the inheriting class.
         Should use the _integrate() helper function to perform the integration.
@@ -40,15 +40,15 @@ class LocalFunctional(nn.Module):
             Shape: (n_grid)
         '''
 
-        return self.f(rhoinputs, *args)
+        return self.f(**inputs)
     
-    def energy(self, rhoinputs, gridweights, *args):
+    def energy(self, gridweights, inputs):
 
-        localfeatures = self.apply(rhoinputs, *args)
+        localfeatures = self.apply({"params": {}}, inputs)
         return self._integrate(localfeatures, gridweights)
 
     def _integrate(
-        self, features: Array, gridweights: Array, precision: Precision.HIGHEST
+        self, features: Array, gridweights: Array, precision: Optional[Precision] = Precision.HIGHEST
     ) -> Array:
 
         """Helper function that performs grid quadrature (integration) 
@@ -70,7 +70,7 @@ class LocalFunctional(nn.Module):
         Array
         """
 
-        return jnp.einsum("r,...r,->...", gridweights, features, precision = precision)
+        return jnp.einsum("r,r...->...", gridweights, features)
 
 
 ######################### Helper functions #########################

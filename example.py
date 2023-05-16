@@ -155,8 +155,8 @@ rhoinput = jax.random.normal(key, shape=(*gridweights.shape, 7))
 
 params = FFFunctional.init(key, rhoinput)
 
-def f(inputs, params, localfeatures):
-    localweights = FFFunctional.apply(params, inputs)
+def f(rhoinput, params, localfeatures):
+    localweights = FFFunctional.apply(params, rhoinput)
     return jnp.einsum('...r,...r->...r', localweights, localfeatures)
 
 
@@ -171,4 +171,6 @@ localfeatures = jax.random.normal(
 
 #localweights = functional.apply(params, rhoinput)
 
-energy = functional.energy(rhoinput, gridweights, params, localfeatures)
+localweights = functional.apply({"params": {}}, {'rhoinput': rhoinput, 'params': params, 'localfeatures': localfeatures})
+
+energy = functional.energy(gridweights, {'rhoinput': rhoinput, 'params': params, 'localfeatures': localfeatures})
