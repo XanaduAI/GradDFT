@@ -1,7 +1,10 @@
 import argparse
 import json
+from typing import Optional
+from utils import DType,  default_dtype
+import jax.numpy as jnp
 
-class Utils():
+'''class Utils():
 
     def __init__(self, config_path: str = ''):
 
@@ -33,3 +36,10 @@ class Utils():
 
         self.args = parser.parse_args()
         return self.args
+'''    
+def to_device_arrays(*arrays, dtype: Optional[DType] = None):
+
+    if dtype is None:
+        dtype = default_dtype()
+
+    return [jnp.asarray(array, dtype=dtype) for array in arrays]

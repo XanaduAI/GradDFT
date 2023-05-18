@@ -1,12 +1,17 @@
-from utils import Scalar, Array, Callable
-from typing import Optional, Sequence, Union, List
+from utils import Scalar, Array
+from typing import Optional, Sequence, Union, List, Dict
 from dataclasses import fields
+from utils import Array, Scalar
+from functools import partial, reduce
 
 from jax import numpy as jnp
 from jax.lax import Precision
 from jax import vmap, grad
 from flax import linen as nn
 from flax import struct
+import itertools
+from pyscf.dft import Grids, numint  # type: ignore
+import jax
 
 
 @struct.dataclass
@@ -144,8 +149,219 @@ class Molecule:
     def grid_size(self):
         return len(self.grid)
 
+    def density(self, *args, **kwargs):
+        return density(self.rdm1, self.ao, *args, **kwargs)
+
+    def grad_density(self, *args, **kwargs):
+        return grad_density(self.rdm1, self.ao, self.grad_ao, *args, **kwargs)
+
+    def kinetic_density(self, *args, **kwargs):
+        return kinetic_density(self.rdm1, self.grad_ao, *args, **kwargs)
+
     def to_dict(self) -> dict:
         grid_dict = self.grid.to_dict()
         rest = {field.name: getattr(self, field.name) for field in fields(self)[1:]}
         return dict(**grid_dict, **rest)
 
+
+
+
+@partial(jax.jit, static_argnames="precision")
+def density(dm: Array, ao: Array, precision: Precision = Precision.HIGHEST) -> Array:
+
+    """Calculate electronic density from atomic orbitals.
+
+    Parameters
+    ----------
+    dm : Array
+        The density matrix.
+        Expected shape: (*batch, n_spin, n_orbitals, n_orbitals)
+    ao : Array
+        Atomic orbitals.
+        Expected shape: (n_grid_points, n_orbitals)
+    precision : jax.lax.Precision, optional
+        Jax `Precision` enum member, indicating desired numerical precision.
+        By default jax.lax.Precision.HIGHEST.
+
+    Returns
+    -------
+    Array
+        The density. Shape: (*batch, n_spin, n_grid_points)
+    """
+
+    return jnp.einsum("...ab,ra,rb->...r", dm, ao, ao, precision=precision)
+
+@partial(jax.jit, static_argnames="precision")
+def grad_rho_DM(dm: Array, ao: Array, precision: Precision = Precision.HIGHEST, chunk_size = None) -> Array:
+
+    """Calculate the gradient of the density matrix.
+
+    Parameters
+    ----------
+    dm : Array
+        The density matrix.
+        Expected shape: (*batch, n_spin, n_orbitals, n_orbitals)
+    ao : Array
+        Atomic orbitals.
+        Expected shape: (n_grid_points, n_orbitals)
+    precision : jax.lax.Precision, optional
+        Jax `Precision` enum member, indicating desired numerical precision.
+        By default jax.lax.Precision.HIGHEST.
+    chunk_size : int, optional
+        The chunk size to use for the vmap. By default None.
+
+    Returns
+    -------
+    Array
+        The gradient of the density matrix.
+        Shape: (*batch, n_spin, n_grid_points, n_orbitals, n_orbitals)
+    """
+
+    def vmapped_integrand(dm_tensor: Array, ao_tensor: Array):
+
+        return jnp.einsum("ab,a,b->", dm_tensor, ao_tensor, ao_tensor, precision=precision)
+
+    return jnp.stack([vmap(grad(vmapped_integrand), in_axes = (None, 0))(dm[0], ao), vmap(grad(vmapped_integrand), in_axes = (None, 0))(dm[1], ao)], axis=0)
+
+@partial(jax.jit, static_argnames="precision")
+def grad_density(
+    dm: Array, ao: Array, grad_ao: Array, precision: Precision = Precision.HIGHEST
+) -> Array:
+
+    """Calculate the electronic density gradient from atomic orbitals.
+
+    Parameters
+    ----------
+    dm : Array
+        The density matrix.
+        Expected shape: (*batch, n_spin, n_orbitals, n_orbitals)
+    ao : Array
+        Atomic orbitals.
+        Expected shape: (n_grid_points, n_orbitals)
+    grad_ao : Array
+        Gradients of atomic orbitals.
+        Expected shape: (n_grid_points, n_orbitals, 3)
+    precision : jax.lax.Precision, optional
+        Jax `Precision` enum member, indicating desired numerical precision.
+        By default jax.lax.Precision.HIGHEST.
+
+    Returns
+    -------
+    Array
+        The density gradient. Shape: (*batch, n_spin, n_grid_points, 3)
+    """
+
+    return 2 * jnp.einsum("...ab,ra,rbj->...rj", dm, ao, grad_ao, precision=precision)
+
+@partial(jax.jit, static_argnames="precision")
+def partial_grad_density_DM(
+    dm: Array, ao: Array, grad_ao: Array, precision: Precision = Precision.HIGHEST
+) -> Array:
+    
+        """Calculate the partial derivative of (the gradient of the density matrix with respect to r) with respect to dm.
+    
+        Parameters
+        ----------
+        dm : Array
+            The density matrix.
+            Expected shape: (*batch, n_spin, n_orbitals, n_orbitals)
+        ao : Array
+            Atomic orbitals.
+            Expected shape: (n_grid_points, n_orbitals)
+        grad_ao : Array
+            Gradients of atomic orbitals.
+            Expected shape: (n_grid_points, n_orbitals, 3)
+        precision : jax.lax.Precision, optional
+            Jax `Precision` enum member, indicating desired numerical precision.
+            By default jax.lax.Precision.HIGHEST.
+    
+        Returns
+        -------
+        Array
+            The gradient of the density matrix.
+            Shape: (*batch, n_spin, n_grid_points, n_orbitals, n_orbitals)
+        """
+
+        def vmapped_integrand(dm_tensor: Array, ao_tensor: Array, grad_ao_tensor: Array):
+
+            return 2 * jnp.linalg.norm(jnp.einsum("ab,a,bd->d", dm_tensor, ao_tensor, grad_ao_tensor, precision=precision))
+
+        return jnp.stack([vmap(grad(vmapped_integrand), in_axes = (None, 0, 0), out_axes=0)(dm[0], ao, grad_ao), 
+                        vmap(grad(vmapped_integrand), in_axes = (None, 0, 0), out_axes=0)(dm[1], ao, grad_ao)], axis=0)
+
+@partial(jax.jit, static_argnames="precision")
+def kinetic_density(dm: Array, grad_ao: Array, precision: Precision = Precision.HIGHEST) -> Array:
+
+    """Calculate kinetic energy density from atomic orbitals.
+
+    Parameters
+    ----------
+    dm : Array
+        The density matrix.
+        Expected shape: (*batch, n_spin, n_orbitals, n_orbitals)
+    grad_ao : Array
+        Gradients of atomic orbitals.
+        Expected shape: (n_grid_points, n_orbitals, 3)
+    precision : jax.lax.Precision, optional
+        Jax `Precision` enum member, indicating desired numerical precision.
+        By default jaxx.lax.Precision.HIGHEST.
+
+    Returns
+    -------
+    Array
+        The kinetic energy density. Shape: (*batch, n_spin, n_grid_points)
+    """
+
+    return 0.5 * jnp.einsum("...ab,raj,rbj->...r", dm, grad_ao, grad_ao, precision=precision)
+
+
+
+
+
+
+
+
+
+def default_features_ex_hf(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+    """
+    Generates all features except the HF energy features.
+    """
+    beta = 1/1024.
+
+    rho = molecule.density() #todo
+    grad_rho = molecule.grad_density() #todo
+    tau = molecule.kinetic_density() #todo
+
+    grad_rho_norm = jnp.sum(grad_rho**2, axis=-1)
+    grad_rho_norm_sumspin = jnp.sum(grad_rho.sum(axis=0, keepdims=True) ** 2, axis=-1)
+
+    x = jnp.concatenate((rho, grad_rho_norm_sumspin, grad_rho_norm, tau), axis=0)
+
+    log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
+    log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm, a_min = clip_cte))
+    log_x_sigma = log_grad_rho_norm/2 - 4/3.*log_rho
+    log_u_sigma = jnp.where(jnp.greater(log_rho,jnp.log2(clip_cte)), log_x_sigma - jnp.log2(1 + beta*(2**log_x_sigma)) + jnp.log2(beta), 0)
+
+    log_tau = jnp.log2(jnp.clip(tau, a_min = clip_cte))
+    log_1t_sigma = -(5/3.*log_rho - log_tau + 2/3.*jnp.log2(6*jnp.pi**2) + jnp.log2(3/5.))
+    log_w_sigma = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
+
+    if type(functional_type) == str:
+        if functional_type == 'LDA' or functional_type == 'DM21': u_power, w_power, uw_power = [0,0], [0,0], [0,0]
+        elif functional_type == 'GGA': u_power, w_power, uw_power = [0,1], [0,0], [0,1]
+        elif functional_type == 'MGGA': u_power, w_power, uw_power = [0,1], [0,1], [0,2]
+        else: raise ValueError(f'Functional type {functional_type} not recognized, must be one of LDA, GGA, MGGA.')
+    else: u_power, w_power, uw_power= functional_type['u'], functional_type['w'], functional_type['u+w']
+
+    # Here we use the LDA form from DM21 to be able to replicate its behavior if desired.
+    y = jnp.expand_dims((-2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3) * 2**(4/3.*log_rho)).sum(axis=0), axis = 0)
+
+    for i, j in itertools.product(range(u_power[0], u_power[1]+1), range(w_power[0], w_power[1]+1)):
+        
+        if i+j < uw_power[0] or i+j > uw_power[1] or (i == 0 and j == 0): continue
+
+        mgga_term = jnp.expand_dims((2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)).sum(axis=0), axis = 0)
+
+        y = jnp.concatenate((y, mgga_term), axis=0)
+
+    return x, y, None

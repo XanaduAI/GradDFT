@@ -2,9 +2,12 @@ from jax import numpy as jnp
 from flax import linen as nn
 from jax.lax import Precision
 from jax import vmap
+from jax.nn import sigmoid
 from typing import Callable, Optional
+from functools import partial
+from jax.nn.initializers import lecun_normal, zeros, he_normal
 
-from utils import Scalar, Array
+from utils import Scalar, Array, PyTree, DType, default_dtype
 
 class LocalFunctional(nn.Module):
     ''' A base class of local functionals.
@@ -71,6 +74,110 @@ class LocalFunctional(nn.Module):
         """
 
         return jnp.einsum("r,r...->...", gridweights, features)
+
+
+
+def external_f(instance, x):
+    x = instance.dense(x)
+    x = 0.5*jnp.tanh(x)
+    return x
+
+class Functional(nn.Module):
+    ''' A base class of local functionals.
+    F[n(r)] = \int f(n(r)) dr^3
+
+    Parameters
+    ----------
+    function: Callable
+        Implements the function f above.
+        Example:
+        ```
+        def external_f(instance, x):
+            x = instance.dense(x)
+            x = 0.5*jnp.tanh(x)
+            return x
+        ```
+    '''
+
+    f: staticmethod
+    kernel_init: Callable = he_normal()
+    bias_init: Callable = zeros
+    param_dtype: DType = default_dtype()
+
+    def setup(self):
+
+        self.dense = partial(
+            nn.Dense,
+            param_dtype=self.param_dtype,
+            kernel_init=self.kernel_init,
+            bias_init=self.bias_init,
+        )
+
+        self.layer_norm = partial(
+            nn.LayerNorm,
+            param_dtype=self.param_dtype
+        )
+
+    def head(self, x: Array, out_features, sigmoid_scale_factor):
+
+        # Final layer: dense -> sigmoid -> scale (x2)
+        x = self.dense(features=out_features)(x) # out_features = 3
+        self.sow('intermediates', 'head_dense', x)
+        x = sigmoid(x / sigmoid_scale_factor)
+        self.sow('intermediates', 'sigmoid', x)
+        out = sigmoid_scale_factor * x # sigmoid_scale_factor = 2.0
+        self.sow('intermediates', 'sigmoid_product', out)
+
+        return jnp.squeeze(out) # Eliminating unnecessary dimensions
+
+    @nn.compact
+    def __call__(self, inputs) -> Scalar:
+        '''Where the functional is called, mapping the density to the energy.
+        Expected to be overwritten by the inheriting class.
+        Should use the _integrate() helper function to perform the integration.
+
+        Paramters
+        ---------
+        rhoinputs: Array
+            Shape: (..., n_grid)
+
+        Returns
+        -------
+        Array
+            Shape: (n_grid)
+        '''
+
+        return self.f(self, **inputs)
+    
+    def energy(self, params: PyTree, gridweights: Array, inputs: Array):
+
+        localfeatures = self.apply(params, inputs)
+        return self._integrate(localfeatures, gridweights)
+
+    def _integrate(
+        self, features: Array, gridweights: Array, precision: Optional[Precision] = Precision.HIGHEST
+    ) -> Array:
+
+        """Helper function that performs grid quadrature (integration) 
+				in a differentiable way (using jax.numpy).
+
+        Parameters
+        ----------
+        features : Array
+            features to integrate.
+            Expected shape: (...,n_grid)
+        gridweights: Array
+            gridweights.
+            Expected shape: (n_grid)
+        precision : Precision, optional
+            The precision to use for the computation, by default Precision.HIGHEST
+
+        Returns
+        -------
+        Array
+        """
+
+        return jnp.einsum("r,r...->...", gridweights, features, precision = precision)
 
 
 ######################### Helper functions #########################
