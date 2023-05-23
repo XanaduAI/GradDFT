@@ -322,20 +322,20 @@ def kinetic_density(dm: Array, grad_ao: Array, precision: Precision = Precision.
 
 
 
-def default_features_ex_hf(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+def default_features(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
     """
     Generates all features except the HF energy features.
     """
     beta = 1/1024.
 
-    rho = molecule.density() #todo
-    grad_rho = molecule.grad_density() #todo
-    tau = molecule.kinetic_density() #todo
+    rho = molecule.density()
+    grad_rho = molecule.grad_density()
+    tau = molecule.kinetic_density()
 
     grad_rho_norm = jnp.sum(grad_rho**2, axis=-1)
     grad_rho_norm_sumspin = jnp.sum(grad_rho.sum(axis=0, keepdims=True) ** 2, axis=-1)
 
-    x = jnp.concatenate((rho, grad_rho_norm_sumspin, grad_rho_norm, tau), axis=0)
+    features = jnp.concatenate((rho, grad_rho_norm_sumspin, grad_rho_norm, tau), axis=0)
 
     log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
     log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm, a_min = clip_cte))
@@ -354,7 +354,7 @@ def default_features_ex_hf(molecule: Molecule, functional_type: Optional[Union[s
     else: u_power, w_power, uw_power= functional_type['u'], functional_type['w'], functional_type['u+w']
 
     # Here we use the LDA form from DM21 to be able to replicate its behavior if desired.
-    y = jnp.expand_dims((-2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3) * 2**(4/3.*log_rho)).sum(axis=0), axis = 0)
+    localfeatures = jnp.expand_dims((-2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3) * 2**(4/3.*log_rho)).sum(axis=0), axis = 0)
 
     for i, j in itertools.product(range(u_power[0], u_power[1]+1), range(w_power[0], w_power[1]+1)):
         
@@ -362,6 +362,6 @@ def default_features_ex_hf(molecule: Molecule, functional_type: Optional[Union[s
 
         mgga_term = jnp.expand_dims((2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)).sum(axis=0), axis = 0)
 
-        y = jnp.concatenate((y, mgga_term), axis=0)
+        localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
 
-    return x, y, None
+    return features.T, localfeatures.T 

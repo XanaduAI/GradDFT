@@ -5,9 +5,12 @@ from jax import vmap
 from jax.nn import sigmoid
 from typing import Callable, Optional
 from functools import partial
-from jax.nn.initializers import lecun_normal, zeros, he_normal
+from jax.nn.initializers import zeros, he_normal
+from flax.training import train_state, checkpoints
+from flax.core import freeze, unfreeze
 
 from utils import Scalar, Array, PyTree, DType, default_dtype
+from molecule import Molecule
 
 class LocalFunctional(nn.Module):
     ''' A base class of local functionals.
@@ -76,7 +79,6 @@ class LocalFunctional(nn.Module):
         return jnp.einsum("r,r...->...", gridweights, features)
 
 
-
 def external_f(instance, x):
     x = instance.dense(x)
     x = 0.5*jnp.tanh(x)
@@ -131,28 +133,42 @@ class Functional(nn.Module):
         return jnp.squeeze(out) # Eliminating unnecessary dimensions
 
     @nn.compact
-    def __call__(self, inputs) -> Scalar:
+    def __call__(self, *inputs) -> Scalar:
         '''Where the functional is called, mapping the density to the energy.
         Expected to be overwritten by the inheriting class.
         Should use the _integrate() helper function to perform the integration.
 
         Paramters
         ---------
-        rhoinputs: Array
-            Shape: (..., n_grid)
+        inputs: inputs to the function f
 
         Returns
         -------
-        Array
-            Shape: (n_grid)
+        Union[Array, Scalar]
         '''
 
-        return self.f(self, **inputs)
+        return self.f(self, *inputs)
     
-    def energy(self, params: PyTree, gridweights: Array, inputs: Array):
+    def energy(self, params: PyTree, molecule: Molecule, *args):
+        '''
+        Total energy of local functional
+        
+        Paramters
+        ---------
+        params: PyTree
+            params of the neural network if there is one in self.f
+        molecule: Molecule
+        args: inputs to the function self.f
 
-        localfeatures = self.apply(params, inputs)
-        return self._integrate(localfeatures, gridweights)
+        Returns
+        -------
+        Union[Array, Scalar]
+        '''
+
+        localfeatures = self.apply(params, *args)
+        xc_energy = self._integrate(localfeatures, molecule.grid.weights)
+        nonxc_energy = nonXC(molecule.rdm1, molecule.h1e, molecule.rep_tensor, molecule.nuclear_repulsion)
+        return xc_energy + nonxc_energy
 
     def _integrate(
         self, features: Array, gridweights: Array, precision: Optional[Precision] = Precision.HIGHEST
@@ -181,30 +197,6 @@ class Functional(nn.Module):
 
 
 ######################### Helper functions #########################
-
-def integrate_local_weights(
-    gridweights: Array, features: Array
-) -> Array:
-
-    """A function that performs grid quadrature (integration) in a differentiable way (using jax.numpy).
-
-    Parameters
-    ----------
-    gridweights : Array
-        Quadrature weights.
-        Expected shape: (n_grid,)
-    features : Array
-        Neural network outputs.
-        Expected shape: (*batch, n_grid)
-    Returns
-    -------
-    Array
-        Integrals of shape (*batch,). If batch==(1,),
-        then the output is squeezed to a scalar.
-    """
-
-    return jnp.einsum("r,...r,->...", gridweights, features)
-
 
 def nonXC(
     rdm1: Array, h1e: Array, rep_tensor: Array, nuclear_repulsion: Scalar, precision = Precision.HIGHEST
