@@ -207,7 +207,7 @@ def integrate_local_weights(
 
 
 def nonXC(
-    rdm1, h1e, rep_tensor, nuclear_repulsion, precision = Precision.HIGHEST
+    rdm1: Array, h1e: Array, rep_tensor: Array, nuclear_repulsion: Scalar, precision = Precision.HIGHEST
 ) -> Scalar:
 
     """A function that computes the non-XC part of a DFT functional.
@@ -281,3 +281,14 @@ def HF_exact_exchange(
 
         _hf_energy = lambda _chi, _dm, _ao: - jnp.einsum("wsc,sac,a->ws", _chi, _dm, _ao, precision=precision)/2
         return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
+
+def canonicalize_inputs(x):
+
+    x = jnp.asarray(x)
+
+    if x.ndim == 1:
+        return jnp.expand_dims(x, axis=1)
+    elif x.ndim == 0:
+        raise ValueError("`features` has to be at least 1D array!")
+    else:
+        return x
