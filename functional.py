@@ -6,6 +6,7 @@ from jax.nn import sigmoid
 from typing import Callable, Optional
 from functools import partial
 from jax.nn.initializers import zeros, he_normal
+from jax import value_and_grad
 from flax.training import train_state, checkpoints
 from flax.core import freeze, unfreeze
 
@@ -284,3 +285,13 @@ def canonicalize_inputs(x):
         raise ValueError("`features` has to be at least 1D array!")
     else:
         return x
+    
+
+@partial(value_and_grad, has_aux = True)
+def defaultcost(params, functional, molecule, trueenergy, *functioninputs):
+    ''' Computes the loss function, here MSE, between predicted and true energy'''
+
+    predictedenergy = functional.energy(params, molecule, *functioninputs)
+    cost_value = (predictedenergy - trueenergy) ** 2
+
+    return cost_value, predictedenergy

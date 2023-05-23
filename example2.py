@@ -24,14 +24,14 @@ ground_truth_energy = mf.kernel()
 # Then we compute quite a few properties which we pack into a class called Molecule
 molecule = molecule_from_pyscf(mf)
 
-# Then we define the (local) Functional, via a function f whose output we will integrate
+# Then we define the (local) Functional, via an (arbitrary) function f whose output we will integrate (or not, if decide so)
 squash_offset = 1e-4
 layer_widths = [256]*6
 activation = gelu
 out_features = 4
 sigmoid_scale_factor = 2.
 
-def f(instance, rhoinputs, localfeatures, *args):
+def f(instance, rhoinputs, localfeatures, *_, **__):
     x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
 
     # Initial layer: log -> dense -> tanh
@@ -64,7 +64,7 @@ functional = Functional(f)
 key = jax.random.PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before
-rhoinputs, localfeatures = default_features(molecule, 'MGGA')
+rhoinputs, localfeatures = default_features(molecule = molecule, functional_type='MGGA')
 
 # We initialize the Functional parameters
 key, = jax.random.split(key, 1)
@@ -82,7 +82,7 @@ print('Predicted_energy:',predicted_energy)
 # we'd just avoid the integrate step.
 
 
-# Now we want to optimize the parameters. To do that the first step is defining a cost function
+# Now we want to optimize the parameters. To do that the first step is defining an (arbitrary) cost function
 @partial(jax.value_and_grad, has_aux = True)
 def cost(params, molecule, trueenergy, *functioninputs):
     ''' Computes the loss function, here MSE, between predicted and true energy'''
