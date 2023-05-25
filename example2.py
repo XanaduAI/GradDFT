@@ -8,7 +8,7 @@ from optax import adam, apply_updates
 
 from interface.pyscf import molecule_from_pyscf
 from molecule import default_features
-from functional import Functional, canonicalize_inputs
+from functional import Functional, canonicalize_inputs, nonXC
 
 # First we define a molecule:
 from pyscf import gto, dft
@@ -74,8 +74,10 @@ params = functional.init(key, rhoinputs, localfeatures)
 localfeatureweights = functional.apply(params, rhoinputs, localfeatures)
 # and then integrate them
 predicted_energy = functional._integrate(localfeatureweights, grids.weights)
+# and add the non-exchange-correlation energy component
+predicted_energy += nonXC(molecule.rdm1, molecule.h1e, molecule.rep_tensor, molecule.nuclear_repulsion)
 
-# Alternatively, we can use an already prepared function that does both
+# Alternatively, we can use an already prepared function that does everything
 predicted_energy = functional.energy(params, molecule, rhoinputs, localfeatures)
 print('Predicted_energy:',predicted_energy)
 # If we had a non-local functional, eg whose function f outputs an energy instead of an array,
@@ -84,7 +86,7 @@ print('Predicted_energy:',predicted_energy)
 
 # Now we want to optimize the parameters. To do that the first step is defining an (arbitrary) cost function
 @partial(value_and_grad, has_aux = True)
-def cost(params, molecule, trueenergy, *functioninputs):
+def loss(params, molecule, trueenergy, *functioninputs):
     ''' Computes the loss function, here MSE, between predicted and true energy'''
 
     predictedenergy = functional.energy(params, molecule, *functioninputs)
@@ -101,7 +103,7 @@ opt_state = tx.init(params)
 # and implement the optimization loop
 n_epochs = 50
 for iteration in range(n_epochs):
-    (cost_value, predicted_energy), grads = cost(params, molecule, ground_truth_energy, rhoinputs, localfeatures)
+    (cost_value, predicted_energy), grads = loss(params, molecule, ground_truth_energy, rhoinputs, localfeatures)
     print('Iteration', iteration ,'Predicted energy:', predicted_energy)
     updates, opt_state = tx.update(grads, opt_state, params)
     params = apply_updates(params, updates)

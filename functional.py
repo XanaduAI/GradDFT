@@ -20,7 +20,8 @@ def external_f(instance, x):
 
 class Functional(nn.Module):
     ''' A base class of local functionals.
-    F[n(r)] = \int f(n(r)) dr^3
+    F[n(r)] = \int f(n(r)) d^3 r
+    F[n(r)] = f( \int n(r) d^3 r)
 
     Parameters
     ----------
@@ -83,7 +84,7 @@ class Functional(nn.Module):
 
         return self.f(self, *inputs)
     
-    def xc_energy(self, params: PyTree, molecule: Molecule, *args):
+    def apply_and_integrate(self, params: PyTree, molecule: Molecule, *args):
         '''
         Total energy of local functional
         
@@ -118,7 +119,7 @@ class Functional(nn.Module):
         Union[Array, Scalar]
         '''
 
-        xc_energy = self.xc_energy(params, molecule, *args)
+        xc_energy = self.apply_and_integrate(params, molecule, *args)
         nonxc_energy = nonXC(molecule.rdm1, molecule.h1e, molecule.rep_tensor, molecule.nuclear_repulsion)
         return xc_energy + nonxc_energy
 
@@ -239,7 +240,7 @@ def canonicalize_inputs(x):
     
 
 @partial(value_and_grad, has_aux = True)
-def defaultcost(params, functional, molecule, trueenergy, *functioninputs):
+def defaultloss(params, functional, molecule, trueenergy, *functioninputs):
     ''' Computes the loss function, here MSE, between predicted and true energy'''
 
     predictedenergy = functional.energy(params, molecule, *functioninputs)
