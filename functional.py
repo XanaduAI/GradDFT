@@ -11,74 +11,7 @@ from flax.training import train_state, checkpoints
 from flax.core import freeze, unfreeze
 
 from utils import Scalar, Array, PyTree, DType, default_dtype
-from molecule import Molecule
-
-class LocalFunctional(nn.Module):
-    ''' A base class of local functionals.
-    F[n(r)] = \int f(n(r)) dr^3
-
-    Parameters
-    ----------
-    function: Callable
-        Implements the function f above.
-        Should take as input an object of size n_inputs,
-        and output a scalar, as it will be vectorized.
-    '''
-
-    f: staticmethod  # Decorator to define f as a static method
-
-    def setup(self):
-        pass
-
-    @nn.compact
-    def __call__(self, inputs) -> Scalar:
-        '''Where the functional is called, mapping the density to the energy.
-        Expected to be overwritten by the inheriting class.
-        Should use the _integrate() helper function to perform the integration.
-
-        Paramters
-        ---------
-        rhoinputs: Array
-            Shape: (..., n_grid)
-
-        Returns
-        -------
-        Array
-            Shape: (n_grid)
-        '''
-
-        return self.f(**inputs)
-    
-    def energy(self, gridweights, inputs):
-
-        localfeatures = self.apply({"params": {}}, inputs)
-        return self._integrate(localfeatures, gridweights)
-
-    def _integrate(
-        self, features: Array, gridweights: Array, precision: Optional[Precision] = Precision.HIGHEST
-    ) -> Array:
-
-        """Helper function that performs grid quadrature (integration) 
-				in a differentiable way (using jax.numpy).
-
-        Parameters
-        ----------
-        features : Array
-            features to integrate.
-            Expected shape: (...,n_grid)
-        gridweights: Array
-            gridweights.
-            Expected shape: (n_grid)
-        precision : Precision, optional
-            The precision to use for the computation, by default Precision.HIGHEST
-
-        Returns
-        -------
-        Array
-        """
-
-        return jnp.einsum("r,r...->...", gridweights, features)
-
+from molecule import Molecule, default_features
 
 def external_f(instance, x):
     x = instance.dense(x)
@@ -150,7 +83,7 @@ class Functional(nn.Module):
 
         return self.f(self, *inputs)
     
-    def energy(self, params: PyTree, molecule: Molecule, *args):
+    def xc_energy(self, params: PyTree, molecule: Molecule, *args):
         '''
         Total energy of local functional
         
@@ -167,7 +100,25 @@ class Functional(nn.Module):
         '''
 
         localfeatures = self.apply(params, *args)
-        xc_energy = self._integrate(localfeatures, molecule.grid.weights)
+        return self._integrate(localfeatures, molecule.grid.weights)
+    
+    def energy(self, params: PyTree, molecule: Molecule, *args):
+        '''
+        Total energy of local functional
+        
+        Paramters
+        ---------
+        params: PyTree
+            params of the neural network if there is one in self.f
+        molecule: Molecule
+        args: inputs to the function self.f
+
+        Returns
+        -------
+        Union[Array, Scalar]
+        '''
+
+        xc_energy = self.xc_energy(params, molecule, *args)
         nonxc_energy = nonXC(molecule.rdm1, molecule.h1e, molecule.rep_tensor, molecule.nuclear_repulsion)
         return xc_energy + nonxc_energy
 
@@ -295,3 +246,16 @@ def defaultcost(params, functional, molecule, trueenergy, *functioninputs):
     cost_value = (predictedenergy - trueenergy) ** 2
 
     return cost_value, predictedenergy
+
+def _canonicalize_fxc(fxc: Functional) -> Callable:
+
+    if hasattr(fxc, "energy"):
+        return fxc.energy
+    if hasattr(fxc, "apply"):
+        return fxc.apply
+    elif callable(fxc):
+        return fxc
+    else:
+        raise RuntimeError(
+            f"`fxc` should be a flax `Module` with a `predict_exc` method or a callable, got {type(fxc)}"
+        )

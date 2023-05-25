@@ -7,7 +7,6 @@ import numpy as np
 from jax import numpy as jnp
 from jax.lax import Precision
 from jax import vmap
-from jax.random import PRNGKeyArray
 
 from pyscf import scf  # type: ignore
 from pyscf.dft import Grids, numint  # type: ignore
@@ -15,15 +14,14 @@ from pyscf.gto import Mole
 import pyscf.data.elements as elements
 
 #from qdft.reaction import Reaction, make_reaction, get_grad
-from molecule import Grid, Molecule
+from molecule import Grid, Molecule, Reaction, make_reaction
 from utils import DType, default_dtype
 from jax.tree_util import tree_map
 
 import h5py
 from pyscf import cc, dft, scf
-from pyscf.dft.rks import prune_small_rho_grids_
 
-from utils import Array, Scalar, DensityFunctional, HartreeFock #, Utils
+from utils import Array, Scalar, DensityFunctional, HartreeFock
 from external import _nu_chunk
 
 '''dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -43,14 +41,14 @@ def grid_from_pyscf(grids: Grids, dtype: Optional[DType] = None) -> Grid:
 
 def molecule_from_pyscf(
     mf: DensityFunctional, dtype: Optional[DType] = None,
-    chi: Optional[Array] = None, omegas: Optional[Array] = None, energy: Optional[Scalar] = None,
+    omegas: Optional[Array] = None, energy: Optional[Scalar] = None,
     name: Optional[str] = None, training: bool = False, scf_iteration: int = 50
 ) -> Molecule:
 
     #mf, grids = _maybe_run_kernel(mf, grids)
     grid = grid_from_pyscf(mf.grids, dtype=dtype)
 
-    ao, grad_ao, dm, energy_nuc, h1e_energy, coulomb2e_energy, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor = to_device_arrays(
+    ao, grad_ao, rdm1, energy_nuc, h1e_energy, coulomb2e_energy, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor = to_device_arrays(
         *_package_outputs(mf, mf.grids, training, scf_iteration), dtype=dtype
     )
 
@@ -61,15 +59,17 @@ def molecule_from_pyscf(
     basis = mf.mol.basis
     unit_Angstrom = True
 
-    if chi is not None: chi = to_device_arrays(chi, dtype=dtype)
-    if omegas is not None: omegas = to_device_arrays(omegas, dtype=dtype)
+    if omegas is not None: 
+        omegas = to_device_arrays(omegas, dtype=dtype)
+        chi = generate_chi_tensor(rdm1 = rdm1, ao = ao, mol = mf.mol, omegas = omegas)
+        chi = to_device_arrays(chi, dtype=dtype)
     spin = mf.mol.spin
     charge = mf.mol.charge
 
     grid_level = mf.grids.level
 
     return Molecule(
-        grid, atom_index, nuclear_pos, ao, grad_ao, dm, energy_nuc, h1e_energy, coulomb2e_energy, h1e, vj, mo_coeff, mo_occ, mo_energy,
+        grid, atom_index, nuclear_pos, ao, grad_ao, rdm1, energy_nuc, h1e_energy, coulomb2e_energy, h1e, vj, mo_coeff, mo_occ, mo_energy,
         mf_e_tot, s1e, omegas, chi, rep_tensor, energy, basis, name, spin, charge, unit_Angstrom, grid_level, scf_iteration, fock
     )
 
@@ -95,7 +95,7 @@ def mol_from_Molecule(molecule: Molecule):
     return mol
 
 #@partial(jax.jit, static_argnames=["kernel_fn", "chunk_size", "precision"])
-def fxx_save(
+def saver(
     fname: str,
     omegas: Union[Scalar, Sequence[Scalar]],
     #reactions: Optional[Union[Reaction, Sequence[Reaction]]] = (),
@@ -212,7 +212,7 @@ def fxx_save(
                 mol_group.create_dataset(f"omegas", data = omegas)
             save_molecule_data(mol_group, molecule, training)
 
-def fxx_loader(fpath: str, randomize: Optional[bool] = False, training: Optional[bool] = True, config_omegas: Optional[Union[Scalar, Sequence[Scalar]]] = None):
+def loader(fpath: str, randomize: Optional[bool] = False, training: Optional[bool] = True, config_omegas: Optional[Union[Scalar, Sequence[Scalar]]] = None):
     """Reads the molecule, energy and precomputed chi matrix from a file.
 
     Parameters
@@ -427,8 +427,8 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, train
     else:
         dm = mf.get_init_guess(mf.mol, mf.init_guess)
 
-    s1e = mf.get_ovlp(mf.mol) #todo: compute using to jax.numpy qml.qchem.overlap_matrix(mol.basis_set)()
-    h1e = mf.get_hcore(mf.mol) #todo: compute using to jax.numpy qml.qchem.core_matrix(mol.basis_set, mol.nuclear_charges, mol.coordinates)()
+    s1e = mf.get_ovlp(mf.mol)
+    h1e = mf.get_hcore(mf.mol)
 
     if dm.ndim == 2:  # Restricted HF
 
@@ -477,145 +477,6 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, train
 
 # Taken from https://jax.readthedocs.io/en/latest/notebooks/Neural_Network_and_Data_Loading.html
 
-def numpy_collate(batch):
-    if isinstance(batch[0], np.ndarray):
-        return np.stack(batch)
-    elif isinstance(batch[0], (tuple,list)):
-        transposed = zip(*batch)
-        return [numpy_collate(samples) for samples in transposed]
-    else:
-        return np.array(batch)
-
-'''class NumpyLoader(DataLoader):
-    def __init__(self, dataset, batch_size=1,
-                shuffle=False, sampler=None,
-                batch_sampler=None, num_workers=0,
-                pin_memory=False, drop_last=False,
-                timeout=0, worker_init_fn=None):
-        super(self.__class__, self).__init__(dataset,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            sampler=sampler,
-            batch_sampler=batch_sampler,
-            num_workers=num_workers,
-            collate_fn=numpy_collate,
-            pin_memory=pin_memory,
-            drop_last=drop_last,
-            timeout=timeout,
-            worker_init_fn=worker_init_fn)'''
-
-def coulomb_potential(
-    mol: Mole,
-    dm: Array,
-    grid_coords: Array,
-    grid_weights: Array,
-    omega: Scalar,
-    chunk_size: Optional[int] = None,
-    precision: Optional[str] = None,
-    **kwargs,
-) -> Array:
-
-    """Compute the Coulomb potential for a given density matrix.
-    To be used for the self-consistent field procedure.
-
-    Parameters
-    ----------
-    mol:
-        pyscf.Mole object
-        The molecule.
-    dm:
-        ndarray
-        The density matrix.
-        shape: (nbatch, nao, nao)
-    grid_coords:
-        ndarray
-        The grid coordinates.
-        shape: (n_grid_points, 3)
-    grid_weights:
-        ndarray
-        The grid weights.
-        shape: (n_grid_points,)
-    omegas:
-        ndarray
-        The range-separated coefficients.
-        shape: (nbatch, nomega)
-    chunk_size:
-        int
-        The chunk size for the computation.
-    precision:
-        str
-        The precision of the computation.
-
-    Returns
-    -------
-    ndarray
-        The Coulomb potential matrix.
-        shape: (nbatch, n_omega, n_spin, n_grid_points)
-    """
-
-    def v_make(_dm, _nu):
-        return jnp.einsum("sab,bc->sac", _dm, _nu, precision=precision)
-
-
-    v_potential = []
-    for _, _, nu_chunk in _nu_chunk(mol,grid_coords,omega,chunk_size):
-        v_potential.append(vmap(v_make, in_axes=(None,0), out_axes = 1)(dm, nu_chunk))
-    v_potential = jnp.concatenate(v_potential, axis = 1)
-    v_potential = jnp.einsum("srab,r->sab", v_potential, grid_weights, precision=precision)
-
-    return v_potential
-
-def external_potential(mol: Mole) -> Array:
-    """Compute the external potential.
-    
-    Parameters
-    ----------
-    mol:
-        pyscf.Mole object
-        The molecule.
-
-    Returns
-    -------
-    ndarray
-        The external potential.
-        shape: (nao, nao)
-    """
-    return mol.intor_symmetric('int1e_nuc')
-
-def kinetic_potential(mol: Mole) -> Array:
-    """Compute the kinetic potential.
-    
-    Parameters
-    ----------
-    mol:
-        pyscf.Mole object
-        The molecule.
-
-    Returns
-    -------
-    ndarray
-        The kinetic potential.
-        shape: (nao, nao)
-    """
-    return mol.intor_symmetric('int1e_kin')
-
-def get_ovlp(mol: Mole) -> Array:
-    """Compute the atomic orbital overlap.
-    
-    Parameters
-    ----------
-    mol:
-        pyscf.Mole object
-        The molecule.
-
-    Returns
-    -------
-    ndarray
-        The atomic orbital overlap.
-        shape: (nao, nao)
-    """
-    return mol.intor_symmetric('int1e_ovlp')
-
 def process_mol(mol, compute_energy=True, grid_level: int = 2, training: bool = False, max_cycle: Optional[int] = None, xc_functional = 'b3lyp'):
     if compute_energy:
         if mol.multiplicity == 1: mf2 = scf.RHF(mol)
@@ -630,8 +491,6 @@ def process_mol(mol, compute_energy=True, grid_level: int = 2, training: bool = 
     #mf.grids.build() # with_non0tab=True
     if training: 
         mf.xc = xc_functional
-        if config_variables['nlc_functional_orbitals']:
-            mf.nlc = config_variables['nlc_functional_orbitals']
     if max_cycle is not None:
         mf.max_cycle = max_cycle
     elif not training: 
@@ -650,6 +509,22 @@ def generate_chi_tensor(molecule, mol, omegas, chunk_size, grid_coords, precisio
         chi_omega = []
         for chunk_index, end_index, nu_chunk in _nu_chunk(mol,grid_coords,omega,chunk_size):
             chi_chunk = vmap(chi_make, in_axes = (None, 0,0), out_axes = 0)(molecule.rdm1, molecule.ao[chunk_index:end_index], nu_chunk)
+            chi_omega.append(chi_chunk)
+        chi_omega = jnp.concatenate(chi_omega, axis = 0)
+        chi.append(chi_omega)
+    return jnp.stack(chi, axis = 1)
+
+
+def generate_chi_tensor(rdm1, ao, mol, omegas, chunk_size, grid_coords, precision = Precision.HIGHEST):
+
+    def chi_make(dm_, ao_, nu):
+        return jnp.einsum("...bd,b,da->...a", dm_, ao_, nu, precision=precision)
+
+    chi = []
+    for omega in omegas:
+        chi_omega = []
+        for chunk_index, end_index, nu_chunk in _nu_chunk(mol,grid_coords,omega,chunk_size):
+            chi_chunk = vmap(chi_make, in_axes = (None, 0,0), out_axes = 0)(rdm1, ao[chunk_index:end_index], nu_chunk)
             chi_omega.append(chi_chunk)
         chi_omega = jnp.concatenate(chi_omega, axis = 0)
         chi.append(chi_omega)
