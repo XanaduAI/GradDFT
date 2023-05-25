@@ -1,6 +1,7 @@
 from functools import partial
 
-import jax
+from jax.random import split, PRNGKey
+from jax import value_and_grad
 from jax import numpy as jnp
 from jax.nn import gelu
 from optax import adam, apply_updates
@@ -58,16 +59,15 @@ def f(instance, rhoinputs, localfeatures, *_, **__):
 
     return jnp.einsum('ri,ri->r', x, localfeatures)
 
-
 functional = Functional(f)
 
-key = jax.random.PRNGKey(42) # Jax-style random seed
+key = PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before
 rhoinputs, localfeatures = default_features(molecule = molecule, functional_type='MGGA')
 
 # We initialize the Functional parameters
-key, = jax.random.split(key, 1)
+key, = split(key, 1)
 params = functional.init(key, rhoinputs, localfeatures)
 
 # If we want to compute the local weights that come out of the functional we can do
@@ -83,7 +83,7 @@ print('Predicted_energy:',predicted_energy)
 
 
 # Now we want to optimize the parameters. To do that the first step is defining an (arbitrary) cost function
-@partial(jax.value_and_grad, has_aux = True)
+@partial(value_and_grad, has_aux = True)
 def cost(params, molecule, trueenergy, *functioninputs):
     ''' Computes the loss function, here MSE, between predicted and true energy'''
 
