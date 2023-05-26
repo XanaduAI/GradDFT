@@ -248,7 +248,7 @@ class DM21(NeuralFunctional):
 
         return jnp.einsum('ri,ri->r', x, localfeatures)
 
-def generate_DM21_weights(self, folder: str = 'saved_model', num_layers_with_dm_parameters: int = 7, n_input_features: int = 11, rng = PRNGKey(0)):
+def generate_DM21_weights(self, folder: str = 'DM21_model', num_layers_with_dm_parameters: int = 7, n_input_features: int = 11, rng = PRNGKey(0)):
 
     """A convenience function to generate the DM21 weights and biases.
 
@@ -256,7 +256,7 @@ def generate_DM21_weights(self, folder: str = 'saved_model', num_layers_with_dm_
     ----------
     folder : str, optional
         The folder to the DM21 weights.
-        Defaults to 'saved_model'. Download the DM21 weights from
+        Defaults to 'DM21_model'. Download the DM21 weights from
         https://github.com/deepmind/deepmind-research/tree/72c72d530f7de050451014895c1068b588f94733/density_functional_approximation_dm21/density_functional_approximation_dm21/checkpoints/DM21
     
     Returns
