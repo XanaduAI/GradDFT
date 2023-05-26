@@ -414,6 +414,18 @@ def orbital_grad(mo_coeff, mo_occ, F):
 
 
 def default_molecule_features(molecule: Molecule):
+    '''
+    Computes the electronic density and derivatives
+
+    Parameters
+    ----------
+    molecule:
+        class Molecule
+    
+    Returns
+    -------
+        Array: shape (n_grid, 7) where 7 is the number of features
+    '''
 
     rho = molecule.density()
     grad_rho = molecule.grad_density()
@@ -427,7 +439,30 @@ def default_molecule_features(molecule: Molecule):
     return features.T
 
 
-def default_local_features(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+def default_functionals(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+    '''
+    Generates and concatenates different functional levels
+
+    Parameters:
+    ----------
+    molecule:
+        class Molecule
+
+    functional_type:
+        Either one of 'LDA', 'GGA', 'MGGA' or Dictionary
+        {'u_range': range(), 'w_range': range()} that generates 
+        a functional
+        $$ \sum_{i\in \text{u_range}} \sum_{j\in \text{w_range}} c_{ij} u^i w^j $$
+        where
+        $$ x = \frac{|\grad \rho|^{1/2}}{\rho^{4/3}} $$
+        $$ u = \frac{\beta x}{1 + \beta x} $$
+        and
+        $$ t = \frac{3(6\pi^2)^{2/3}}{5}\frac{\rho^{5/3}}{\tau} $$
+        $$ w = \frac{\beta t^{-1}}{1+ \beta t^{-1}} $$
+
+    Returns:
+        Array: shape (n_grid, n_features)
+    '''
 
     beta = 1/1024.
 
@@ -460,64 +495,24 @@ def default_local_features(molecule: Molecule, functional_type: Optional[Union[s
     log_w_sigma = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
 
     # Compute the local features
-    # Here we use the LDA form from DM21 to be able to replicate its behavior if desired.
-    localfeatures = jnp.expand_dims((-2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3) * 2**(4/3.*log_rho)).sum(axis=0), axis = 0)
+    localfeatures = jnp.empty((0, log_rho.shape[-1]))
 
-    # We append additional extra local features
     for i, j in itertools.product(u_range, w_range):
         mgga_term = jnp.expand_dims((2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)).sum(axis=0), axis = 0)
         localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
 
-    return localfeatures.T
+    return -2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3) * localfeatures.T
 
 def default_features(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
     """
     Generates all features except the HF energy features.
     """
-    beta = 1/1024.
-
-    # Features
-
-    rho = molecule.density()
-    grad_rho = molecule.grad_density()
-    tau = molecule.kinetic_density()
-
-    grad_rho_norm = jnp.sum(grad_rho**2, axis=-1)
-    grad_rho_norm_sumspin = jnp.sum(grad_rho.sum(axis=0, keepdims=True) ** 2, axis=-1)
-
-    features = jnp.concatenate((rho, grad_rho_norm_sumspin, grad_rho_norm, tau), axis=0)
-
-    # Local features
-
-    log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
-    log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm, a_min = clip_cte))
-    log_x_sigma = log_grad_rho_norm/2 - 4/3.*log_rho
-    log_u_sigma = jnp.where(jnp.greater(log_rho,jnp.log2(clip_cte)), log_x_sigma - jnp.log2(1 + beta*(2**log_x_sigma)) + jnp.log2(beta), 0)
-
-    log_tau = jnp.log2(jnp.clip(tau, a_min = clip_cte))
-    log_1t_sigma = -(5/3.*log_rho - log_tau + 2/3.*jnp.log2(6*jnp.pi**2) + jnp.log2(3/5.))
-    log_w_sigma = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
-
-    if type(functional_type) == str:
-        if functional_type == 'LDA' or functional_type == 'DM21': u_power, w_power, uw_power = [0,0], [0,0], [0,0]
-        elif functional_type == 'GGA': u_power, w_power, uw_power = [0,1], [0,0], [0,1]
-        elif functional_type == 'MGGA': u_power, w_power, uw_power = [0,1], [0,1], [0,2]
-        else: raise ValueError(f'Functional type {functional_type} not recognized, must be one of LDA, GGA, MGGA.')
-    else: u_power, w_power, uw_power= functional_type['u'], functional_type['w'], functional_type['u+w']
-
-    # Here we use the LDA form from DM21 to be able to replicate its behavior if desired.
-    localfeatures = jnp.expand_dims((-2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3) * 2**(4/3.*log_rho)).sum(axis=0), axis = 0)
-
-    for i, j in itertools.product(range(u_power[0], u_power[1]+1), range(w_power[0], w_power[1]+1)):
-        
-        if i+j < uw_power[0] or i+j > uw_power[1] or (i == 0 and j == 0): continue
-
-        mgga_term = jnp.expand_dims((2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)).sum(axis=0), axis = 0)
-
-        localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
+    
+    features = default_molecule_features(molecule)
+    localfeatures = default_functionals(molecule, functional_type, clip_cte)
 
     # We return them with the first index being the position r and the second the feature.
-    return features.T, localfeatures.T
+    return features, localfeatures
 
 def get_veff(exc: float, vxc: Array, molecule: Molecule, rdm1: Array, training: bool = False, precision= Precision.HIGHEST):
 
