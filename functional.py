@@ -11,7 +11,7 @@ from flax.training import train_state, checkpoints
 from flax.core import freeze, unfreeze
 
 from utils import Scalar, Array, PyTree, DType, default_dtype
-from molecule import Molecule, default_features
+from molecule import Molecule
 
 def external_f(instance, x):
     x = instance.dense(x)
@@ -37,6 +37,8 @@ class Functional(nn.Module):
     '''
 
     f: staticmethod
+    is_xc: bool = True
+    is_local: bool = True
     kernel_init: Callable = he_normal()
     bias_init: Callable = zeros
     param_dtype: DType = default_dtype()
@@ -119,9 +121,15 @@ class Functional(nn.Module):
         Union[Array, Scalar]
         '''
 
-        xc_energy = self.apply_and_integrate(params, molecule, *args)
-        nonxc_energy = nonXC(molecule.rdm1, molecule.h1e, molecule.rep_tensor, molecule.nuclear_repulsion)
-        return xc_energy + nonxc_energy
+        if self.is_local: 
+            energy = self.apply_and_integrate(params, molecule, *args)
+        else: 
+            energy = self.apply(params, molecule, *args)
+
+        if self.is_xc:
+            energy += molecule.nonXC()
+
+        return energy
 
     def _integrate(
         self, features: Array, gridweights: Array, precision: Optional[Precision] = Precision.HIGHEST
@@ -151,81 +159,6 @@ class Functional(nn.Module):
 
 ######################### Helper functions #########################
 
-def nonXC(
-    rdm1: Array, h1e: Array, rep_tensor: Array, nuclear_repulsion: Scalar, precision = Precision.HIGHEST
-) -> Scalar:
-
-    """A function that computes the non-XC part of a DFT functional.
-
-    Parameters
-    ----------
-    rdm1 : Array
-        The 1-Reduced Density Matrix.
-        Equivalent to mf.make_rdm1() in pyscf.
-        Expected shape: (n_spin, n_orb, n_orb)
-    h1e : Array
-        The 1-electron Hamiltonian.
-        Equivalent to mf.get_hcore(mf.mol) in pyscf.
-        Expected shape: (n_orb, n_orb)
-    rep_tensor : Array
-        The repulsion tensor.
-        Equivalent to mf.mol.intor('int2e') in pyscf.
-        Expected shape: (n_orb, n_orb, n_orb, n_orb)
-    nuclear_repulsion : Scalar
-        Equivalent to mf.mol.energy_nuc() in pyscf.
-        The nuclear repulsion energy.
-    precision : Precision, optional
-        The precision to use for the computation, by default Precision.HIGHEST
-
-    Returns
-    -------
-    Scalar
-        The non-XC energy of the DFT functional.
-    """
-
-    v_coul = 2 * jnp.einsum("pqrt,srt->spq", rep_tensor, rdm1, precision=precision) 
-
-    h1e_energy = jnp.einsum("sij,ji->", rdm1, h1e, precision=precision)
-    coulomb2e_energy = jnp.einsum('sji,sij->', rdm1, v_coul, precision=precision)/2.
-
-    return nuclear_repulsion + h1e_energy + coulomb2e_energy
-
-
-def HF_exact_exchange(
-    chi, rdm1, ao, precision = Precision.HIGHEST
-) -> Array:
-    
-        """A function that computes the exact exchange energy of a DFT functional.
-
-        Parameters
-        ----------
-        chi : Array
-            Xc^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r')
-            Expected shape: (n_grid, n_omega, n_spin, n_orbitals)
-        rdm1 : Array
-            The 1-Reduced Density Matrix.
-            Equivalent to mf.make_rdm1() in pyscf.
-            Expected shape: (n_spin, n_orb, n_orb)
-        ao : Array
-            The atomic orbital basis.
-            Equivalent to pyscf.dft.numint.eval_ao(mf.mol, grids.coords, deriv=0) in pyscf.
-            Expected shape: (n_grid, n_orb)
-        precision : Precision, optional
-            The precision to use for the computation, by default Precision.HIGHEST
-    
-				Notes
-				-------
-				n_omega makes reference to different possible kernels, for example using
-				the kernel f(|r-r'|) = erf(w |r-r'|)/|r-r'|.
-
-        Returns
-        -------
-        Array
-            The exact exchange energy of the DFT functional at each point of the grid.
-        """
-
-        _hf_energy = lambda _chi, _dm, _ao: - jnp.einsum("wsc,sac,a->ws", _chi, _dm, _ao, precision=precision)/2
-        return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
 
 def canonicalize_inputs(x):
 

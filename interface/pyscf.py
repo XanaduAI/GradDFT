@@ -48,7 +48,7 @@ def molecule_from_pyscf(
     #mf, grids = _maybe_run_kernel(mf, grids)
     grid = grid_from_pyscf(mf.grids, dtype=dtype)
 
-    ao, grad_ao, rdm1, energy_nuc, h1e_energy, coulomb2e_energy, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor = to_device_arrays(
+    ao, grad_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor = to_device_arrays(
         *_package_outputs(mf, mf.grids, training, scf_iteration), dtype=dtype
     )
 
@@ -63,13 +63,15 @@ def molecule_from_pyscf(
         omegas = to_device_arrays(omegas, dtype=dtype)
         chi = generate_chi_tensor(rdm1 = rdm1, ao = ao, mol = mf.mol, omegas = omegas)
         chi = to_device_arrays(chi, dtype=dtype)
+    else:
+        chi = None
     spin = mf.mol.spin
     charge = mf.mol.charge
 
     grid_level = mf.grids.level
 
     return Molecule(
-        grid, atom_index, nuclear_pos, ao, grad_ao, rdm1, energy_nuc, h1e_energy, coulomb2e_energy, h1e, vj, mo_coeff, mo_occ, mo_energy,
+        grid, atom_index, nuclear_pos, ao, grad_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_occ, mo_energy,
         mf_e_tot, s1e, omegas, chi, rep_tensor, energy, basis, name, spin, charge, unit_Angstrom, grid_level, scf_iteration, fock
     )
 
@@ -471,7 +473,7 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, train
 
     energy_nuc = mf.energy_nuc()
 
-    return ao, grad_ao, dm, energy_nuc, h1e_energy, coulomb2e_energy, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor
+    return ao, grad_ao, dm, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor
 
 ##############################################################################################################
 

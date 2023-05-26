@@ -1,23 +1,24 @@
 import jax
 from jax import numpy as jnp
 from jax.lax import Precision
-
+from jax.scipy.special import erfc
+from jax.scipy.optimize import minimize as scipyminimize
+from flax import struct
 import optax
-from typing import Callable, Tuple, Sequence, Optional
 
-from functools import partial
-from scipy.special import erfc
+from typing import Callable, Tuple, Sequence, Optional
+from functools import partial, reduce
 import time
 from scipy.optimize import bisect
-from functools import partial
 
 from external import Functional
 from utils import PyTree, Array, Scalar, Ansatz
 from functional import Functional
 Optimizer = optax.GradientTransformation
 
-from molecule import Molecule, eig, Diis, make_rdm1, get_veff, orbital_grad
+from molecule import Molecule, eig, make_rdm1, orbital_grad
 from functional import molecule_predictor
+from train import molecule_predictor
 from utils import PyTree, Array, Scalar
 from interface.pyscf import generate_chi_tensor, mol_from_Molecule, process_mol, mol_from_Molecule
 from utils.types import Hartree2kcalmol
@@ -43,12 +44,9 @@ def make_molecule_scf_loop(fxc: Functional, omegas:Sequence, chunk_size: int = 1
 
         old_e = jnp.inf
         norm_gorb = jnp.inf
+        predicted_e = 0
         cycle = 0
         nelectron = molecule.atom_index.sum() - molecule.charge
-
-        # Predict the energy and the vxc
-        exc, vxc = predict_molecule(params, molecule, *args)
-        predicted_e, vhf, (h1e_energy, coulomb2e_energy) = get_veff(exc = exc, vxc = vxc, molecule = molecule, dm = molecule.density_matrix, training = False, precision = precision)
 
         # Initialize DIIS
         A = jnp.identity(molecule.s1e.shape[0])
@@ -60,9 +58,6 @@ def make_molecule_scf_loop(fxc: Functional, omegas:Sequence, chunk_size: int = 1
             # Convergence criterion is energy difference (default 1) kcal/mol and norm of gradient of orbitals < g_conv
             start_time = time.time()
             old_e = predicted_e
-
-            # Compute Fock matrix
-            fock = molecule.get_fock(vhf)
 
             # DIIS iteration
             new_data = (molecule.density_matrix, fock, predicted_e)
@@ -108,7 +103,7 @@ def make_molecule_scf_loop(fxc: Functional, omegas:Sequence, chunk_size: int = 1
             #assert jnp.isclose(nelectron, computed_charge, atol = 1e-3), "Total charge is not conserved"
 
             # Update the chi matrix
-            if len(omegas) > 0:
+            if len(omegas) > 0: #todo: see how to make this general enough
                 chi_start_time = time.time() 
                 chi = generate_chi_tensor(molecule, mf.mol, omegas = omegas, chunk_size=chunk_size, grid_coords=molecule.grid.coords, *args)
                 molecule = molecule.replace(chi = chi)
@@ -116,19 +111,13 @@ def make_molecule_scf_loop(fxc: Functional, omegas:Sequence, chunk_size: int = 1
                     print("Cycle {} took {:.1e} seconds to compute chi matrix".format(cycle, time.time() - chi_start_time))
 
             exc_start_time = time.time()
-            exc, vxc = predict_molecule(params, molecule, *args)
-            predicted_e, vhf, (h1e_energy, coulomb2e_energy) = get_veff(exc = exc, vxc = vxc, molecule = molecule, dm = rdm1, training = False, precision = precision)
+            predicted_e, fock = predict_molecule(params, molecule, *args)
             exc_time = time.time()
-
-            # Update the one and two body energies
-            molecule = molecule.replace(h1e_energy = h1e_energy)
-            molecule = molecule.replace(coulomb2e_energy = coulomb2e_energy)
 
             if verbose > 2:
                 print("Cycle {} took {:.1e} seconds to compute exc and vhf".format(cycle, exc_time - exc_start_time))
 
-            # Compute Fock matrix again, without DIIS, and the norm of the gradient
-            fock = molecule.get_fock(vhf)
+            # Compute the norm of the gradient
             norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
 
             if verbose > 1:
@@ -157,27 +146,15 @@ def make_molecule_scf_loop(fxc: Functional, omegas:Sequence, chunk_size: int = 1
                 chi = generate_chi_tensor(molecule, mf.mol, omegas = omegas, chunk_size=chunk_size, grid_coords=molecule.grid.coords, *args)
                 molecule = molecule.replace(chi = chi)
 
-            exc, vxc = predict_molecule(params, molecule, *args)
-            predicted_e, vhf, (h1e_energy, coulomb2e_energy) = get_veff(exc = exc, vxc = vxc, molecule = molecule, dm = rdm1, training = False, precision = precision)
+            predicted_e, fock = predict_molecule(params, molecule, *args)
 
-            # Update the one and two body energies
-            molecule = molecule.replace(h1e_energy = h1e_energy)
-            molecule = molecule.replace(coulomb2e_energy = coulomb2e_energy)
-
-            # Compute Fock matrix again, without DIIS, and the norm of the gradient
-            fock = molecule.get_fock(vhf)
+            # Compute the norm of the gradient
             norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
 
         if verbose > 1:
             print("cycle: {}, predicted energy: {:.7e}, energy difference: {:.4e}, norm_gradient_orbitals: {:.2e}".format(cycle, predicted_e, abs(predicted_e - old_e), norm_gorb))
 
         return predicted_e
-
-    def diis_make(mf): #todo: convert to jax.numpy
-        mf_diis = mf.DIIS(mf, mf.diis_file)
-        mf_diis.space = mf.diis_space
-        mf_diis.rollback = mf.diis_space_rollback
-        return mf_diis
 
     return scf_iterator
 
@@ -209,9 +186,8 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chun
         computed_charge = jnp.einsum('r,ra,rb,sab->', molecule.grid.weights, molecule.ao, molecule.ao, dm)
         assert jnp.isclose(nelectron, computed_charge, atol = 1e-3), "Total charge is not conserved"
 
-        # Predict the energy and the vxc
-        exc, vxc = predict_molecule(params, molecule, *args)
-        predicted_e, _, _ = get_veff(exc = exc, vxc = vxc, molecule = molecule, dm = dm, training = False, precision = precision)
+        # Predict the energy and the fock matrix
+        predicted_e, _ = predict_molecule(params, molecule, *args)
         return predicted_e
 
     def neural_iterator(
@@ -225,9 +201,8 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chun
         old_e = jnp.inf
         cycle = 0
 
-        # Predict the energy and the vxc
-        exc, vxc = predict_molecule(params, molecule, *args)
-        predicted_e, vhf, _ = get_veff(exc = exc, vxc = vxc, molecule = molecule, dm = molecule.density_matrix, training = False, precision = precision)
+        # Predict the energy and the fock matrix
+        predicted_e, _ = predict_molecule(params, molecule, *args)
 
         C = molecule.mo_coeff
 
@@ -276,3 +251,244 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chun
         return predicted_e
 
     return neural_iterator
+
+
+
+########################################################
+
+@struct.dataclass
+class Diis:
+
+    """DIIS extrapolation, with different variants. The vanilla DIIS computes
+    the Fock matrix as a linear combination of the previous Fock matrices, with
+    ::math::
+        F_{DIIS} = \sum_i x_i F_i,
+
+    where the coefficients are determined by minimizing the error vector
+    ::math::
+        e_i = A^T (F_i D_i S - S D_i F_i) A,
+
+    with F_i the Fock matrix at iteration i, D_i the density matrix at iteration i,
+    and S the overlap matrix. The error vector is then used to compute the
+    coefficients as
+    ::math::
+        B = \begin{pmatrix}
+            <e_1|e_1> & <e_1|e_2> & \cdots & <e_1|e_n> & -1 \\
+            <e_2|e_1> & <e_2|e_2> & \cdots & <e_2|e_n> & -1 \\
+            \vdots & \vdots & \ddots & \vdots & \vdots \\
+            <e_n|e_1> & <e_n|e_2> & \cdots & <e_n|e_n> & -1 \\
+            -1 & -1 & \cdots & -1 & 0
+        \end{pmatrix},
+
+    ::math::
+        x = \begin{pmatrix}
+            x_1 \\
+            x_2 \\
+            \vdots \\
+            x_n \\
+            0
+        \end{pmatrix}
+    
+    and
+    ::math::
+        C= \begin{pmatrix}
+            0 \\
+            0 \\
+            \vdots \\
+            0 \\
+            1
+        \end{pmatrix}
+
+    where n is the number of stored Fock matrices. The coefficients are then
+    computed as
+    ::math::
+        x = B^{-1} C.
+
+    Diis attributes:
+        overlap_matrix (jnp.array): Overlap matrix, molecule.s1e. Shape: (n_orbitals, n_orbitals).
+        A (jnp.array): Transformation matrix for CDIIS, molecule.A. Shape: (n_orbitals, n_orbitals).
+        max_diis (int): Maximum number of DIIS vectors to store.
+        diis_method (str): DIIS method to use. One of "DIIS", "EDIIS", "ADIIS", "EDIIS2", "ADIIS2".
+        ediis2_threshold (float): Threshold for EDIIS2 to change from EDIIS to DIIS.
+        adiis2_threshold (float): Threshold for ADIIS2 to change from ADIIS to DIIS.
+
+    
+    Other objects used during the calculation:
+        density_vector (jnp.array): Density matrix vectorized.
+            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
+        fock_vector (jnp.array): Fock matrix vectorized.
+            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
+        energy_vector (jnp.array): Fock energy vector.
+            Shape: (n_iterations).
+        error_vector (jnp.array): Error vector.
+            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
+    """
+
+    overlap_matrix: Array
+    A: Array
+    max_diis: Optional[int] = 8
+    diis_method: Optional[str] = "EDIIS2"
+    ediis2_threshold: Optional[float] = 1e-2
+    adiis2_threshold: Optional[float] = 1e-2
+
+    def update(self, new_data, diis_data):
+
+        density_matrix, fock_matrix, energy = new_data
+        density_vector, fock_vector, energy_vector, error_vector = diis_data
+
+        fds =  jnp.einsum('ij,sjk,skl,lm,mn->sin', self.A, fock_matrix, density_matrix, self.overlap_matrix, self.A.T) 
+        error_matrix = fds - fds.transpose(0,2,1).conj()
+
+        if len(error_vector) == 0: error_vector = jnp.expand_dims(error_matrix, axis = 0)
+        else: error_vector = jnp.concatenate((error_vector, jnp.expand_dims(error_matrix, axis = 0)), axis = 0)
+        density_vector = jnp.concatenate((density_vector, jnp.expand_dims(density_matrix, axis = 0)), axis = 0)
+        fock_vector = jnp.concatenate((fock_vector, jnp.expand_dims(fock_matrix, axis = 0)), axis = 0)
+        energy_vector = jnp.concatenate((energy_vector, jnp.expand_dims(energy, axis = 0)), axis = 0)
+
+        if len(error_vector) > self.max_diis:
+            error_vector = error_vector[1:]
+            density_vector = density_vector[1:]
+            fock_vector = fock_vector[1:]
+            energy_vector = energy_vector[1:]
+
+        return density_vector, fock_vector, energy_vector, error_vector
+
+    def run(self, new_data, diis_data, cycle = 0):
+
+        diis_data = self.update(new_data, diis_data)
+        density_vector, fock_vector, energy_vector, error_vector = diis_data
+
+        if len(error_vector) == 0:
+            raise RuntimeError('No DIIS vectors available')
+
+        elif len(error_vector) == 1:
+            return fock_vector[0], diis_data
+
+        else:
+            if self.diis_method == 'CDIIS' or \
+            (self.diis_method == 'EDIIS2' and (energy_vector[-1]-energy_vector[-2])/(energy_vector[-2]) < self.ediis2_threshold) or  \
+            (self.diis_method == 'ADIIS2' and (energy_vector[-1]-energy_vector[-2])/(energy_vector[-2]) < self.adiis2_threshold):
+                x = self.cdiis_minimize(error_vector)
+                F = jnp.einsum('si,isjk->sjk', x, fock_vector)
+                return jnp.einsum('ji,sjk,kl->sil', self.A, F, self.A), diis_data
+
+            elif self.diis_method == 'EDIIS' or (self.diis_method == 'EDIIS2' and (energy_vector[-1]-energy_vector[-2])/(energy_vector[-2]) >= self.ediis2_threshold):
+                x, _ = self.ediis_minimize(density_vector, fock_vector, energy_vector)
+            elif self.diis_method == 'ADIIS' or (self.diis_method == 'ADIIS2' and (energy_vector[-1]-energy_vector[-2])/(energy_vector[-2]) >= self.adiis2_threshold):
+                x, _ = self.adiis_minimize(density_vector, fock_vector, cycle%self.max_diis)
+
+            F = jnp.einsum('i,isjk->sjk', x, fock_vector)
+            return F, diis_data
+
+    def cdiis_minimize(self, error_vector):
+
+        # Find the coefficients x that solve B @ x = C with B and C defined below
+        B = jnp.zeros((2, len(error_vector) + 1, len(error_vector) + 1))
+        B = B.at[:, 1:, 1:].set(jnp.einsum('iskl,jskl->sij', error_vector, error_vector))
+        B = B.at[:, 0, 1:].set(1)
+        B = B.at[:, 1:, 0].set(1)
+    
+        C = jnp.zeros((2, len(error_vector) + 1))
+        C = C.at[:, 0].set(1)
+
+        w, v = jnp.linalg.eig(B[0])
+        w, v = w.real, v.real
+        x0 = jnp.einsum('ij,jk,km,m-> i', v, jnp.diag(1.0 / w), v.T.conj(), C[0])
+
+        w, v = jnp.linalg.eig(B[1])
+        w, v = w.real, v.real
+        x1 = jnp.einsum('ij,jk,km,m-> i', v, jnp.diag(1.0 / w), v.T.conj(), C[1])
+
+        x = jnp.stack([x0, x1], axis=0)
+        assert not jnp.any(jnp.isnan(x))
+        return x[:,1:]
+
+    def ediis_minimize(self, density_vector, fock_vector, energy_vector):
+        '''SCF-EDIIS
+        Ref: JCP 116, 8255 (2002); DOI:10.1063/1.1470195
+
+        Warning: This implementation of EDIIS uses jax.scipy.optimize.minimize() to minimize the cost function.
+        `minimize` supports jit() compilation, but does not yet support differentiation 
+        or arguments in the form of multi-dimensional arrays. Support for both is planned.
+
+        Code taken from 
+        https://github.com/pyscf/pyscf/blob/df92512c09c13063a056dbc543e980e1997d21c8/pyscf/scf/diis.py#L149
+        '''
+        nx = energy_vector.size
+        nao = density_vector.shape[-1]
+        density_vector = density_vector.reshape(nx,-1,nao,nao)
+        fock_vector = fock_vector.reshape(nx,-1,nao,nao)
+        df = jnp.einsum('ispq,jsqp->ij', density_vector, fock_vector).real
+        diag = df.diagonal()
+        df = diag[:,None] + diag - df - df.T
+
+        def costf(x):
+            c = x**2 / (x**2).sum()
+            return jnp.einsum('i,i', c, energy_vector) - jnp.einsum('i,ij,j', c, df, c)
+
+        res = scipyminimize(costf, jnp.ones(energy_vector.size), method='BFGS',tol=1e-9)
+        return (res.x**2)/(res.x**2).sum(), res.fun
+
+    def adiis_minimize(self, density_vector, fock_vector, idnewest):
+        '''
+        Ref: JCP 132, 054109 (2010); DOI:10.1063/1.3304922
+
+        Warning: This implementation of EDIIS uses jax.scipy.optimize.minimize() to minimize the cost function.
+        `minimize` supports jit() compilation, but does not yet support differentiation 
+        or arguments in the form of multi-dimensional arrays. Support for both is planned.
+
+        Code taken from 
+        https://github.com/pyscf/pyscf/blob/df92512c09c13063a056dbc543e980e1997d21c8/pyscf/scf/diis.py#L208
+        '''
+
+        nx = density_vector.shape[0]
+        nao = density_vector.shape[-1]
+        density_vector = density_vector.reshape(nx,-1,nao,nao)
+        fock_vector = fock_vector.reshape(nx,-1,nao,nao)
+        df = jnp.einsum('ispq,jsqp->ij', density_vector, fock_vector).real
+        d_fn = df[:,idnewest]
+        dn_f = df[idnewest]
+        dn_fn = df[idnewest,idnewest]
+        dd_fn = d_fn - dn_fn
+        df = df - d_fn[:,None] - dn_f + dn_fn
+
+        def costf(x):
+            c = x**2 / (x**2).sum()
+            return (jnp.einsum('i,i', c, dd_fn) * 2 + jnp.einsum('i,ij,j', c, df, c))
+
+        res = scipyminimize(costf, jnp.ones(nx), method='BFGS', tol=1e-9)
+        return (res.x**2)/(res.x**2).sum(), res.fun
+
+def damping(s, d, f, factor):
+    '''Copied from pyscf.scf.hf.damping'''
+    #dm_vir = s - reduce(numpy.dot, (s,d,s))
+    #sinv = numpy.linalg.inv(s)
+    #f0 = reduce(numpy.dot, (dm_vir, sinv, f, d, s))
+    dm_vir = jnp.eye(s.shape[0]) - jnp.dot(s, d)
+    f0 = reduce(jnp.dot, (dm_vir, f, d, s))
+    f0 = (f0+f0.conj().T) * (factor/(factor+1.))
+    return f - f0
+
+def level_shift(s, d, f, factor):
+    r'''Copied from pyscf.scf.hf.level_shift
+    
+    Apply level shift :math:`\Delta` to virtual orbitals
+
+    .. math::
+       :nowrap:
+
+       \begin{align}
+         FC &= SCE \\
+         F &= F + SC \Lambda C^\dagger S \\
+         \Lambda_{ij} &=
+         \begin{cases}
+            \delta_{ij}\Delta & i \in \text{virtual} \\
+            0 & \text{otherwise}
+         \end{cases}
+       \end{align}
+
+    Returns:
+        New Fock matrix, 2D ndarray
+    '''
+    dm_vir = s - reduce(jnp.dot, (s, d, s))
+    return f + dm_vir * factor

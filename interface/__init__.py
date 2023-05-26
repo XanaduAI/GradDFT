@@ -4,6 +4,5 @@ from .pyscf import (
     mol_from_Molecule, 
     saver,
     loader,
-    coulomb_potential,
     process_mol
 )

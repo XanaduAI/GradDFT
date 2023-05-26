@@ -2,7 +2,7 @@ from utils import Scalar, Array
 from typing import Optional, Union, Callable, Dict, Sequence, Tuple, NamedTuple
 from dataclasses import fields
 from utils import Array, Scalar
-from functools import partial, reduce
+from functools import partial
 from utils import PyTree, vmap_chunked
 
 from jax import numpy as jnp
@@ -63,8 +63,6 @@ class Molecule:
     grad_ao: Array
     rdm1: Array
     nuclear_repulsion: Scalar
-    h1e_energy: Scalar
-    coulomb2e_energy: Scalar
     h1e: Array
     vj: Array
     mo_coeff: Array
@@ -107,6 +105,9 @@ class Molecule:
     def HF_density_grad_2_Fock(self, fxc: Callable, x_without_hf:Array, y_without_hf: Array, ehf: Array, params: PyTree, *args, **kwargs):
         if self.chi is None: raise ValueError("Precomputed chi tensor has not been loaded.")
         return HF_density_grad_2_Fock(fxc, x_without_hf, y_without_hf, ehf, self.chi, self.ao, self.grid.weights, params = params, *args, **kwargs)
+
+    def nonXC(self, *args, **kwargs):
+        return nonXC(self.rdm1, self.h1e, self.vj, self.nuclear_repulsion, *args, **kwargs)
 
     def to_dict(self) -> dict:
         grid_dict = self.grid.to_dict()
@@ -320,7 +321,111 @@ def HF_density_grad_2_Fock(
 
     return (jax.jit(chunked_jvp)(chi.transpose(3,0,1,2), gr, ao)).transpose(1,2,3,0)
 
+######################################################################
 
+def nonXC(
+    rdm1: Array, h1e: Array, v_coul: Array, nuclear_repulsion: Scalar, precision = Precision.HIGHEST
+) -> Scalar:
+
+    """A function that computes the non-XC part of a DFT functional.
+
+    Parameters
+    ----------
+    rdm1 : Array
+        The 1-Reduced Density Matrix.
+        Equivalent to mf.make_rdm1() in pyscf.
+        Expected shape: (n_spin, n_orb, n_orb)
+    h1e : Array
+        The 1-electron Hamiltonian.
+        Equivalent to mf.get_hcore(mf.mol) in pyscf.
+        Expected shape: (n_orb, n_orb)
+    rep_tensor : Array
+        The repulsion tensor.
+        Equivalent to mf.mol.intor('int2e') in pyscf.
+        Expected shape: (n_orb, n_orb, n_orb, n_orb)
+    nuclear_repulsion : Scalar
+        Equivalent to mf.mol.energy_nuc() in pyscf.
+        The nuclear repulsion energy.
+    precision : Precision, optional
+        The precision to use for the computation, by default Precision.HIGHEST
+
+    Returns
+    -------
+    Scalar
+        The non-XC energy of the DFT functional.
+    """
+
+    h1e_energy = one_body_energy(rdm1, h1e, precision)
+    coulomb2e_energy = two_body_energy(rdm1, v_coul, precision)
+
+    return nuclear_repulsion + h1e_energy + coulomb2e_energy
+
+def two_body_energy(rdm1, v_coul, precision):
+    coulomb2e_energy = jnp.einsum('sji,sij->', rdm1, v_coul, precision=precision)/2.
+    return coulomb2e_energy
+
+def one_body_energy(rdm1, h1e, precision):
+    h1e_energy = jnp.einsum("sij,ji->", rdm1, h1e, precision=precision)
+    return h1e_energy
+
+def coulomb_potential(rdm1, rep_tensor, precision):
+    """A function that computes the non-XC part of a DFT functional.
+
+    Parameters
+    ----------
+    rdm1 : Array
+        The 1-Reduced Density Matrix.
+        Equivalent to mf.make_rdm1() in pyscf.
+        Expected shape: (n_spin, n_orb, n_orb)
+    rep_tensor : Array
+        The repulsion tensor.
+        Equivalent to mf.mol.intor('int2e') in pyscf.
+        Expected shape: (n_orb, n_orb, n_orb, n_orb)
+    precision : Precision, optional
+        The precision to use for the computation, by default Precision.HIGHEST
+
+    Returns
+    -------
+    Scalar
+        Coulomb potential matrix.
+    """
+    return 2 * jnp.einsum("pqrt,srt->spq", rep_tensor, rdm1, precision=precision)
+
+def HF_exact_exchange(
+    chi, rdm1, ao, precision = Precision.HIGHEST
+) -> Array:
+    
+        """A function that computes the exact exchange energy of a DFT functional.
+
+        Parameters
+        ----------
+        chi : Array
+            Xc^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r')
+            Expected shape: (n_grid, n_omega, n_spin, n_orbitals)
+        rdm1 : Array
+            The 1-Reduced Density Matrix.
+            Equivalent to mf.make_rdm1() in pyscf.
+            Expected shape: (n_spin, n_orb, n_orb)
+        ao : Array
+            The atomic orbital basis.
+            Equivalent to pyscf.dft.numint.eval_ao(mf.mol, grids.coords, deriv=0) in pyscf.
+            Expected shape: (n_grid, n_orb)
+        precision : Precision, optional
+            The precision to use for the computation, by default Precision.HIGHEST
+    
+				Notes
+				-------
+				n_omega makes reference to different possible kernels, for example using
+				the kernel f(|r-r'|) = erf(w |r-r'|)/|r-r'|.
+
+        Returns
+        -------
+        Array
+            The exact exchange energy of the DFT functional at each point of the grid.
+        """
+
+        _hf_energy = lambda _chi, _dm, _ao: - jnp.einsum("wsc,sac,a->ws", _chi, _dm, _ao, precision=precision)/2
+        return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
 
 ######################################################################
 
@@ -496,12 +601,14 @@ def default_functionals(molecule: Molecule, functional_type: Optional[Union[str,
 
     # Compute the local features
     localfeatures = jnp.empty((0, log_rho.shape[-1]))
-
     for i, j in itertools.product(u_range, w_range):
-        mgga_term = jnp.expand_dims((2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)).sum(axis=0), axis = 0)
+        mgga_term = jnp.expand_dims((2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)).sum(axis=0), axis = 0) \
+                    * jnp.where(jnp.logical_and(i==0, j==0), -2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3), 1) # to match DM21
         localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
 
-    return -2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3) * localfeatures.T
+    # We add a constant multiplicative factor to match DM21 LDA feature
+    return localfeatures.T
+
 
 def default_features(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
     """
@@ -514,21 +621,5 @@ def default_features(molecule: Molecule, functional_type: Optional[Union[str, Di
     # We return them with the first index being the position r and the second the feature.
     return features, localfeatures
 
-def get_veff(exc: float, vxc: Array, molecule: Molecule, rdm1: Array, training: bool = False, precision= Precision.HIGHEST):
+##########################################################
 
-    if not training: # Symmetrization of the density matrix
-        rdm1 = rdm1.sum(axis = 0)
-        rdm1 = jnp.stack([rdm1, rdm1], axis = 0)/2.
-    if training: v_coul = molecule.vj
-    else: v_coul = 2 * jnp.einsum("pqrt,srt->spq", molecule.rep_tensor, rdm1, precision=precision) # The 2 is to compensate for the /2 in the rdm1 definition 
-
-    coulomb2e_energy = jnp.einsum('sji,sij->', rdm1, v_coul, precision=precision)/2.
-    h1e_energy = jnp.einsum("sij,ji->", rdm1, molecule.h1e, precision=precision)
-
-    predicted_e = molecule.nuclear_repulsion + h1e_energy + coulomb2e_energy + exc
-
-    vhf = vxc + v_coul
-
-    # If not training, RKS expects vhf to be size nao x nao, during training pyscf methods are not used
-    if not training and int(molecule.spin) == 0: vhf = vhf.sum(axis = 0)/2.
-    return predicted_e, vhf, (h1e_energy, coulomb2e_energy)
