@@ -1,14 +1,11 @@
-from functools import partial
-
 from jax.random import split, PRNGKey
-from jax import value_and_grad
 from jax import numpy as jnp
-from jax.nn import gelu
 from optax import adam, apply_updates
 
 from interface.pyscf import molecule_from_pyscf
 from molecule import default_features
 from functional import NeuralFunctional, canonicalize_inputs, default_loss
+from jax.nn import gelu
 
 # First we define a molecule:
 from pyscf import gto, dft
@@ -28,9 +25,9 @@ molecule = molecule_from_pyscf(mf)
 # Then we define the (local) Functional, via an (arbitrary) function f whose output we will integrate (or not, if decide so)
 squash_offset = 1e-4
 layer_widths = [256]*6
-activation = gelu
 out_features = 4
 sigmoid_scale_factor = 2.
+activation = gelu
 
 def f(instance, rhoinputs, localfeatures, *_, **__):
     x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
@@ -52,7 +49,7 @@ def f(instance, rhoinputs, localfeatures, *_, **__):
         instance.sow('intermediates', 'residual_residual_'+str(i), x)
         x = instance.layer_norm()(x) #+ res # nn.LayerNorm
         instance.sow('intermediates', 'residual_layernorm_'+str(i), x) 
-        x = activation(x) # activation = jax.nn.elu
+        x = activation(x) # activation = jax.nn.gelu
         instance.sow('intermediates', 'residual_elu_'+str(i), x)
 
     x = instance.head(x, out_features, sigmoid_scale_factor)

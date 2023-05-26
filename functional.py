@@ -1,12 +1,13 @@
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 from functools import partial
 
 from jax import value_and_grad
 from jax import numpy as jnp
 from jax.lax import Precision
-from jax.nn import sigmoid
+from jax.nn import sigmoid, gelu, elu
 from jax.nn.initializers import zeros, he_normal
+from jax.random import normal, PRNGKey
 
 from jax.experimental import checkify
 
@@ -26,7 +27,7 @@ def external_f(instance, x):
     x = 0.5*jnp.tanh(x)
     return x
 
-@dataclass(frozen=False)
+@dataclass
 class Functional(nn.Module):
     ''' A base class of local functionals.
     F[n(r)] = \int f(n(r)) d^3 r
@@ -138,7 +139,7 @@ class Functional(nn.Module):
 
         return jnp.einsum("r,r...->...", gridweights, features, precision = precision)
 
-@dataclass(frozen = False)
+@dataclass
 class NeuralFunctional(Functional):
 
     f: staticmethod
@@ -146,6 +147,7 @@ class NeuralFunctional(Functional):
     is_local: bool = True
     kernel_init: Callable = he_normal()
     bias_init: Callable = zeros
+    activation: Callable = gelu
     param_dtype: DType = default_dtype()
 
     def setup(self):
@@ -209,6 +211,124 @@ class NeuralFunctional(Functional):
                                 opt_state = tx.init(freeze(state_dict['params'])), apply_fn=self.apply)
 
         return state
+    
+@dataclass
+class DM21(NeuralFunctional):
+
+    activation = elu
+    squash_offset = 1e-4
+    layer_widths = [256]*6
+    out_features = 4
+    sigmoid_scale_factor = 2.
+
+    def f(instance, rhoinputs, localfeatures, *_, **__):
+        x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
+
+        # Initial layer: log -> dense -> tanh
+        x = jnp.log(jnp.abs(x) + instance.squash_offset) # squash_offset = 1e-4
+        instance.sow('intermediates', 'log', x)
+        x = instance.dense(features=instance.layer_widths[0])(x) # features = 256
+        instance.sow('intermediates', 'initial_dense', x)
+        x = jnp.tanh(x)
+        instance.sow('intermediates', 'tanh', x)
+
+        # 6 Residual blocks with 256-features dense layer and layer norm
+        for features,i in zip(instance.layer_widths,range(len(instance.layer_widths))): # layer_widths = [256]*6
+            res = x
+            x = instance.dense(features=features)(x)
+            instance.sow('intermediates', 'residual_dense_'+str(i), x)
+            x = x + res # nn.Dense + Residual connection
+            instance.sow('intermediates', 'residual_residual_'+str(i), x)
+            x = instance.layer_norm()(x) #+ res # nn.LayerNorm
+            instance.sow('intermediates', 'residual_layernorm_'+str(i), x) 
+            x = instance.activation(x) # activation = jax.nn.gelu
+            instance.sow('intermediates', 'residual_elu_'+str(i), x)
+
+        x = instance.head(x, instance.out_features, instance.sigmoid_scale_factor)
+
+        return jnp.einsum('ri,ri->r', x, localfeatures)
+
+def generate_DM21_weights(self, folder: str = 'saved_model', num_layers_with_dm_parameters: int = 7, n_input_features: int = 11, rng = PRNGKey(0)):
+
+    """A convenience function to generate the DM21 weights and biases.
+
+    Parameters
+    ----------
+    folder : str, optional
+        The folder to the DM21 weights.
+        Defaults to 'saved_model'. Download the DM21 weights from
+        https://github.com/deepmind/deepmind-research/tree/72c72d530f7de050451014895c1068b588f94733/density_functional_approximation_dm21/density_functional_approximation_dm21/checkpoints/DM21
+    
+    Returns
+    -------
+    params: FrozenDict
+        The DM21 weights and biases.
+    """
+
+    import tensorflow as tf
+    tf.compat.v1.enable_eager_execution()
+
+    variables = tf.saved_model.load(folder).variables
+
+    def tf_tensor_to_jax(tf_tensor: tf.Tensor) -> Array:
+        return jnp.asarray(tf_tensor.numpy())
+
+    def vars_to_params(variables: List[tf.Variable]) -> PyTree:
+        import re
+        params = {}
+        for var in variables:
+
+            if 'ResidualBlock_' in var.name:
+                number = int(re.findall("ResidualBlock_[0-9]", var.name)[0][-1])+1
+            elif 'ResidualBlock/' in var.name:
+                number = 1
+            elif 'Squash' in var.name:
+                number = 0
+            elif 'Output' in var.name:
+                number = 7
+            else:
+                raise ValueError('Unknown variable name.')
+
+            if '/linear/' in var.name:
+                if 'Dense_'+str(number) not in params.keys(): params['Dense_'+str(number)] = {}
+                if '/w:' in var.name:
+                    params['Dense_'+str(number)]['kernel'] = tf_tensor_to_jax(var.value())
+                elif '/b:' in var.name:
+                    params['Dense_'+str(number)]['bias'] = tf_tensor_to_jax(var.value())
+            elif '/layer_norm/' in var.name:
+                if 'LayerNorm_'+str(number-1) not in params.keys(): params['LayerNorm_'+str(number-1)] = {}
+                if 'gamma:' in var.name:
+                    params['LayerNorm_'+str(number-1)]['scale'] = tf_tensor_to_jax(var.value())
+                elif 'beta:' in var.name:
+                    params['LayerNorm_'+str(number-1)]['bias'] = tf_tensor_to_jax(var.value())
+        return params
+
+    example_input = normal(rng, shape=(1, n_input_features))
+    params = self.init(rng, example_input)
+
+    dm_params = vars_to_params(variables)
+
+    new_params = {}
+    for key in params['params'].keys():
+        check_same_params = []
+        for k in params['params'][key].keys():
+            if key in dm_params.keys(): check_same_params.append(params['params'][key][k].shape != dm_params[key][k].shape)
+            else: check_same_params.append(True)
+        if int(key.split('_')[1]) > num_layers_with_dm_parameters or any(check_same_params):
+            new_params[key] = params['params'][key]
+            if 'Dense' in key and new_params[key]['kernel'].shape[0] == new_params[key]['kernel'].shape[1]: # DM21 suggests initializing the kernel matrices close to the identity matrix
+                new_params[key] = unfreeze(new_params[key])
+                new_params[key]['kernel'] = new_params[key]['kernel'] + jnp.identity(new_params[key]['kernel'].shape[0])
+                new_params[key] = freeze(new_params[key])
+        else:
+            new_params[key] = dm_params[key]
+
+    params = unfreeze(params)
+    params['params'] = new_params
+    params = freeze(params)
+    return params
+
+
 
 ######################### Helper functions #########################
 
