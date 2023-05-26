@@ -1,14 +1,22 @@
-from jax import numpy as jnp
-from flax import linen as nn
-from jax.lax import Precision
-from jax import vmap
-from jax.nn import sigmoid
+from dataclasses import dataclass
 from typing import Callable, Optional
 from functools import partial
-from jax.nn.initializers import zeros, he_normal
+
 from jax import value_and_grad
-from flax.training import train_state, checkpoints
+from jax import numpy as jnp
+from jax.lax import Precision
+from jax.nn import sigmoid
+from jax.nn.initializers import zeros, he_normal
+
+from jax.experimental import checkify
+
+from flax import struct
+from flax import linen as nn
 from flax.core import freeze, unfreeze
+from flax.training import train_state, checkpoints
+from flax.training.train_state import TrainState
+from optax import GradientTransformation
+from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 
 from utils import Scalar, Array, PyTree, DType, default_dtype
 from molecule import Molecule
@@ -18,6 +26,7 @@ def external_f(instance, x):
     x = 0.5*jnp.tanh(x)
     return x
 
+@dataclass(frozen=False)
 class Functional(nn.Module):
     ''' A base class of local functionals.
     F[n(r)] = \int f(n(r)) d^3 r
@@ -37,37 +46,8 @@ class Functional(nn.Module):
     '''
 
     f: staticmethod
-    is_xc: bool = True
-    is_local: bool = True
-    kernel_init: Callable = he_normal()
-    bias_init: Callable = zeros
-    param_dtype: DType = default_dtype()
-
-    def setup(self):
-
-        self.dense = partial(
-            nn.Dense,
-            param_dtype=self.param_dtype,
-            kernel_init=self.kernel_init,
-            bias_init=self.bias_init,
-        )
-
-        self.layer_norm = partial(
-            nn.LayerNorm,
-            param_dtype=self.param_dtype
-        )
-
-    def head(self, x: Array, out_features, sigmoid_scale_factor):
-
-        # Final layer: dense -> sigmoid -> scale (x2)
-        x = self.dense(features=out_features)(x) # out_features = 3
-        self.sow('intermediates', 'head_dense', x)
-        x = sigmoid(x / sigmoid_scale_factor)
-        self.sow('intermediates', 'sigmoid', x)
-        out = sigmoid_scale_factor * x # sigmoid_scale_factor = 2.0
-        self.sow('intermediates', 'sigmoid_product', out)
-
-        return jnp.squeeze(out) # Eliminating unnecessary dimensions
+    is_xc: bool
+    is_local: bool
 
     @nn.compact
     def __call__(self, *inputs) -> Scalar:
@@ -154,8 +134,81 @@ class Functional(nn.Module):
         Array
         """
 
+        checkify.check(self.is_local, "This function should only be used with local functionals")
+
         return jnp.einsum("r,r...->...", gridweights, features, precision = precision)
 
+@dataclass(frozen = False)
+class NeuralFunctional(Functional):
+
+    f: staticmethod
+    is_xc: bool = True
+    is_local: bool = True
+    kernel_init: Callable = he_normal()
+    bias_init: Callable = zeros
+    param_dtype: DType = default_dtype()
+
+    def setup(self):
+
+        self.dense = partial(
+            nn.Dense,
+            param_dtype=self.param_dtype,
+            kernel_init=self.kernel_init,
+            bias_init=self.bias_init,
+        )
+
+        self.layer_norm = partial(
+            nn.LayerNorm,
+            param_dtype=self.param_dtype
+        )
+
+    def head(self, x: Array, out_features, sigmoid_scale_factor):
+
+        # Final layer: dense -> sigmoid -> scale (x2)
+        x = self.dense(features=out_features)(x) # out_features = 3
+        self.sow('intermediates', 'head_dense', x)
+        x = sigmoid(x / sigmoid_scale_factor)
+        self.sow('intermediates', 'sigmoid', x)
+        out = sigmoid_scale_factor * x # sigmoid_scale_factor = 2.0
+        self.sow('intermediates', 'sigmoid_product', out)
+
+        return jnp.squeeze(out) # Eliminating unnecessary dimensions
+
+    def save_checkpoints(self, params: PyTree, tx: GradientTransformation, step:int, orbax_checkpointer: Checkpointer = None, ckpt_dir: str = 'ckpts'):
+
+        """A convenience function to save the network parameters to disk.
+
+        Parameters
+        ----------
+        params : PyTree
+            Neural network parameters, usually a `flax.core.FrozenDict`.
+        tx : optax.GradientTransformation
+            The optimizer used to train the network.
+        """
+
+        state = train_state.TrainState.create(apply_fn=self.apply,
+                                            params=params,
+                                            tx=tx)
+
+        checkpoints.save_checkpoint(ckpt_dir=ckpt_dir, target=state, step=step, overwrite=True, 
+                                    orbax_checkpointer=orbax_checkpointer, keep_every_n_steps = 50)
+
+    def load_checkpoint(self, tx: GradientTransformation = None, ckpt_dir: str = 'ckpts', step: int = None, orbax_checkpointer: Checkpointer = None) -> PyTree:
+
+        """A convenience function to load the network parameters from disk.
+
+        Parameters
+        ----------
+        ckpt_dir : str, optional
+            The directory where the checkpoint is saved.
+            Defaults to 'ckpts'.
+        """
+
+        state_dict = orbax_checkpointer.restore(ckpt_dir)
+        state = TrainState(params = freeze(state_dict['params']), tx = tx, step = step, 
+                                opt_state = tx.init(freeze(state_dict['params'])), apply_fn=self.apply)
+
+        return state
 
 ######################### Helper functions #########################
 
@@ -173,7 +226,7 @@ def canonicalize_inputs(x):
     
 
 @partial(value_and_grad, has_aux = True)
-def defaultloss(params, functional, molecule, trueenergy, *functioninputs):
+def default_loss(params, functional, molecule, trueenergy, *functioninputs):
     ''' Computes the loss function, here MSE, between predicted and true energy'''
 
     predictedenergy = functional.energy(params, molecule, *functioninputs)
