@@ -17,7 +17,6 @@ from functional import Functional
 Optimizer = optax.GradientTransformation
 
 from molecule import Molecule, eig, make_rdm1, orbital_grad
-from functional import molecule_predictor
 from train import molecule_predictor
 from utils import PyTree, Array, Scalar
 from interface.pyscf import generate_chi_tensor, mol_from_Molecule, process_mol, mol_from_Molecule
@@ -25,14 +24,14 @@ from utils.types import Hartree2kcalmol
 
 
 
-def make_molecule_scf_loop(fxc: Functional, omegas:Sequence, chunk_size: int = 1024, 
-                            max_cycles: int = 50, diis_start_cycle: int = 1,
+def make_molecule_scf_loop(fxc: Functional, feature_fn: Callable, omegas: Optional[Sequence] = [], 
+                            chunk_size: int = 1024, max_cycles: int = 50, diis_start_cycle: int = 1,
                             e_conv: float = 1e-5, g_conv: float = 1e-5, diis_method = 'CDIIS',
                             level_shift: tuple[float, float] = (0.,0.), damp: tuple[float, float] = (0.,0.), 
                             smearing: Optional[str] = None, smearing_sigma: Optional[float] = 0.,
                             precision = Precision.HIGHEST, verbose: int = 0, **kwargs) -> Callable:
 
-    predict_molecule = molecule_predictor(fxc, omegas = omegas, chunk_size = chunk_size, **kwargs)
+    predict_molecule = molecule_predictor(fxc, feature_fn, omegas = omegas, chunk_size = chunk_size, **kwargs)
 
     def scf_iterator(
         params: PyTree, molecule: Molecule, *args
@@ -44,9 +43,10 @@ def make_molecule_scf_loop(fxc: Functional, omegas:Sequence, chunk_size: int = 1
 
         old_e = jnp.inf
         norm_gorb = jnp.inf
-        predicted_e = 0
         cycle = 0
         nelectron = molecule.atom_index.sum() - molecule.charge
+
+        predicted_e, fock = predict_molecule(params, molecule, *args)
 
         # Initialize DIIS
         A = jnp.identity(molecule.s1e.shape[0])
@@ -60,7 +60,7 @@ def make_molecule_scf_loop(fxc: Functional, omegas:Sequence, chunk_size: int = 1
             old_e = predicted_e
 
             # DIIS iteration
-            new_data = (molecule.density_matrix, fock, predicted_e)
+            new_data = (molecule.rdm1, fock, predicted_e)
             fock, diis_data = diis.run(new_data, diis_data, cycle)
 
             # Diagonalize Fock matrix
@@ -178,12 +178,12 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chun
         assert jnp.allclose(I, stack)
 
         # Compute the density matrix
-        dm = make_rdm1(C, molecule.mo_occ)
+        rdm1 = make_rdm1(C, molecule.mo_occ)
         dm_XND = molecule.make_rdm1()
 
         nelectron = molecule.atom_index.sum() - molecule.charge
 
-        computed_charge = jnp.einsum('r,ra,rb,sab->', molecule.grid.weights, molecule.ao, molecule.ao, dm)
+        computed_charge = jnp.einsum('r,ra,rb,sab->', molecule.grid.weights, molecule.ao, molecule.ao, rdm1)
         assert jnp.isclose(nelectron, computed_charge, atol = 1e-3), "Total charge is not conserved"
 
         # Predict the energy and the fock matrix

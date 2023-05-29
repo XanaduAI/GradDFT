@@ -4,6 +4,7 @@ from dataclasses import fields
 from utils import Array, Scalar
 from functools import partial
 from utils import PyTree, vmap_chunked
+from external.eigh_impl import eigh2d
 
 from jax import numpy as jnp
 from jax.lax import Precision
@@ -108,6 +109,13 @@ class Molecule:
 
     def nonXC(self, *args, **kwargs):
         return nonXC(self.rdm1, self.h1e, self.vj, self.nuclear_repulsion, *args, **kwargs)
+    
+    def make_rdm1(self):
+        return make_rdm1(self.mo_coeff, self.mo_occ)
+    
+    def get_occ(self):
+        nelecs = [self.mo_occ[i].sum() for i in range(2)]
+        return get_occ(self.mo_energy, nelecs)
 
     def to_dict(self) -> dict:
         grid_dict = self.grid.to_dict()
@@ -321,6 +329,11 @@ def HF_density_grad_2_Fock(
 
     return (jax.jit(chunked_jvp)(chi.transpose(3,0,1,2), gr, ao)).transpose(1,2,3,0)
 
+def eig(h,x):
+    e0, c0 = eigh2d(h[0],x)
+    e1, c1 = eigh2d(h[1],x)
+    return jnp.stack((e0, e1), axis = 0), jnp.stack((c0, c1), axis = 0)
+
 ######################################################################
 
 def nonXC(
@@ -360,15 +373,15 @@ def nonXC(
 
     return nuclear_repulsion + h1e_energy + coulomb2e_energy
 
-def two_body_energy(rdm1, v_coul, precision):
+def two_body_energy(rdm1, v_coul, precision = Precision.HIGHEST):
     coulomb2e_energy = jnp.einsum('sji,sij->', rdm1, v_coul, precision=precision)/2.
     return coulomb2e_energy
 
-def one_body_energy(rdm1, h1e, precision):
+def one_body_energy(rdm1, h1e, precision = Precision.HIGHEST):
     h1e_energy = jnp.einsum("sij,ji->", rdm1, h1e, precision=precision)
     return h1e_energy
 
-def coulomb_potential(rdm1, rep_tensor, precision):
+def coulomb_potential(rdm1, rep_tensor, precision = Precision.HIGHEST):
     """A function that computes the non-XC part of a DFT functional.
 
     Parameters
@@ -426,6 +439,46 @@ def HF_exact_exchange(
 
         _hf_energy = lambda _chi, _dm, _ao: - jnp.einsum("wsc,sac,a->ws", _chi, _dm, _ao, precision=precision)/2
         return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
+
+
+def make_rdm1(mo_coeff, mo_occ):
+    '''One-particle density matrix in AO representation
+
+    Args:
+        mo_coeff : tuple of 2D ndarrays
+            Orbital coefficients for alpha and beta spins. Each column is one orbital.
+        mo_occ : tuple of 1D ndarrays
+            Occupancies for alpha and beta spins.
+    Returns:
+        A list of 2D ndarrays for alpha and beta spins
+
+    # Pyscf code
+    mo_a = mo_coeff[0]
+    mo_b = mo_coeff[1]
+    dm_a = jnp.dot(mo_a*mo_occ[0], mo_a.conj().T)
+    dm_b = jnp.dot(mo_b*mo_occ[1], mo_b.conj().T)
+
+    return jnp.array((dm_a, dm_b))
+    '''
+
+    return jnp.einsum('sij,sj,skj -> sik', mo_coeff, mo_occ, mo_coeff.conj())
+
+
+def get_occ(mo_energies, nelecs):
+
+    def get_occ_spin(mo_energy, nelec_spin):
+        # get the lowest energy indices
+        unoccupied_idx = jnp.argsort(mo_energy)[nelec_spin:]
+        # get the highest occupied mo_energy value
+        vir_mo_energy_min = jnp.min(mo_energy[unoccupied_idx])
+        # get the mo_occ
+        mo_occ = jnp.where(mo_energy >= vir_mo_energy_min, 0, 1)
+        return mo_occ
+
+    mo_occ = jnp.stack([get_occ_spin(mo_energies[s], int(nelecs[s])) for s in range(2)], axis=0)
+
+    return mo_occ
+
 
 ######################################################################
 

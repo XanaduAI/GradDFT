@@ -94,7 +94,7 @@ def eigh_jvp_rule(primals, tangents):
     da = symmetrize(da)
     db = symmetrize(db)
 
-    v, w = eigh(a, b)
+    v, w = eigh2d(a, b)
 
     # compute only the diagonal entries
     dv = jax.vmap(

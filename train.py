@@ -12,6 +12,7 @@ from molecule import Molecule, coulomb_potential
 def molecule_predictor(
     functional: Functional,
     feature_fn: Optional[Callable] = None,
+    omegas: Optional[Sequence] = [],
     **kwargs,
 ) -> Callable:
     
