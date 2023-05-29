@@ -93,3 +93,5 @@ for iteration in range(n_epochs):
     print('Iteration', iteration ,'Predicted energy:', predicted_energy)
     updates, opt_state = tx.update(grads, opt_state, params)
     params = apply_updates(params, updates)
+
+functional.save_checkpoints(params, tx, step = n_epochs)

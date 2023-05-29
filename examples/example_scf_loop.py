@@ -59,11 +59,15 @@ def f(instance, rhoinputs, localfeatures, *_, **__):
 
 functional = NeuralFunctional(f)
 
-# We generate the parameters
-key = PRNGKey(42) # Jax-style random seed
-rhoinputs, localfeatures = default_features(molecule = molecule, functional_type='MGGA')
-key, = split(key, 1)
-params = functional.init(key, rhoinputs, localfeatures)
+# Load the saved checkpoints
+learning_rate = 1e-5
+momentum = 0.9
+tx = adam(learning_rate = learning_rate, b1=momentum)
+step = 50
+train_state = functional.load_checkpoint(tx, ckpt_dir='ckpts/checkpoint_' + str(step) +'/', step = step)
+params = train_state.params
+tx = train_state.tx
+opt_state = tx.init(params)
 
 # Create the scf iterator
 scf_iterator = make_molecule_scf_loop(functional, feature_fn=default_features, verbose = 2)

@@ -176,7 +176,7 @@ class NeuralFunctional(Functional):
 
         return jnp.squeeze(out) # Eliminating unnecessary dimensions
 
-    def save_checkpoints(self, params: PyTree, tx: GradientTransformation, step:int, orbax_checkpointer: Checkpointer = None, ckpt_dir: str = 'ckpts'):
+    def save_checkpoints(self, params: PyTree, tx: GradientTransformation, step:int, orbax_checkpointer: Checkpointer = PyTreeCheckpointer(), ckpt_dir: str = 'ckpts'):
 
         """A convenience function to save the network parameters to disk.
 
@@ -195,7 +195,7 @@ class NeuralFunctional(Functional):
         checkpoints.save_checkpoint(ckpt_dir=ckpt_dir, target=state, step=step, overwrite=True, 
                                     orbax_checkpointer=orbax_checkpointer, keep_every_n_steps = 50)
 
-    def load_checkpoint(self, tx: GradientTransformation = None, ckpt_dir: str = 'ckpts', step: int = None, orbax_checkpointer: Checkpointer = None) -> PyTree:
+    def load_checkpoint(self, tx: GradientTransformation = None, ckpt_dir: str = 'ckpts', step: int = None, orbax_checkpointer: Checkpointer = PyTreeCheckpointer()) -> PyTree:
 
         """A convenience function to load the network parameters from disk.
 
