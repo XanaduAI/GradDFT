@@ -1,13 +1,10 @@
 from functools import partial
-from jax.random import split, PRNGKey
-from jax import numpy as jnp
+from jax.random import PRNGKey
 from optax import adam, apply_updates
-from evaluate import make_molecule_scf_loop
 
 from interface.pyscf import molecule_from_pyscf
 from molecule import default_features, features_w_hf
 from functional import DM21, default_loss
-from jax.experimental import checkify
 
 # First we define a molecule:
 from pyscf import gto, dft
@@ -31,15 +28,15 @@ key = PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before
 omegas = molecule.omegas
-feature_fn = default_features
+features_fn = default_features
 
 for omega in omegas:
     assert omega in molecule.omegas, f"omega {omega} not in the molecule.omegas"
 if len(omegas) > 0:
-    feature_fn_w_hf = partial(features_w_hf, features = feature_fn)
-    functional_inputs = feature_fn_w_hf(molecule)
+    feature_fn_w_hf = partial(features_w_hf, features_fn = features_fn)
+    functional_inputs = feature_fn_w_hf(molecule, functional_type = 'DM21')
 else:
-    functional_inputs = feature_fn(molecule)
+    functional_inputs = features_fn(molecule)
 
 energy = functional.apply_and_integrate(params, molecule, *functional_inputs)
 energy += molecule.nonXC()

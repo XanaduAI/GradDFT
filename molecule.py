@@ -104,9 +104,9 @@ class Molecule:
     def HF_energy_density(self, *args, **kwargs):
         return HF_energy_density(self.rdm1, self.ao, self.chi, *args, **kwargs)
 
-    def HF_density_grad_2_Fock(self, fxc: Callable, features:Array, local_features: Array, ehf: Array, params: PyTree, *args, **kwargs):
+    def HF_density_grad_2_Fock(self, functional: Callable, params: PyTree, ehf: Array, *features, combine_features_hf, **kwargs):
         if self.chi is None: raise ValueError("Precomputed chi tensor has not been loaded.")
-        return HF_density_grad_2_Fock(fxc, self, features, local_features, ehf, self.chi, self.ao, params = params, *args, **kwargs)
+        return HF_density_grad_2_Fock(self, functional, params, self.chi, self.ao, ehf, *features, combine_features_hf = combine_features_hf, **kwargs)
 
     def nonXC(self, *args, **kwargs):
         return nonXC(self.rdm1, self.h1e, self.vj, self.nuclear_repulsion, *args, **kwargs)
@@ -123,6 +123,188 @@ class Molecule:
         rest = {field.name: getattr(self, field.name) for field in fields(self)[1:]}
         return dict(**grid_dict, **rest)
 
+
+
+#######################################################################
+
+def orbital_grad(mo_coeff, mo_occ, F):
+    '''RHF orbital gradients
+
+    Args:
+        mo_coeff: 2D ndarray
+            Orbital coefficients
+        mo_occ: 1D ndarray
+            Orbital occupancy
+        F: 2D ndarray
+            Fock matrix in AO representation
+
+    Returns:
+        Gradients in MO representation.  It's a num_occ*num_vir vector.
+
+    # Similar to pyscf/scf/hf.py:
+    occidx = mo_occ > 0
+    viridx = ~occidx
+    g = reduce(jnp.dot, (mo_coeff[:,viridx].conj().T, fock_ao,
+                           mo_coeff[:,occidx])) * 2
+    return g.ravel()
+    '''
+
+    C_occ = jax.vmap(jnp.where, in_axes = (None, 1, None), out_axes=1)(mo_occ > 0, mo_coeff, 0)
+    C_vir = jax.vmap(jnp.where, in_axes = (None, 1, None), out_axes=1)(mo_occ == 0, mo_coeff, 0)
+
+    return jnp.einsum("sab,sac,scd->bd", C_vir.conj(), F, C_occ)
+
+
+def default_molecule_features(
+        molecule: Molecule, 
+        rho_clip_cte: float = 4.5e-11,
+        *_, **__
+    ):
+    '''
+    Computes the electronic density and derivatives
+
+    Parameters
+    ----------
+    molecule:
+        class Molecule
+    rho_clip_cte: float
+        default 4.5e-11 (chosen carefully, take care if decrease)
+    
+    Returns
+    -------
+        Array: shape (n_grid, 7) where 7 is the number of features
+    '''
+
+    rho = molecule.density()
+    # We need to clip rho away from 0 to obtain good gradients.
+    rho = jnp.maximum(abs(rho) , rho_clip_cte)*jnp.sign(rho)
+    grad_rho = molecule.grad_density()
+    tau = molecule.kinetic_density()
+
+    grad_rho_norm = jnp.sum(grad_rho**2, axis=-1)
+    grad_rho_norm_sumspin = jnp.sum(grad_rho.sum(axis=0, keepdims=True) ** 2, axis=-1)
+
+    features = jnp.concatenate((rho, grad_rho_norm_sumspin, grad_rho_norm, tau), axis=0)
+
+    return features.T
+
+
+def default_functionals(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+    '''
+    Generates and concatenates different functional levels
+
+    Parameters:
+    ----------
+    molecule:
+        class Molecule
+
+    functional_type:
+        Either one of 'LDA', 'GGA', 'MGGA' or Dictionary
+        {'u_range': range(), 'w_range': range()} that generates 
+        a functional
+        $$ \sum_{i\in \text{u_range}} \sum_{j\in \text{w_range}} c_{ij} u^i w^j $$
+        where
+        $$ x = \frac{|\grad \rho|^{1/2}}{\rho^{4/3}} $$
+        $$ u = \frac{\beta x}{1 + \beta x} $$
+        and
+        $$ t = \frac{3(6\pi^2)^{2/3}}{5}\frac{\rho^{5/3}}{\tau} $$
+        $$ w = \frac{\beta t^{-1}}{1+ \beta t^{-1}} $$
+
+    Returns:
+        Array: shape (n_grid, n_features)
+    '''
+
+    beta = 1/1024.
+
+    if type(functional_type) == str:
+        if functional_type == 'LDA' or functional_type == 'DM21':  
+            u_range, w_range = range(0,1), range(0,1)
+        elif functional_type == 'GGA':
+            u_range, w_range = range(0,2), range(0,1)
+        elif functional_type == 'MGGA': 
+            u_range, w_range = range(0,2), range(0,2)
+        else: raise ValueError(f'Functional type {functional_type} not recognized, must be one of LDA, GGA, MGGA.')
+
+    # Molecule preprocessing data
+    rho = molecule.density()
+    grad_rho = molecule.grad_density()
+    tau = molecule.kinetic_density()
+    grad_rho_norm = jnp.sum(grad_rho**2, axis=-1)
+
+    # LDA preprocessing data
+    log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
+
+    # GGA preprocessing data
+    log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm, a_min = clip_cte))
+    log_x_sigma = log_grad_rho_norm/2 - 4/3.*log_rho
+    log_u_sigma = jnp.where(jnp.greater(log_rho,jnp.log2(clip_cte)), log_x_sigma - jnp.log2(1 + beta*(2**log_x_sigma)) + jnp.log2(beta), 0)
+
+    # MGGA preprocessing data
+    log_tau = jnp.log2(jnp.clip(tau, a_min = clip_cte))
+    log_1t_sigma = -(5/3.*log_rho - log_tau + 2/3.*jnp.log2(6*jnp.pi**2) + jnp.log2(3/5.))
+    log_w_sigma = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
+
+    # Compute the local features
+    localfeatures = jnp.empty((0, log_rho.shape[-1]))
+    for i, j in itertools.product(u_range, w_range):
+        mgga_term = jnp.expand_dims((2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)).sum(axis=0), axis = 0) \
+                    * jnp.where(jnp.logical_and(i==0, j==0), -2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3), 1) # to match DM21
+        localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
+
+    return localfeatures.T
+
+
+def default_features(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *args, **kwargs):
+    """
+    Generates all features except the HF energy features.
+    """
+    
+    features = default_molecule_features(molecule, *args, **kwargs)
+    localfeatures = default_functionals(molecule, functional_type, clip_cte)
+
+    # We return them with the first index being the position r and the second the feature.
+    return features, localfeatures
+
+def default_combine_features_hf(ehf, features, local_features):
+
+    # Remember that DM concatenates the hf density in the x features by spin...
+    features = jnp.concatenate([features, ehf[:,0].T, ehf[:,1].T], axis=1)
+
+    # ... and in the y features by omega.
+    local_features = jnp.concatenate([local_features] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
+    return features,local_features
+
+def features_w_hf(molecule: Molecule, 
+                features_fn: Callable, 
+                functional_type: Optional[Union[str, Dict]] = 'LDA',
+                combine_features_hf: Optional[Callable] = default_combine_features_hf,
+                clip_cte: float = 1e-27, *_, **__):
+    """
+    Generates all features and the HF energy features.
+
+    Paramters
+    ----------
+    molecule: Molecule
+    features: Callable
+        Similar to default_features above, it takes as arguments molecule, functional_type and clip_cte.
+    functional_type: Optional[Union[str, Dict]]
+        Either a dictionary of ranges, {'u_range': range(...), 'w_range': range(...)}
+        or one of "DM21", "LDA", "GGA", "MGGA".
+    clip_cte: float
+        A small constant to clip and avoid numerical instabilities,
+        defaults at 1e-27.
+    """
+
+    features = features_fn(molecule, functional_type, clip_cte)
+    ehf = stop_gradient(molecule.HF_energy_density())
+
+    features = combine_features_hf(ehf, *features)
+
+    return features
+
+default_features_w_hf = partial(features_w_hf, features = default_features)
+
+##########################################################
 
 
 @partial(jax.jit, static_argnames="precision")
@@ -237,15 +419,14 @@ def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision =
 
 #@partial(jax.jit, static_argnames=["chunk_size", "precision"])
 def HF_density_grad_2_Fock(
-    functional: nn.Module, #todo: is this correct, or should we use nn.Module?
     molecule: Molecule,
-    feat_wout_hf: Array,
-    loc_feat_wout_hf: Array,
-    ehf: Array,
+    functional: nn.Module, #todo: is this correct, or should we use nn.Module?
+    params: PyTree,
     chi: Array, 
     ao: Array,
-    params: PyTree,
-    *,
+    ehf: Array,
+    *features_wout_hf,
+    combine_features_hf: Callable = default_combine_features_hf,
     chunk_size: Optional[int] = None,
     precision: Precision = Precision.HIGHEST,
     fxc_kwargs: dict = {}
@@ -279,6 +460,8 @@ def HF_density_grad_2_Fock(
         Expected shape: (n_grid_points)
     params : PyTree
         The parameters of the neural network.
+    combine_features_hf: Callable
+        A function that takes the features and ehf, and outputs the updated features
     chunk_size : int, optional
         The batch size for the number of atomic orbitals the integral
         evaluation is looped over. For a grid of N points, the solution
@@ -306,13 +489,13 @@ def HF_density_grad_2_Fock(
         Shape: (*batch, n_omegas, n_spin, n_orbitals, n_orbitals).
     """
 
-    def partial_fxc(params, molecule, x_without_hf, y_without_hf, ehf):
+    def partial_fxc(params, molecule, ehf, *features):
 
-        features, local_features = default_combine_features_hf(ehf, x_without_hf, y_without_hf)
+        features = combine_features_hf(ehf, *features)
 
-        return functional.energy(params, molecule, features, local_features, **fxc_kwargs)
+        return functional.energy(params, molecule, *features, **fxc_kwargs)
 
-    gr = grad(partial_fxc, argnums = 4)(params, molecule, feat_wout_hf, loc_feat_wout_hf, ehf)
+    gr = grad(partial_fxc, argnums = 2)(params, molecule, ehf, *features_wout_hf)
 
     @partial(vmap_chunked, in_axes=(0, None, None), chunk_size=chunk_size)
     def chunked_jvp(chi_tensor, gr_tensor, ao_tensor):
@@ -531,181 +714,4 @@ def _canonicalize_molecules(
     return molecules, numbers
 
 
-
-#######################################################################
-
-def orbital_grad(mo_coeff, mo_occ, F):
-    '''RHF orbital gradients
-
-    Args:
-        mo_coeff: 2D ndarray
-            Orbital coefficients
-        mo_occ: 1D ndarray
-            Orbital occupancy
-        F: 2D ndarray
-            Fock matrix in AO representation
-
-    Returns:
-        Gradients in MO representation.  It's a num_occ*num_vir vector.
-
-    # Similar to pyscf/scf/hf.py:
-    occidx = mo_occ > 0
-    viridx = ~occidx
-    g = reduce(jnp.dot, (mo_coeff[:,viridx].conj().T, fock_ao,
-                           mo_coeff[:,occidx])) * 2
-    return g.ravel()
-    '''
-
-    C_occ = jax.vmap(jnp.where, in_axes = (None, 1, None), out_axes=1)(mo_occ > 0, mo_coeff, 0)
-    C_vir = jax.vmap(jnp.where, in_axes = (None, 1, None), out_axes=1)(mo_occ == 0, mo_coeff, 0)
-
-    return jnp.einsum("sab,sac,scd->bd", C_vir.conj(), F, C_occ)
-
-
-def default_molecule_features(
-        molecule: Molecule, 
-        rho_clip_cte: float = 4.5e-11,
-        *_, **__
-    ):
-    '''
-    Computes the electronic density and derivatives
-
-    Parameters
-    ----------
-    molecule:
-        class Molecule
-    rho_clip_cte: float
-        default 4.5e-11 (chosen carefully, take care if decrease)
-    
-    Returns
-    -------
-        Array: shape (n_grid, 7) where 7 is the number of features
-    '''
-
-    rho = molecule.density()
-    # We need to clip rho away from 0 to obtain good gradients.
-    rho = jnp.maximum(abs(rho) , rho_clip_cte)*jnp.sign(rho)
-    grad_rho = molecule.grad_density()
-    tau = molecule.kinetic_density()
-
-    grad_rho_norm = jnp.sum(grad_rho**2, axis=-1)
-    grad_rho_norm_sumspin = jnp.sum(grad_rho.sum(axis=0, keepdims=True) ** 2, axis=-1)
-
-    features = jnp.concatenate((rho, grad_rho_norm_sumspin, grad_rho_norm, tau), axis=0)
-
-    return features.T
-
-
-def default_functionals(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
-    '''
-    Generates and concatenates different functional levels
-
-    Parameters:
-    ----------
-    molecule:
-        class Molecule
-
-    functional_type:
-        Either one of 'LDA', 'GGA', 'MGGA' or Dictionary
-        {'u_range': range(), 'w_range': range()} that generates 
-        a functional
-        $$ \sum_{i\in \text{u_range}} \sum_{j\in \text{w_range}} c_{ij} u^i w^j $$
-        where
-        $$ x = \frac{|\grad \rho|^{1/2}}{\rho^{4/3}} $$
-        $$ u = \frac{\beta x}{1 + \beta x} $$
-        and
-        $$ t = \frac{3(6\pi^2)^{2/3}}{5}\frac{\rho^{5/3}}{\tau} $$
-        $$ w = \frac{\beta t^{-1}}{1+ \beta t^{-1}} $$
-
-    Returns:
-        Array: shape (n_grid, n_features)
-    '''
-
-    beta = 1/1024.
-
-    if type(functional_type) == str:
-        if functional_type == 'LDA' or functional_type == 'DM21':  
-            u_range, w_range = range(0,1), range(0,1)
-        elif functional_type == 'GGA':
-            u_range, w_range = range(0,2), range(0,1)
-        elif functional_type == 'MGGA': 
-            u_range, w_range = range(0,2), range(0,2)
-        else: raise ValueError(f'Functional type {functional_type} not recognized, must be one of LDA, GGA, MGGA.')
-
-    # Molecule preprocessing data
-    rho = molecule.density()
-    grad_rho = molecule.grad_density()
-    tau = molecule.kinetic_density()
-    grad_rho_norm = jnp.sum(grad_rho**2, axis=-1)
-
-    # LDA preprocessing data
-    log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
-
-    # GGA preprocessing data
-    log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm, a_min = clip_cte))
-    log_x_sigma = log_grad_rho_norm/2 - 4/3.*log_rho
-    log_u_sigma = jnp.where(jnp.greater(log_rho,jnp.log2(clip_cte)), log_x_sigma - jnp.log2(1 + beta*(2**log_x_sigma)) + jnp.log2(beta), 0)
-
-    # MGGA preprocessing data
-    log_tau = jnp.log2(jnp.clip(tau, a_min = clip_cte))
-    log_1t_sigma = -(5/3.*log_rho - log_tau + 2/3.*jnp.log2(6*jnp.pi**2) + jnp.log2(3/5.))
-    log_w_sigma = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
-
-    # Compute the local features
-    localfeatures = jnp.empty((0, log_rho.shape[-1]))
-    for i, j in itertools.product(u_range, w_range):
-        mgga_term = jnp.expand_dims((2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)).sum(axis=0), axis = 0) \
-                    * jnp.where(jnp.logical_and(i==0, j==0), -2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3), 1) # to match DM21
-        localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
-
-    return localfeatures.T
-
-
-def default_features(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *args, **kwargs):
-    """
-    Generates all features except the HF energy features.
-    """
-    
-    features = default_molecule_features(molecule, *args, **kwargs)
-    localfeatures = default_functionals(molecule, functional_type, clip_cte)
-
-    # We return them with the first index being the position r and the second the feature.
-    return features, localfeatures
-
-def features_w_hf(molecule: Molecule, features: Callable, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
-    """
-    Generates all features and the HF energy features.
-
-    Paramters
-    ----------
-    molecule: Molecule
-    features: Callable
-        Similar to default_features above, it takes as arguments molecule, functional_type and clip_cte.
-    functional_type: Optional[Union[str, Dict]]
-        Either a dictionary of ranges, {'u_range': range(...), 'w_range': range(...)}
-        or one of "DM21", "LDA", "GGA", "MGGA".
-    clip_cte: float
-        A small constant to clip and avoid numerical instabilities,
-        defaults at 1e-27.
-    """
-
-    features, local_features = features(ehf, functional_type, clip_cte)
-    ehf = stop_gradient(molecule.HF_energy_density())
-
-    features, local_features = default_combine_features_hf(molecule, features, local_features)
-
-    return features, local_features
-
-def default_combine_features_hf(ehf, features, local_features):
-
-    # Remember that DM concatenates the hf density in the x features by spin...
-    features = jnp.concatenate([features, ehf[:,0].T, ehf[:,1].T], axis=1)
-
-    # ... and in the y features by omega.
-    local_features = jnp.concatenate([local_features] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
-    return features,local_features
-
-default_features_w_hf = partial(features_w_hf, features = default_features)
-
-##########################################################
 

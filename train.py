@@ -8,11 +8,12 @@ from jax.experimental import checkify
 
 from utils import Scalar, Array, PyTree
 from functional import Functional
-from molecule import Molecule, coulomb_potential, default_features_w_hf
+from molecule import Molecule, coulomb_potential, default_combine_features_hf, default_features, features_w_hf
 
 def molecule_predictor(
     functional: Functional,
-    feature_fn: Optional[Callable] = None,
+    features_fn: Optional[Callable] = default_features,
+    combine_features_hf: Optional[Callable] = default_combine_features_hf,
     omegas: Optional[Sequence] = [],
     **kwargs,
 ) -> Callable:
@@ -82,10 +83,10 @@ def molecule_predictor(
         for omega in omegas:
             assert omega in molecule.omegas, f"omega {omega} not in the molecule.omegas"
         if len(omegas) > 0:
-            feature_fn_w_hf = partial(default_features_w_hf, features = feature_fn)
+            feature_fn_w_hf = partial(features_w_hf, features_fn = features_fn, combine_features_hf = combine_features_hf)
             functional_inputs = feature_fn_w_hf(molecule, *args, **kwargs)
         else:
-            functional_inputs = feature_fn(molecule, *args, **kwargs)
+            functional_inputs = features_fn(molecule, *args, **kwargs)
 
         return functional.apply_and_integrate(params, molecule, *functional_inputs, **functional_kwargs)
 
@@ -120,9 +121,10 @@ def molecule_predictor(
 
         # HF Potential
         if len(omegas) > 0:
-            features, local_features = feature_fn(molecule, rho_clip_cte = 4.5e-11, *args, **kwargs)
+            features = features_fn(molecule, rho_clip_cte = 4.5e-11, *args, **kwargs)
             ehf = molecule.HF_energy_density()
-            vxc_hf = molecule.HF_density_grad_2_Fock(functional, features, local_features, ehf, params = params)
+            vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, ehf, *features, 
+                                                    combine_features_hf = combine_features_hf)
             fock += vxc_hf.sum(axis=0) # Sum over omega
 
         if functional.is_xc:

@@ -24,14 +24,15 @@ from utils.types import Hartree2kcalmol
 
 
 
-def make_molecule_scf_loop(fxc: Functional, feature_fn: Callable, omegas: Optional[Sequence] = [], 
+def make_molecule_scf_loop(fxc: Functional, feature_fn: Callable,  combine_features_hf: Callable, 
+                            omegas: Optional[Sequence] = [], 
                             chunk_size: int = 1024, max_cycles: int = 50, diis_start_cycle: int = 1,
                             e_conv: float = 1e-5, g_conv: float = 1e-5, diis_method = 'CDIIS',
                             level_shift: tuple[float, float] = (0.,0.), damp: tuple[float, float] = (0.,0.), 
                             smearing: Optional[str] = None, smearing_sigma: Optional[float] = 0.,
                             precision = Precision.HIGHEST, verbose: int = 0, **kwargs) -> Callable:
 
-    predict_molecule = molecule_predictor(fxc, feature_fn, omegas = omegas, chunk_size = chunk_size, **kwargs)
+    predict_molecule = molecule_predictor(fxc, feature_fn, combine_features_hf, omegas = omegas, chunk_size = chunk_size, **kwargs)
 
     def scf_iterator(
         params: PyTree, molecule: Molecule, *args
