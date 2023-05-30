@@ -677,7 +677,7 @@ def default_features(molecule: Molecule, functional_type: Optional[Union[str, Di
     # We return them with the first index being the position r and the second the feature.
     return features, localfeatures
 
-def default_features_w_hf(molecule: Molecule, features: Callable, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+def features_w_hf(molecule: Molecule, features: Callable, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
     """
     Generates all features and the HF energy features.
 
@@ -706,7 +706,7 @@ def default_features_w_hf(molecule: Molecule, features: Callable, functional_typ
 
     return features, local_features
 
-default_features_w_hf = partial(default_features_w_hf, features = default_features)
+default_features_w_hf = partial(features_w_hf, features = default_features)
 
 ##########################################################
 

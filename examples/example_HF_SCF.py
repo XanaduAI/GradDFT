@@ -5,7 +5,7 @@ from optax import adam, apply_updates
 from evaluate import make_molecule_scf_loop
 
 from interface.pyscf import molecule_from_pyscf
-from molecule import default_features, default_features_w_hf
+from molecule import default_features, features_w_hf
 from functional import DM21, default_loss
 from jax.experimental import checkify
 
@@ -36,7 +36,7 @@ feature_fn = default_features
 for omega in omegas:
     assert omega in molecule.omegas, f"omega {omega} not in the molecule.omegas"
 if len(omegas) > 0:
-    feature_fn_w_hf = partial(default_features_w_hf, features = feature_fn)
+    feature_fn_w_hf = partial(features_w_hf, features = feature_fn)
     functional_inputs = feature_fn_w_hf(molecule)
 else:
     functional_inputs = feature_fn(molecule)
