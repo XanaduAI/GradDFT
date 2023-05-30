@@ -239,8 +239,8 @@ def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision =
 def HF_density_grad_2_Fock(
     functional: nn.Module, #todo: is this correct, or should we use nn.Module?
     molecule: Molecule,
-    x_without_hf: Array,
-    y_without_hf: Array,
+    feat_wout_hf: Array,
+    loc_feat_wout_hf: Array,
     ehf: Array,
     chi: Array, 
     ao: Array,
@@ -259,12 +259,12 @@ def HF_density_grad_2_Fock(
     ----------
     fxc : Callable
         FeedForwardFunctional object.
-    x_without_hf : Array
+    feat_wout_hf : Array
         Contains a list of the features to input to fxc, except the HF density.
-        Expected shape: (*batch, n_features_x - 2, n_grid_points)
-    y_without_hf : Array
+        Expected shape: (n_features, n_grid_points)
+    loc_feat_wout_hf : Array
         Contains a list of the features to dot multiply with the output of the functional, except the HF density.
-        Expected shape: (*batch, n_features_y - 2, n_grid_points)
+        Expected shape: (n_features, n_grid_points)
     ehf : Array
         The Hartree-Fock energy density. 
         Expected shape: (*batch, n_omega, n_spin, n_grid_points).
@@ -306,18 +306,13 @@ def HF_density_grad_2_Fock(
         Shape: (*batch, n_omegas, n_spin, n_orbitals, n_orbitals).
     """
 
-    ppfxc = partial(functional.energy, params = params, molecule = molecule)
+    def partial_fxc(params, molecule, x_without_hf, y_without_hf, ehf):
 
-    def partial_fxc(params, molecule, x_without_hf,y_without_hf, ehf):
-
-        # Remember that rdm1 concatenates the hf density in the x features by spin...
-        features = jnp.concatenate((x_without_hf, ehf[:,0].T, ehf[:,1].T), axis=1)
-
-        local_features = jnp.concatenate([y_without_hf] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
+        features, local_features = default_combine_features_hf(ehf, x_without_hf, y_without_hf)
 
         return functional.energy(params, molecule, features, local_features, **fxc_kwargs)
 
-    gr = grad(partial_fxc, argnums = 4)(params, molecule, x_without_hf,y_without_hf, ehf)
+    gr = grad(partial_fxc, argnums = 4)(params, molecule, feat_wout_hf, loc_feat_wout_hf, ehf)
 
     @partial(vmap_chunked, in_axes=(0, None, None), chunk_size=chunk_size)
     def chunked_jvp(chi_tensor, gr_tensor, ao_tensor):
@@ -694,17 +689,21 @@ def features_w_hf(molecule: Molecule, features: Callable, functional_type: Optio
         defaults at 1e-27.
     """
 
-    features, local_features = features(molecule, functional_type, clip_cte)
-
+    features, local_features = features(ehf, functional_type, clip_cte)
     ehf = stop_gradient(molecule.HF_energy_density())
+
+    features, local_features = default_combine_features_hf(molecule, features, local_features)
+
+    return features, local_features
+
+def default_combine_features_hf(ehf, features, local_features):
 
     # Remember that DM concatenates the hf density in the x features by spin...
     features = jnp.concatenate([features, ehf[:,0].T, ehf[:,1].T], axis=1)
 
     # ... and in the y features by omega.
     local_features = jnp.concatenate([local_features] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
-
-    return features, local_features
+    return features,local_features
 
 default_features_w_hf = partial(features_w_hf, features = default_features)
 
