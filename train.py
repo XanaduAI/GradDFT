@@ -4,10 +4,11 @@ from functools import partial
 from jax import numpy as jnp
 from jax import value_and_grad
 from jax.profiler import annotate_function
+from jax.experimental import checkify
 
 from utils import Scalar, Array, PyTree
 from functional import Functional
-from molecule import Molecule, coulomb_potential
+from molecule import Molecule, coulomb_potential, default_features_w_hf
 
 def molecule_predictor(
     functional: Functional,
@@ -33,6 +34,9 @@ def molecule_predictor(
 
     feature_fn : Callable, optional
         A function that calculates and/or loads the molecule features.
+        Does not include the HF component, which is later added if len(omegas) > 0 via
+        feature_fn_w_hf = partial(features_w_hf, features = feature_fn)
+
         If given, it must be a callable with the following signature:
 
         feature_fn(molecule: Molecule, *args, **kwargs) -> Tuple[Array, Array, Optional[Array]]
@@ -71,11 +75,17 @@ def molecule_predictor(
 
     @partial(value_and_grad, argnums=1)
     def energy_and_grads(
-        params: PyTree, rdm1: Array, molecule: Molecule,  functional_kwargs: dict = {}, *args
+        params: PyTree, rdm1: Array, molecule: Molecule, *args, **functional_kwargs
     ) -> Scalar:
 
         molecule = molecule.replace(rdm1 = rdm1)
-        functional_inputs = feature_fn(molecule, *args, **kwargs)
+        for omega in omegas:
+            assert omega in molecule.omegas, f"omega {omega} not in the molecule.omegas"
+        if len(omegas) > 0:
+            feature_fn_w_hf = partial(default_features_w_hf, features = feature_fn)
+            functional_inputs = feature_fn_w_hf(molecule, *args, **kwargs)
+        else:
+            functional_inputs = feature_fn(molecule, *args, **kwargs)
 
         return functional.apply_and_integrate(params, molecule, *functional_inputs, **functional_kwargs)
 
@@ -108,11 +118,18 @@ def molecule_predictor(
         energy, fock = energy_and_grads(params, molecule.rdm1, molecule, *args)
         fock = 1/2*(fock + fock.transpose(0,2,1))
 
+        # HF Potential
+        if len(omegas) > 0:
+            features, local_features = feature_fn(molecule, rho_clip_cte = 4.5e-11, *args, **kwargs)
+            ehf = molecule.HF_energy_density()
+            vxc_hf = molecule.HF_density_grad_2_Fock(functional, features, local_features, ehf, params = params)
+            fock += vxc_hf.sum(axis=0) # Sum over omega
+
         if functional.is_xc:
             energy += molecule.nonXC()
             fock += coulomb_potential(molecule.rdm1, molecule.rep_tensor) 
             fock += jnp.stack([molecule.h1e, molecule.h1e], axis=0)
 
         return energy, fock
-
+        
     return predict

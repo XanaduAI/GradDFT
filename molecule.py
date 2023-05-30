@@ -7,9 +7,10 @@ from utils import PyTree, vmap_chunked
 from external.eigh_impl import eigh2d
 
 from jax import numpy as jnp
-from jax.lax import Precision
+from jax.lax import Precision, stop_gradient
 from jax import vmap, grad
 from flax import struct
+from flax import linen as nn
 import itertools
 import jax
 
@@ -103,9 +104,9 @@ class Molecule:
     def HF_energy_density(self, *args, **kwargs):
         return HF_energy_density(self.rdm1, self.ao, self.chi, *args, **kwargs)
 
-    def HF_density_grad_2_Fock(self, fxc: Callable, x_without_hf:Array, y_without_hf: Array, ehf: Array, params: PyTree, *args, **kwargs):
+    def HF_density_grad_2_Fock(self, fxc: Callable, features:Array, local_features: Array, ehf: Array, params: PyTree, *args, **kwargs):
         if self.chi is None: raise ValueError("Precomputed chi tensor has not been loaded.")
-        return HF_density_grad_2_Fock(fxc, x_without_hf, y_without_hf, ehf, self.chi, self.ao, self.grid.weights, params = params, *args, **kwargs)
+        return HF_density_grad_2_Fock(fxc, self, features, local_features, ehf, self.chi, self.ao, params = params, *args, **kwargs)
 
     def nonXC(self, *args, **kwargs):
         return nonXC(self.rdm1, self.h1e, self.vj, self.nuclear_repulsion, *args, **kwargs)
@@ -234,19 +235,18 @@ def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision =
     _hf_energy = lambda _chi, _rdm1, _ao: - jnp.einsum("wsc,sac,a->ws", _chi, _rdm1, _ao, precision=precision)/2
     return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
 
-@partial(jax.jit, static_argnames=["chunk_size", "precision"])
+#@partial(jax.jit, static_argnames=["chunk_size", "precision"])
 def HF_density_grad_2_Fock(
-    fxc: Callable,
+    functional: nn.Module, #todo: is this correct, or should we use nn.Module?
+    molecule: Molecule,
     x_without_hf: Array,
     y_without_hf: Array,
     ehf: Array,
     chi: Array, 
     ao: Array,
-    grid_weights: Array,
     params: PyTree,
     *,
     chunk_size: Optional[int] = None,
-    clip_cte: float = 4.5e-11, # Do not lower unless you know what you are doing
     precision: Precision = Precision.HIGHEST,
     fxc_kwargs: dict = {}
 ) -> Array:
@@ -306,22 +306,18 @@ def HF_density_grad_2_Fock(
         Shape: (*batch, n_omegas, n_spin, n_orbitals, n_orbitals).
     """
 
-    ppfxc = partial(fxc, params = params, grid_weights = grid_weights)
+    ppfxc = partial(functional.energy, params = params, molecule = molecule)
 
-    # We have to clip the values of rho away from 0 to avoid the grad being 0.
-    x_factor = jnp.concatenate((clip_cte*jnp.ones((2,x_without_hf.shape[1])), jnp.zeros((5,x_without_hf.shape[1]))), axis=0)
-    x_without_hf = jnp.maximum(abs(x_without_hf),x_factor)*jnp.sign(x_without_hf)
-
-    def partial_fxc(ehf):
+    def partial_fxc(params, molecule, x_without_hf,y_without_hf, ehf):
 
         # Remember that rdm1 concatenates the hf density in the x features by spin...
-        x = jnp.concatenate((x_without_hf, ehf[:,0], ehf[:,1]), axis=0).transpose()
+        features = jnp.concatenate((x_without_hf, ehf[:,0].T, ehf[:,1].T), axis=1)
 
-        local_features = jnp.concatenate([y_without_hf] + [ehf[i].sum(axis=0, keepdims=True) for i in range(len(ehf))], axis=0).transpose()
+        local_features = jnp.concatenate([y_without_hf] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
 
-        return ppfxc(x = x, local_features = local_features, **fxc_kwargs)
+        return functional.energy(params, molecule, features, local_features, **fxc_kwargs)
 
-    gr = jax.jit(grad(partial_fxc))(ehf)
+    gr = grad(partial_fxc, argnums = 4)(params, molecule, x_without_hf,y_without_hf, ehf)
 
     @partial(vmap_chunked, in_axes=(0, None, None), chunk_size=chunk_size)
     def chunked_jvp(chi_tensor, gr_tensor, ao_tensor):
@@ -571,7 +567,11 @@ def orbital_grad(mo_coeff, mo_occ, F):
     return jnp.einsum("sab,sac,scd->bd", C_vir.conj(), F, C_occ)
 
 
-def default_molecule_features(molecule: Molecule):
+def default_molecule_features(
+        molecule: Molecule, 
+        rho_clip_cte: float = 4.5e-11,
+        *_, **__
+    ):
     '''
     Computes the electronic density and derivatives
 
@@ -579,6 +579,8 @@ def default_molecule_features(molecule: Molecule):
     ----------
     molecule:
         class Molecule
+    rho_clip_cte: float
+        default 4.5e-11 (chosen carefully, take care if decrease)
     
     Returns
     -------
@@ -586,6 +588,8 @@ def default_molecule_features(molecule: Molecule):
     '''
 
     rho = molecule.density()
+    # We need to clip rho away from 0 to obtain good gradients.
+    rho = jnp.maximum(abs(rho) , rho_clip_cte)*jnp.sign(rho)
     grad_rho = molecule.grad_density()
     tau = molecule.kinetic_density()
 
@@ -659,20 +663,50 @@ def default_functionals(molecule: Molecule, functional_type: Optional[Union[str,
                     * jnp.where(jnp.logical_and(i==0, j==0), -2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3), 1) # to match DM21
         localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
 
-    # We add a constant multiplicative factor to match DM21 LDA feature
     return localfeatures.T
 
 
-def default_features(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+def default_features(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *args, **kwargs):
     """
     Generates all features except the HF energy features.
     """
     
-    features = default_molecule_features(molecule)
+    features = default_molecule_features(molecule, *args, **kwargs)
     localfeatures = default_functionals(molecule, functional_type, clip_cte)
 
     # We return them with the first index being the position r and the second the feature.
     return features, localfeatures
+
+def default_features_w_hf(molecule: Molecule, features: Callable, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+    """
+    Generates all features and the HF energy features.
+
+    Paramters
+    ----------
+    molecule: Molecule
+    features: Callable
+        Similar to default_features above, it takes as arguments molecule, functional_type and clip_cte.
+    functional_type: Optional[Union[str, Dict]]
+        Either a dictionary of ranges, {'u_range': range(...), 'w_range': range(...)}
+        or one of "DM21", "LDA", "GGA", "MGGA".
+    clip_cte: float
+        A small constant to clip and avoid numerical instabilities,
+        defaults at 1e-27.
+    """
+
+    features, local_features = features(molecule, functional_type, clip_cte)
+
+    ehf = stop_gradient(molecule.HF_energy_density())
+
+    # Remember that DM concatenates the hf density in the x features by spin...
+    features = jnp.concatenate([features, ehf[:,0].T, ehf[:,1].T], axis=1)
+
+    # ... and in the y features by omega.
+    local_features = jnp.concatenate([local_features] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
+
+    return features, local_features
+
+default_features_w_hf = partial(default_features_w_hf, features = default_features)
 
 ##########################################################
 

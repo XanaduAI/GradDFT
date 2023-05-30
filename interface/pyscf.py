@@ -1,5 +1,5 @@
 from random import shuffle
-from typing import Optional, Union, Sequence, Tuple, NamedTuple
+from typing import List, Optional, Union, Sequence, Tuple, NamedTuple
 from itertools import chain
 import os
 
@@ -41,8 +41,9 @@ def grid_from_pyscf(grids: Grids, dtype: Optional[DType] = None) -> Grid:
 
 def molecule_from_pyscf(
     mf: DensityFunctional, dtype: Optional[DType] = None,
-    omegas: Optional[Array] = None, energy: Optional[Scalar] = None,
-    name: Optional[str] = None, training: bool = False, scf_iteration: int = 50
+    omegas: Optional[List] = None, energy: Optional[Scalar] = None,
+    name: Optional[str] = None, training: bool = False, scf_iteration: int = 50,
+    chunk_size: Optional[int] = 1024,
 ) -> Molecule:
 
     #mf, grids = _maybe_run_kernel(mf, grids)
@@ -60,9 +61,10 @@ def molecule_from_pyscf(
     unit_Angstrom = True
 
     if omegas is not None: 
-        omegas = to_device_arrays(omegas, dtype=dtype)
-        chi = generate_chi_tensor(rdm1 = rdm1, ao = ao, mol = mf.mol, omegas = omegas)
-        chi = to_device_arrays(chi, dtype=dtype)
+        chi = generate_chi_tensor(rdm1 = rdm1, ao = ao, grid_coords = grid.coords, mol = mf.mol, 
+                                omegas = omegas, chunk_size = chunk_size)
+        #chi = to_device_arrays(chi, dtype=dtype)
+        #omegas = to_device_arrays(omegas, dtype=dtype)
     else:
         chi = None
     spin = mf.mol.spin
@@ -382,7 +384,7 @@ def save_molecule_chi(molecule: Molecule, omegas: Union[Sequence[Scalar], Scalar
     if chunk_size is None:
         chunk_size = grid_coords.shape[0]
 
-    chi = generate_chi_tensor(molecule, mol, omegas, chunk_size, grid_coords, precision = precision)
+    chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mol, omegas = omegas, precision = precision)
 
     mol_group.create_dataset(f"chi", shape = shape, chunks = chunks, dtype = 'float64', data = chi)
     mol_group.create_dataset(f"omegas", data = omegas)
@@ -490,7 +492,7 @@ def process_mol(mol, compute_energy=True, grid_level: int = 2, training: bool = 
     if mol.multiplicity == 1: mf = dft.RKS(mol)
     else: mf = dft.UKS(mol)
     mf.grids.level = int(grid_level)
-    #mf.grids.build() # with_non0tab=True
+    mf.grids.build() # with_non0tab=True
     if training: 
         mf.xc = xc_functional
     if max_cycle is not None:
@@ -501,23 +503,7 @@ def process_mol(mol, compute_energy=True, grid_level: int = 2, training: bool = 
 
     return energy,mf
 
-def generate_chi_tensor(molecule, mol, omegas, chunk_size, grid_coords, precision = Precision.HIGHEST):
-
-    def chi_make(dm, ao, nu):
-        return jnp.einsum("...bd,b,da->...a", dm, ao, nu, precision=precision)
-
-    chi = []
-    for omega in omegas:
-        chi_omega = []
-        for chunk_index, end_index, nu_chunk in _nu_chunk(mol,grid_coords,omega,chunk_size):
-            chi_chunk = vmap(chi_make, in_axes = (None, 0,0), out_axes = 0)(molecule.rdm1, molecule.ao[chunk_index:end_index], nu_chunk)
-            chi_omega.append(chi_chunk)
-        chi_omega = jnp.concatenate(chi_omega, axis = 0)
-        chi.append(chi_omega)
-    return jnp.stack(chi, axis = 1)
-
-
-def generate_chi_tensor(rdm1, ao, mol, omegas, chunk_size, grid_coords, precision = Precision.HIGHEST):
+def generate_chi_tensor(rdm1, ao, grid_coords, mol, omegas, chunk_size = 1024, precision = Precision.HIGHEST):
 
     def chi_make(dm_, ao_, nu):
         return jnp.einsum("...bd,b,da->...a", dm_, ao_, nu, precision=precision)

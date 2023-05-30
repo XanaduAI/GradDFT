@@ -104,8 +104,8 @@ def make_molecule_scf_loop(fxc: Functional, feature_fn: Callable, omegas: Option
 
             # Update the chi matrix
             if len(omegas) > 0: #todo: see how to make this general enough
-                chi_start_time = time.time() 
-                chi = generate_chi_tensor(molecule, mf.mol, omegas = omegas, chunk_size=chunk_size, grid_coords=molecule.grid.coords, *args)
+                chi_start_time = time.time()
+                chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = omegas, chunk_size=chunk_size, *args)
                 molecule = molecule.replace(chi = chi)
                 if verbose > 2:
                     print("Cycle {} took {:.1e} seconds to compute chi matrix".format(cycle, time.time() - chi_start_time))
@@ -143,7 +143,7 @@ def make_molecule_scf_loop(fxc: Functional, feature_fn: Callable, omegas: Option
 
             # Update the chi matrix
             if len(omegas) > 0:
-                chi = generate_chi_tensor(molecule, mf.mol, omegas = omegas, chunk_size=chunk_size, grid_coords=molecule.grid.coords, *args)
+                chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = omegas, chunk_size=chunk_size, *args)
                 molecule = molecule.replace(chi = chi)
 
             predicted_e, fock = predict_molecule(params, molecule, *args)
