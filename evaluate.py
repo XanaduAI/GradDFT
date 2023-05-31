@@ -12,9 +12,8 @@ import time
 from scipy.optimize import bisect
 
 from external import Functional
-from utils import PyTree, Array, Scalar, Ansatz
+from utils import PyTree, Array, Scalar, Optimizer
 from functional import Functional
-Optimizer = optax.GradientTransformation
 
 from molecule import Molecule, eig, make_rdm1, orbital_grad
 from train import molecule_predictor
