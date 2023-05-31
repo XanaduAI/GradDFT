@@ -27,7 +27,7 @@ params = functional.generate_DM21_weights()
 key = PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before
-omegas = [0.4, 1e20] #molecule.omegas
+omegas = molecule.omegas
 features_fn = default_features
 
 for omega in omegas:

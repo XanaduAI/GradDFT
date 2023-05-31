@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Optional
 from functools import partial
 
 from jax import value_and_grad
@@ -11,7 +11,6 @@ from jax.random import normal, PRNGKey
 
 from jax.experimental import checkify
 
-from flax import struct
 from flax import linen as nn
 from flax.core import freeze, unfreeze
 from flax.training import train_state, checkpoints
@@ -30,12 +29,16 @@ def external_f(instance, x):
 @dataclass
 class Functional(nn.Module):
     ''' A base class of local functionals.
-    F[n(r)] = \int f(n(r)) d^3 r
-    F[n(r)] = f( \int n(r) d^3 r)
+    .. math::
+        F[n(r)] = \int f(n(r)) d^3 r
+
+    or
+    .. math::
+        F[n(r)] = f( \int n(r) d^3 r)
 
     Parameters
     ----------
-    function: Callable
+    f: Callable
         Implements the function f above.
         Example:
         ```
@@ -44,6 +47,12 @@ class Functional(nn.Module):
             x = 0.5*jnp.tanh(x)
             return x
         ```
+
+    is_xc: bool
+        Whether the functional models only the exchange-correlation energy
+
+    is_local: bool
+        Whether the functional is local
     '''
 
     f: staticmethod
@@ -99,7 +108,13 @@ class Functional(nn.Module):
 
         Returns
         -------
-        Union[Array, Scalar]
+        Scalar
+
+        Note
+        -------
+        If the functional is_local, it will integrate the energy over the grid.
+        If the function is_xc, it will add the rest of the energy components
+        computed with function molecule.nonXC()
         '''
 
         if self.is_local: 
@@ -123,7 +138,7 @@ class Functional(nn.Module):
         ----------
         features : Array
             features to integrate.
-            Expected shape: (...,n_grid)
+            Expected shape: (n_grid, ...)
         gridweights: Array
             gridweights.
             Expected shape: (n_grid)
@@ -135,7 +150,7 @@ class Functional(nn.Module):
         Array
         """
 
-        checkify.check(self.is_local, "This function should only be used with local functionals")
+        if not self.is_local: raise TypeError("This function should only be used with local functionals")
 
         return jnp.einsum("r,r...->...", gridweights, features, precision = precision)
 
@@ -176,9 +191,11 @@ class NeuralFunctional(Functional):
 
         return jnp.squeeze(out) # Eliminating unnecessary dimensions
 
-    def save_checkpoints(self, params: PyTree, tx: GradientTransformation, step:int, orbax_checkpointer: Checkpointer = PyTreeCheckpointer(), ckpt_dir: str = 'ckpts'):
+    def save_checkpoints(self, params: PyTree, tx: GradientTransformation, step: Optional[int], 
+                        orbax_checkpointer: Checkpointer = PyTreeCheckpointer(), ckpt_dir: str = 'ckpts'):
 
-        """A convenience function to save the network parameters to disk.
+        """
+        A convenience function to save the network parameters to disk.
 
         Parameters
         ----------
@@ -186,6 +203,13 @@ class NeuralFunctional(Functional):
             Neural network parameters, usually a `flax.core.FrozenDict`.
         tx : optax.GradientTransformation
             The optimizer used to train the network.
+        step: int
+            The epoch of the optimizer.
+        orbax_checkpointer: Optional[Checkpointer] = PyTreeCheckpointer()
+
+        Returns
+        ----------
+        None
         """
 
         state = train_state.TrainState.create(apply_fn=self.apply,
@@ -195,15 +219,30 @@ class NeuralFunctional(Functional):
         checkpoints.save_checkpoint(ckpt_dir=ckpt_dir, target=state, step=step, overwrite=True, 
                                     orbax_checkpointer=orbax_checkpointer, keep_every_n_steps = 50)
 
-    def load_checkpoint(self, tx: GradientTransformation = None, ckpt_dir: str = 'ckpts', step: int = None, orbax_checkpointer: Checkpointer = PyTreeCheckpointer()) -> PyTree:
+    def load_checkpoint(self, tx: GradientTransformation = None, ckpt_dir: str = 'ckpts', step: Optional[int] = None, 
+                        orbax_checkpointer: Checkpointer = PyTreeCheckpointer()) -> PyTree:
 
         """A convenience function to load the network parameters from disk.
 
         Parameters
         ----------
-        ckpt_dir : str, optional
+        tx : Optional[optax.GradientTransformation] = None
+            The optimizer used to train the network.
+        ckpt_dir : Optional[str]
             The directory where the checkpoint is saved.
             Defaults to 'ckpts'.
+        step: Optional[int] = None
+        orbax_checkpointer: Optional[Checkpointer] = PyTreeCheckpointer()
+
+        Returns
+        ----------
+        TrainState
+
+        Note
+        ----------
+        If the checkpoints are saved with the function `save_checkpoints`,
+        this usually creates a folder called `checkpoint_[step]` where the checkpoint is saved
+        and which should be added to ckpt_dir for this funtion to work
         """
 
         state_dict = orbax_checkpointer.restore(ckpt_dir)
@@ -214,6 +253,11 @@ class NeuralFunctional(Functional):
     
 @dataclass
 class DM21(NeuralFunctional):
+
+    """
+    Creates the architecture of the DM21 functional.
+    Contains a function to generate the weights, called `generate_DM21_weights`
+    """
 
     activation: Callable = elu
     squash_offset: float = 1e-4
@@ -348,10 +392,31 @@ def canonicalize_inputs(x):
     
 
 @partial(value_and_grad, has_aux = True)
-def default_loss(params, functional, molecule, trueenergy, *functioninputs):
-    ''' Computes the loss function, here MSE, between predicted and true energy'''
+def default_loss(params: PyTree, functional: Functional, molecule: Molecule, trueenergy: float, *functionalinputs):
+    '''
+    Computes the default loss function, here MSE, between predicted and true energy
 
-    predictedenergy = functional.energy(params, molecule, *functioninputs)
+    Parameters
+    ----------
+    params: PyTree
+        functional parameters (weights)
+    molecule: Molecule
+    trueenergy: float
+    *functionalinputs: Sequence
+        inputs to be passed to evaluate functional.energy(params, molecule, *functionalinputs)
+
+    Returns
+    ----------
+    Tuple[float, float]
+    The loss and predicted energy.
+
+    Note
+    ----------
+    Since it has the decorator @partial(value_and_grad, has_aux = True)
+    it will compute the gradients with respect to params.
+    '''
+
+    predictedenergy = functional.energy(params, molecule, *functionalinputs)
     cost_value = (predictedenergy - trueenergy) ** 2
 
     return cost_value, predictedenergy

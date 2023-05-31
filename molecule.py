@@ -105,9 +105,25 @@ class Molecule:
         '''
         Selects the chi tensor according to the omegas passed. 
         self.chi is ordered according to self.omegas in dimension = 1.
-        Thus, we need to select and reorder it to match the passed omegas,
-        which should be a subset of self.omegas
+        
+        Parameters
+        ----------
+        omegas: List[float]
+            The parameter omega with which the kernel
+            .. math::
+                f(|r-r'|) = \erf(\omega|r-r'|)/|r-r'|
+
+            has been computed.
+
+        Returns
+        ----------
+        chi: Array
+
+        .. math::
+            Xc^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r') = Γbd^σ ψb(r) v_{cd}(r)
+
         '''
+
         if self.chi is None: raise ValueError("Precomputed chi tensor has not been loaded.")
         for o in omegas:
             if o not in self.omegas: 
@@ -120,7 +136,7 @@ class Molecule:
         chi = self.select_HF_omegas(omegas)
         return HF_energy_density(self.rdm1, self.ao, chi, *args, **kwargs)
 
-    def HF_density_grad_2_Fock(self, functional: Callable, params: PyTree, omegas: Array, ehf: Array, *features, combine_features_hf, **kwargs):
+    def HF_density_grad_2_Fock(self, functional: nn.Module, params: PyTree, omegas: Array, ehf: Array, *features, combine_features_hf, **kwargs):
         chi = self.select_HF_omegas(omegas)
         return HF_density_grad_2_Fock(self, functional, params, chi, self.ao, ehf, *features, combine_features_hf = combine_features_hf, **kwargs)
 
@@ -173,7 +189,7 @@ def orbital_grad(mo_coeff, mo_occ, F):
 
 def default_molecule_features(
         molecule: Molecule, 
-        rho_clip_cte: float = 4.5e-11,
+        rho_clip_cte: Optional[float] = 4.5e-11,
         *_, **__
     ):
     '''
@@ -183,7 +199,7 @@ def default_molecule_features(
     ----------
     molecule:
         class Molecule
-    rho_clip_cte: float
+    rho_clip_cte: Optional[float]
         default 4.5e-11 (chosen carefully, take care if decrease)
     
     Returns
@@ -218,15 +234,24 @@ def default_functionals(molecule: Molecule, functional_type: Optional[Union[str,
         Either one of 'LDA', 'GGA', 'MGGA' or Dictionary
         {'u_range': range(), 'w_range': range()} that generates 
         a functional
-        $$ \sum_{i\in \text{u_range}} \sum_{j\in \text{w_range}} c_{ij} u^i w^j $$
+
+        .. math::
+            \sum_{i\in \text{u_range}} \sum_{j\in \text{w_range}} c_{ij} u^i w^j
+
         where
-        $$ x = \frac{|\grad \rho|^{1/2}}{\rho^{4/3}} $$
-        $$ u = \frac{\beta x}{1 + \beta x} $$
+
+        .. math::
+            x = \frac{|\grad \rho|^{1/2}}{\rho^{4/3}}
+            u = \frac{\beta x}{1 + \beta x}
+
         and
-        $$ t = \frac{3(6\pi^2)^{2/3}}{5}\frac{\rho^{5/3}}{\tau} $$
-        $$ w = \frac{\beta t^{-1}}{1+ \beta t^{-1}} $$
+
+        .. math::
+            t = \frac{3(6\pi^2)^{2/3}}{5}\frac{\rho^{5/3}}{\tau}
+            w = \frac{\beta t^{-1}}{1+ \beta t^{-1}}
 
     Returns:
+    --------
         Array: shape (n_grid, n_features)
     '''
 
@@ -273,6 +298,24 @@ def default_functionals(molecule: Molecule, functional_type: Optional[Union[str,
 def default_features(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *args, **kwargs):
     """
     Generates all features except the HF energy features.
+    
+    Parameters
+    ----------
+    molecule: Molecule
+    
+    functional_type: Optional[Union[str, Dict]]
+        Either one of 'LDA', 'GGA', 'MGGA' or Dictionary
+        {'u_range': range(), 'w_range': range()} that generates 
+        a functional. See `default_functionals` function.
+
+    clip_cte: float
+        A numerical threshold to avoid numerical precision issues
+        Default: 1e-27
+
+    Returns
+    ----------
+    Tuple[Array, Array]
+        The features and local features, similar to those used by DM21
     """
     
     features = default_molecule_features(molecule, *args, **kwargs)
@@ -282,6 +325,29 @@ def default_features(molecule: Molecule, functional_type: Optional[Union[str, Di
     return features, localfeatures
 
 def default_combine_features_hf(ehf, features, local_features):
+    """
+    Default way to combine Hartree-Fock and the rest of the input default features.
+
+    Parameters
+    ----------
+    ehf: Array
+        The Hartree-Fock features
+        shape: (n_omega, n_spin, n_grid_points)
+    features: Array
+        The rest of input features that constitute the input to the neural network in a 
+        functional of the form similar to DM21.
+        shape: (n_grid, n_input_features)
+    local features: Array
+        The rest of local features that get dot-multiplied by the output of a neural network
+        in a functional of the form similar to DM21.
+        shape: (n_grid, n_local_features)
+
+    Returns
+    ----------
+    Tuple[Array, Array]
+        features, shape: (n_grid, n_features + n_spin * n_omegas)
+        local_features, shape: (n_grid, n_local_features + n_omegas)
+    """
 
     # Remember that DM concatenates the hf density in the x features by spin...
     features = jnp.concatenate([features, ehf[:,0].T, ehf[:,1].T], axis=1)
@@ -299,17 +365,30 @@ def features_w_hf(molecule: Molecule,
     """
     Generates all features and the HF energy features.
 
-    Paramters
+    Parameters
     ----------
     molecule: Molecule
-    features: Callable
-        Similar to default_features above, it takes as arguments molecule, functional_type and clip_cte.
+    features_fn: Callable
+        Function to generate default features (without HF components)
+        Signature:
+            molecule: Molecule, functional_type: Optional[Union[str, Dict]], clip_cte: Optional[clip_cte].
+                -> Sequence[Arrays]
+    omegas: Array,
+        List of omega values in the definition of the HF component
     functional_type: Optional[Union[str, Dict]]
         Either a dictionary of ranges, {'u_range': range(...), 'w_range': range(...)}
         or one of "DM21", "LDA", "GGA", "MGGA".
+    combine_features_hf: Callable
+        Function to combine the HF features and the rest of the features
+        Signature: 
+            Array, Sequence[Arrays] -> Sequence[Arrays]
     clip_cte: float
         A small constant to clip and avoid numerical instabilities,
         defaults at 1e-27.
+
+    Returns
+    -----------
+    Sequence[Arrays]
     """
 
     features = features_fn(molecule, functional_type, clip_cte)
@@ -333,7 +412,7 @@ def density(rdm1: Array, ao: Array, precision: Precision = Precision.HIGHEST) ->
     ----------
     rdm1 : Array
         The density matrix.
-        Expected shape: (*batch, n_spin, n_orbitals, n_orbitals)
+        Expected shape: (n_spin, n_orbitals, n_orbitals)
     ao : Array
         Atomic orbitals.
         Expected shape: (n_grid_points, n_orbitals)
@@ -344,7 +423,7 @@ def density(rdm1: Array, ao: Array, precision: Precision = Precision.HIGHEST) ->
     Returns
     -------
     Array
-        The density. Shape: (*batch, n_spin, n_grid_points)
+        The density. Shape: (n_spin, n_grid_points)
     """
 
     return jnp.einsum("...ab,ra,rb->...r", rdm1, ao, ao, precision=precision)
@@ -360,7 +439,7 @@ def grad_density(
     ----------
     rdm1 : Array
         The density matrix.
-        Expected shape: (*batch, n_spin, n_orbitals, n_orbitals)
+        Expected shape: (n_spin, n_orbitals, n_orbitals)
     ao : Array
         Atomic orbitals.
         Expected shape: (n_grid_points, n_orbitals)
@@ -374,7 +453,7 @@ def grad_density(
     Returns
     -------
     Array
-        The density gradient. Shape: (*batch, n_spin, n_grid_points, 3)
+        The density gradient. Shape: (n_spin, n_grid_points, 3)
     """
 
     return 2 * jnp.einsum("...ab,ra,rbj->...rj", rdm1, ao, grad_ao, precision=precision)
@@ -388,7 +467,7 @@ def kinetic_density(rdm1: Array, grad_ao: Array, precision: Precision = Precisio
     ----------
     rdm1 : Array
         The density matrix.
-        Expected shape: (*batch, n_spin, n_orbitals, n_orbitals)
+        Expected shape: (n_spin, n_orbitals, n_orbitals)
     grad_ao : Array
         Gradients of atomic orbitals.
         Expected shape: (n_grid_points, n_orbitals, 3)
@@ -399,7 +478,7 @@ def kinetic_density(rdm1: Array, grad_ao: Array, precision: Precision = Precisio
     Returns
     -------
     Array
-        The kinetic energy density. Shape: (*batch, n_spin, n_grid_points)
+        The kinetic energy density. Shape: (n_spin, n_grid_points)
     """
 
     return 0.5 * jnp.einsum("...ab,raj,rbj->...r", rdm1, grad_ao, grad_ao, precision=precision)
@@ -418,8 +497,11 @@ def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision =
         Expected shape: (n_grid_points, n_orbitals)
     chi : Array
         Precomputed chi density.
-        Xc^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r') = Γbd^σ ψb(r) v_{cd}(r)
-        where v_{ab}(r) = ∫ dr' f(|r-r'|) ψa(r') ψd(r')
+
+        .. math::
+            Xc^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r') = Γbd^σ ψb(r) v_{cd}(r)
+
+        where :math:`v_{ab}(r) = ∫ dr' f(|r-r'|) ψa(r') ψd(r')`.
         Expected shape: (n_grid_points, n_omega, n_spin, n_orbitals)
     precision : jax.lax.Precision, optional
         Jax `Precision` enum member, indicating desired numerical precision.
@@ -434,10 +516,9 @@ def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision =
     _hf_energy = lambda _chi, _rdm1, _ao: - jnp.einsum("wsc,sac,a->ws", _chi, _rdm1, _ao, precision=precision)/2
     return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
 
-#@partial(jax.jit, static_argnames=["chunk_size", "precision"])
 def HF_density_grad_2_Fock(
     molecule: Molecule,
-    functional: nn.Module, #todo: is this correct, or should we use nn.Module?
+    functional: nn.Module,
     params: PyTree,
     chi: Array, 
     ao: Array,
@@ -451,7 +532,9 @@ def HF_density_grad_2_Fock(
 
     """Calculate the Hartree-Fock matrix contribution due to the partial derivative
     with respect to the Hartree Fock energy energy density.
-    F = ∂f(x)/∂e_{HF}^{ωσ} * ∂e_{HF}^{ωσ}/∂Γab^σ = ∂f(x)/∂e_{HF}^{ωσ} * ψa(r) Xb^σ.
+
+    .. math::
+        F = ∂f(x)/∂e_{HF}^{ωσ} * ∂e_{HF}^{ωσ}/∂Γab^σ = ∂f(x)/∂e_{HF}^{ωσ} * ψa(r) Xb^σ.
 
     Parameters
     ----------
@@ -465,13 +548,15 @@ def HF_density_grad_2_Fock(
         Expected shape: (n_features, n_grid_points)
     ehf : Array
         The Hartree-Fock energy density. 
-        Expected shape: (*batch, n_omega, n_spin, n_grid_points).
+        Expected shape: (n_omega, n_spin, n_grid_points).
     chi : Array
-        Xa^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψa(r') ψd(r')
-        Expected shape: (*batch, n_grid_points, n_omegas, n_spin, n_orbitals)
+        .. math::
+            Xa^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψa(r') ψd(r')
+
+        Expected shape: (n_grid_points, n_omegas, n_spin, n_orbitals)
     ao : Array
         The orbitals.
-        Expected shape: (*batch, n_grid_points, n_orbitals)
+        Expected shape: (n_grid_points, n_orbitals)
     grid_weights : Array
         The weights of the grid points.
         Expected shape: (n_grid_points)
@@ -503,7 +588,7 @@ def HF_density_grad_2_Fock(
     Array
         The Hartree-Fock matrix contribution due to the partial derivative
         with respect to the Hartree Fock energy density.
-        Shape: (*batch, n_omegas, n_spin, n_orbitals, n_orbitals).
+        Shape: (n_omegas, n_spin, n_orbitals, n_orbitals).
     """
 
     def partial_fxc(params, molecule, ehf, *features):
@@ -604,7 +689,9 @@ def HF_exact_exchange(
         Parameters
         ----------
         chi : Array
-            Xc^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r')
+            .. math::
+                Xc^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r')
+
             Expected shape: (n_grid, n_omega, n_spin, n_orbitals)
         rdm1 : Array
             The 1-Reduced Density Matrix.
@@ -620,7 +707,7 @@ def HF_exact_exchange(
 				Notes
 				-------
 				n_omega makes reference to different possible kernels, for example using
-				the kernel f(|r-r'|) = erf(w |r-r'|)/|r-r'|.
+				the kernel :math:`f(|r-r'|) = erf(w |r-r'|)/|r-r'|`.
 
         Returns
         -------
@@ -729,6 +816,3 @@ def _canonicalize_molecules(
         numbers = (numbers,)
 
     return molecules, numbers
-
-
-

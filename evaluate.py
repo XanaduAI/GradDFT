@@ -24,21 +24,61 @@ from utils.types import Hartree2kcalmol
 
 
 
-def make_molecule_scf_loop(fxc: Functional, feature_fn: Callable,  combine_features_hf: Callable, 
-                            omegas: Optional[Sequence] = [], 
-                            chunk_size: int = 1024, max_cycles: int = 50, diis_start_cycle: int = 1,
+def make_molecule_scf_loop(functional: Functional, feature_fn: Callable,  combine_features_hf: Callable, 
+                            omegas: Optional[Sequence] = [],
+                            level_shift_factor: tuple[float, float] = (0.,0.), damp_factor: tuple[float, float] = (0.,0.),
+                            chunk_size: int = 1024, max_cycles: int = 50, diis_start_cycle: int = 0,
                             e_conv: float = 1e-5, g_conv: float = 1e-5, diis_method = 'CDIIS',
-                            level_shift: tuple[float, float] = (0.,0.), damp: tuple[float, float] = (0.,0.), 
                             smearing: Optional[str] = None, smearing_sigma: Optional[float] = 0.,
-                            precision = Precision.HIGHEST, verbose: int = 0, **kwargs) -> Callable:
+                            verbose: int = 0, **kwargs) -> Callable:
+    
+    """
+    Creates an scf_iterator object that can be called to implement a self-consistent loop.
 
-    predict_molecule = molecule_predictor(fxc, feature_fn, combine_features_hf, omegas = omegas, chunk_size = chunk_size, **kwargs)
+    Main parameters
+    ---------------
+    functional: Functional
+    feature_fn: Callable
+        Generates the functional inputs except for the HF features
+    combine_features_hf: Callable
+        Combines the features with the HF components
+    omegas: Sequence
+        HF components to include according to
+
+        .. math::
+            ehf^σ =  Γac^σ Γbd^σ ψa(r) ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r') =  Γac^σ Γbd^σ ψa(r) ψb(r) v_{cd}(r)
+
+        with        
+        
+        .. math::
+            f(|r-r'|) = \erf(\omega|r-r'|)/|r-r'|
+
+    verbose: int
+        Controls the level of printout
+
+    Returns
+    ---------
+    float
+    """
+
+    predict_molecule = molecule_predictor(functional, feature_fn, combine_features_hf, omegas = omegas, chunk_size = chunk_size, **kwargs)
 
     def scf_iterator(
         params: PyTree, molecule: Molecule, *args
     ) -> Tuple[Scalar, Scalar]:
+        
+        """
+        Implements a scf loop for a Molecule and a functional implicitly defined predict_molecule with
+        parameters params
 
-        # Used only for the chi matrix
+        Parameters
+        ----------
+        params: PyTree
+        molecule: Molecule
+        *args: Arguments to be passed to predict_molecule function
+        """
+
+        # Needed to be able to update the chi tensor
         mol = mol_from_Molecule(molecule)
         _, mf = process_mol(mol, compute_energy=False, grid_level = int(molecule.grid_level), training = False)
 
@@ -60,9 +100,19 @@ def make_molecule_scf_loop(fxc: Functional, feature_fn: Callable,  combine_featu
             start_time = time.time()
             old_e = predicted_e
 
+            if 0 <= cycle < diis_start_cycle-1 and abs(damp_factor[0])+abs(damp_factor[1]) > 1e-4:
+                fock = (damping(molecule.s1e, molecule.rdm1[0], fock[0], damp_factor[0]),
+                    damping(molecule.s1e, molecule.rdm1[1], fock[1], damp_factor[1]))
+
             # DIIS iteration
             new_data = (molecule.rdm1, fock, predicted_e)
-            fock, diis_data = diis.run(new_data, diis_data, cycle)
+            if cycle >= diis_start_cycle: 
+                fock, diis_data = diis.run(new_data, diis_data, cycle)
+
+            if abs(level_shift_factor[0])+abs(level_shift_factor[1]) > 1e-4:
+                fock = (level_shift(molecule.s1e, molecule.rdm1[0], fock[0], level_shift_factor[0]),
+                    level_shift(molecule.s1e, molecule.rdm1[1], fock[1], level_shift_factor[1]))
+            if cycle >= diis_start_cycle: fock, diis_data = diis.run(new_data, diis_data, cycle)
 
             # Diagonalize Fock matrix
             mo_energy, mo_coeff = eig(fock, molecule.s1e)
@@ -100,11 +150,11 @@ def make_molecule_scf_loop(fxc: Functional, feature_fn: Callable,  combine_featu
             rdm1 = molecule.make_rdm1()
             molecule = molecule.replace(rdm1 = rdm1)
 
-            #computed_charge = jnp.einsum('r,ra,rb,sab->', molecule.grid.weights, molecule.ao, molecule.ao, dm)
-            #assert jnp.isclose(nelectron, computed_charge, atol = 1e-3), "Total charge is not conserved"
+            computed_charge = jnp.einsum('r,ra,rb,sab->', molecule.grid.weights, molecule.ao, molecule.ao, molecule.rdm1)
+            assert jnp.isclose(nelectron, computed_charge, atol = 1e-3), "Total charge is not conserved"
 
             # Update the chi matrix
-            if len(omegas) > 0: #todo: see how to make this general enough
+            if len(omegas) > 0:
                 chi_start_time = time.time()
                 chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = omegas, chunk_size=chunk_size, *args)
                 molecule = molecule.replace(chi = chi)
@@ -162,6 +212,17 @@ def make_molecule_scf_loop(fxc: Functional, feature_fn: Callable,  combine_featu
 def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chunk_size: int = 1024, 
                             max_cycles: int = 500, e_conv: float = 1e-7, whitening: str = "PCA",
                             precision = Precision.HIGHEST, verbose: int = 0, **kwargs) -> Callable:
+    
+    """
+    Creates an orbital_optimizer object that can be called to optimize the density matrix and minimize the energy.
+    Follows the description in
+
+    Tianbo Li, Min Lin, Zheyuan Hu, Kunhao Zheng, Giovanni Vignale, Kenji Kawaguchi, A.H. Castro Neto, Kostya S. Novoselov, Shuicheng YAN
+    D4FT: A Deep Learning Approach to Kohn-Sham Density Functional Theory
+    ICLR 2023
+
+    Note: This only optimizes the rdm1, not the orbitals, also discussed in the article above.
+    """
 
     predict_molecule = molecule_predictor(fxc, omegas = omegas, chunk_size = chunk_size, **kwargs)
 
@@ -180,7 +241,6 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chun
 
         # Compute the density matrix
         rdm1 = make_rdm1(C, molecule.mo_occ)
-        dm_XND = molecule.make_rdm1()
 
         nelectron = molecule.atom_index.sum() - molecule.charge
 

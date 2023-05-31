@@ -504,6 +504,9 @@ def process_mol(mol, compute_energy=True, grid_level: int = 2, training: bool = 
     return energy,mf
 
 def generate_chi_tensor(rdm1, ao, grid_coords, mol, omegas, chunk_size = 1024, precision = Precision.HIGHEST):
+    """
+    Generates the chi tensor, according to the molecular data and omegas provided
+    """
 
     def chi_make(dm_, ao_, nu):
         return jnp.einsum("...bd,b,da->...a", dm_, ao_, nu, precision=precision)

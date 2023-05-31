@@ -56,7 +56,7 @@ def molecule_predictor(
     -------
     Callable
         A wrapped verison of `fxc` that calculates input/output features and returns
-        the predicted exchange-correlation energy with the corresponding Fock matrix.
+        the predicted energy with the corresponding Fock matrix.
         Signature:
 
         (params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Array]
@@ -65,7 +65,7 @@ def molecule_predictor(
     -----
     In a nutshell, this takes any Jax-transformable functional and does two things:
         1.) Wraps it in a way to return the Fock matrix as well as
-        the exchange-correlation energy.
+        the energy.
         2.) Explicitly takes a function to generate/load precomputed
         features to feed into a parameterized functional for flexible
         feature generation.
@@ -76,9 +76,9 @@ def molecule_predictor(
     >>> from qdft import FeedForwardFunctional
     >>> Fxc = FeedForwardFunctional(layer_widths=[128, 128])
     >>> params = Fxc.init(jax.random.PRNGKey(42), jnp.zeros(shape=(32, 11)))
-    >>> predictor = make_molecule_predictor(Fxc, returns_feature_grads=False, chunk_size=1000)
+    >>> predictor = make_molecule_predictor(Fxc, chunk_size=1000)
     `chunk` size is forwarded to the default feature function as a keyword parameter.
-    >>> exc, fock = predictor(params, molecule) # `Might take a while for the default_features`
+    >>> e, fock = predictor(params, molecule) # `Might take a while for the default_features`
     >>> fock.shape == molecule.density_matrix.shape
     True
     """
@@ -87,6 +87,24 @@ def molecule_predictor(
     def energy_and_grads(
         params: PyTree, rdm1: Array, molecule: Molecule, *args, **functional_kwargs
     ) -> Scalar:
+        """
+        Computes the energy and gradients with respect to the density matrix
+
+        Parameters
+        ----------
+        params: Pytree
+            Functional parameters
+        rdm1: Array
+            The reduced density matrix.
+            Expected shape: (n_grid_points, n_orbitals, n_orbitals)
+        molecule: Molecule
+            the molecule
+
+        Returns
+        -----------
+        Scalar
+            The energy of the molecule when the state of the system is given by rdm1.
+        """
 
         molecule = molecule.replace(rdm1 = rdm1)
         for omega in omegas:
@@ -113,9 +131,7 @@ def molecule_predictor(
             The functional parameters.
         molecule : Molecule
             The `Molecule` object to predict properties of.
-        functional_kwargs : dict, optional
-            A `dict` of optional additional keyword arguments
-            to pass to the functional.
+        *args
 
         Returns
         -------
