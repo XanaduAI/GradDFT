@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, Optional, List
 from functools import partial
 
 from jax import value_and_grad
@@ -8,8 +8,6 @@ from jax.lax import Precision
 from jax.nn import sigmoid, gelu, elu
 from jax.nn.initializers import zeros, he_normal
 from jax.random import normal, PRNGKey
-
-from jax.experimental import checkify
 
 from flax import linen as nn
 from flax.core import freeze, unfreeze
@@ -28,7 +26,7 @@ def external_f(instance, x):
 
 @dataclass
 class Functional(nn.Module):
-    ''' A base class of local functionals.
+    r""" A base class of local functionals.
     .. math::
         F[n(r)] = \int f(n(r)) d^3 r
 
@@ -38,7 +36,7 @@ class Functional(nn.Module):
 
     Parameters
     ----------
-    f: Callable
+    function: Callable
         Implements the function f above.
         Example:
         ```
@@ -53,15 +51,15 @@ class Functional(nn.Module):
 
     is_local: bool
         Whether the functional is local
-    '''
+    """
 
-    f: staticmethod
+    function: staticmethod
     is_xc: bool
     is_local: bool
 
     @nn.compact
     def __call__(self, *inputs) -> Scalar:
-        '''Where the functional is called, mapping the density to the energy.
+        r"""Where the functional is called, mapping the density to the energy.
         Expected to be overwritten by the inheriting class.
         Should use the _integrate() helper function to perform the integration.
 
@@ -72,12 +70,12 @@ class Functional(nn.Module):
         Returns
         -------
         Union[Array, Scalar]
-        '''
+        """
 
-        return self.f(self, *inputs)
+        return self.function(self, *inputs)
     
     def apply_and_integrate(self, params: PyTree, molecule: Molecule, *inputs):
-        '''
+        r"""
         Total energy of local functional
         
         Paramters
@@ -90,13 +88,13 @@ class Functional(nn.Module):
         Returns
         -------
         Union[Array, Scalar]
-        '''
+        """
 
         localfeatures = self.apply(params, *inputs)
         return self._integrate(localfeatures, molecule.grid.weights)
     
     def energy(self, params: PyTree, molecule: Molecule, *args):
-        '''
+        r"""
         Total energy of local functional
         
         Paramters
@@ -115,7 +113,7 @@ class Functional(nn.Module):
         If the functional is_local, it will integrate the energy over the grid.
         If the function is_xc, it will add the rest of the energy components
         computed with function molecule.nonXC()
-        '''
+        """
 
         if self.is_local: 
             energy = self.apply_and_integrate(params, molecule, *args)
@@ -130,8 +128,8 @@ class Functional(nn.Module):
     def _integrate(
         self, features: Array, gridweights: Array, precision: Optional[Precision] = Precision.HIGHEST
     ) -> Array:
-
-        """Helper function that performs grid quadrature (integration) 
+        r"""
+        Helper function that performs grid quadrature (integration) 
 				in a differentiable way (using jax.numpy).
 
         Parameters
@@ -156,8 +154,11 @@ class Functional(nn.Module):
 
 @dataclass
 class NeuralFunctional(Functional):
+    r"""
+    Neural functional, subclass of Functional
+    """
 
-    f: staticmethod
+    function: staticmethod
     is_xc: bool = True
     is_local: bool = True
     kernel_init: Callable = he_normal()
@@ -179,14 +180,14 @@ class NeuralFunctional(Functional):
             param_dtype=self.param_dtype
         )
 
-    def head(self, x: Array, out_features, sigmoid_scale_factor):
+    def head(self, x: Array, local_features, sigmoid_scale_factor):
 
         # Final layer: dense -> sigmoid -> scale (x2)
-        x = self.dense(features=out_features)(x) # out_features = 3
+        x = self.dense(features=local_features)(x) # eg local_features = 3 in DM21
         self.sow('intermediates', 'head_dense', x)
         x = sigmoid(x / sigmoid_scale_factor)
         self.sow('intermediates', 'sigmoid', x)
-        out = sigmoid_scale_factor * x # sigmoid_scale_factor = 2.0
+        out = sigmoid_scale_factor * x # sigmoid_scale_factor = 2.0 in DM21
         self.sow('intermediates', 'sigmoid_product', out)
 
         return jnp.squeeze(out) # Eliminating unnecessary dimensions
@@ -194,7 +195,7 @@ class NeuralFunctional(Functional):
     def save_checkpoints(self, params: PyTree, tx: GradientTransformation, step: Optional[int], 
                         orbax_checkpointer: Checkpointer = PyTreeCheckpointer(), ckpt_dir: str = 'ckpts'):
 
-        """
+        r"""
         A convenience function to save the network parameters to disk.
 
         Parameters
@@ -222,7 +223,8 @@ class NeuralFunctional(Functional):
     def load_checkpoint(self, tx: GradientTransformation = None, ckpt_dir: str = 'ckpts', step: Optional[int] = None, 
                         orbax_checkpointer: Checkpointer = PyTreeCheckpointer()) -> PyTree:
 
-        """A convenience function to load the network parameters from disk.
+        r"""
+        A convenience function to load the network parameters from disk.
 
         Parameters
         ----------
@@ -254,7 +256,7 @@ class NeuralFunctional(Functional):
 @dataclass
 class DM21(NeuralFunctional):
 
-    """
+    r"""
     Creates the architecture of the DM21 functional.
     Contains a function to generate the weights, called `generate_DM21_weights`
     """
@@ -262,9 +264,9 @@ class DM21(NeuralFunctional):
     activation: Callable = elu
     squash_offset: float = 1e-4
     layer_widths: Array = jnp.array([256,256,256,256,256,256])
-    out_features: int = 3
+    local_features: int = 3
     sigmoid_scale_factor: float = 2.
-    f: Callable = lambda self, *inputs: self.default_nn(*inputs)
+    function: Callable = lambda self, *inputs: self.default_nn(*inputs)
 
     def default_nn(instance, rhoinputs, localfeatures, *_, **__):
         x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
@@ -289,13 +291,14 @@ class DM21(NeuralFunctional):
             x = instance.activation(x) # activation = jax.nn.gelu
             instance.sow('intermediates', 'residual_elu_'+str(i), x)
 
-        x = instance.head(x, instance.out_features, instance.sigmoid_scale_factor)
+        x = instance.head(x, instance.local_features, instance.sigmoid_scale_factor)
 
         return jnp.einsum('ri,ri->r', x, localfeatures)
 
     def generate_DM21_weights(self, folder: str = 'DM21_model', num_layers_with_dm_parameters: int = 7, n_input_features: int = 11, rng = PRNGKey(0)):
 
-        """A convenience function to generate the DM21 weights and biases.
+        r"""
+        A convenience function to generate the DM21 weights and biases.
 
         Parameters
         ----------
@@ -349,7 +352,7 @@ class DM21(NeuralFunctional):
             return params
 
         example_features = normal(rng, shape=(2, n_input_features))
-        example_local_features = normal(rng, shape=(2, self.out_features))
+        example_local_features = normal(rng, shape=(2, self.local_features))
         params = self.init(rng, example_features, example_local_features)
 
         dm_params = vars_to_params(variables)
@@ -393,7 +396,8 @@ def canonicalize_inputs(x):
 
 @partial(value_and_grad, has_aux = True)
 def default_loss(params: PyTree, functional: Functional, molecule: Molecule, trueenergy: float, *functionalinputs):
-    '''
+    
+    r"""
     Computes the default loss function, here MSE, between predicted and true energy
 
     Parameters
@@ -414,7 +418,7 @@ def default_loss(params: PyTree, functional: Functional, molecule: Molecule, tru
     ----------
     Since it has the decorator @partial(value_and_grad, has_aux = True)
     it will compute the gradients with respect to params.
-    '''
+    """
 
     predictedenergy = functional.energy(params, molecule, *functionalinputs)
     cost_value = (predictedenergy - trueenergy) ** 2

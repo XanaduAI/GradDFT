@@ -19,7 +19,7 @@ mf.grids = grids
 ground_truth_energy = mf.kernel()
 
 # Then we compute quite a few properties which we pack into a class called Molecule
-molecule = molecule_from_pyscf(mf, omegas = [1e20, 0.4])
+molecule = molecule_from_pyscf(mf, omegas = [0., 0.4])
 
 functional = DM21()
 params = functional.generate_DM21_weights()

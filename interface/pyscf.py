@@ -24,11 +24,6 @@ from pyscf import cc, dft, scf
 from utils import Array, Scalar, DensityFunctional, HartreeFock
 from external import _nu_chunk
 
-'''dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-config_path = os.path.normpath(dirpath + "/config/config.json")
-tools = Utils(config_path)
-config_variables = tools.get_config_variables()'''
-
 def grid_from_pyscf(grids: Grids, dtype: Optional[DType] = None) -> Grid:
 
     if grids.coords is None:
@@ -78,7 +73,7 @@ def molecule_from_pyscf(
     )
 
 def mol_from_Molecule(molecule: Molecule):
-    """Converts a Molecule object to a PySCF Mole object.
+    r"""Converts a Molecule object to a PySCF Mole object.
     WARNING: the mol returned is not the same as the orginal mol used to create the Molecule object.
     """
     
@@ -102,14 +97,14 @@ def mol_from_Molecule(molecule: Molecule):
 def saver(
     fname: str,
     omegas: Union[Scalar, Sequence[Scalar]],
-    #reactions: Optional[Union[Reaction, Sequence[Reaction]]] = (),
+    reactions: Optional[Union[Reaction, Sequence[Reaction]]] = (),
     molecules: Optional[Union[Molecule, Sequence[Molecule]]] = (),
     training: bool = True,
     *,
     chunk_size: Optional[int] = None,
 ):
 
-    """
+    r"""
     Saves the molecule data to a file, and computes and saves the corresponding chi
 
     Parameters
@@ -173,15 +168,15 @@ def saver(
 
     if isinstance(molecules, Molecule):
         molecules = (molecules,)
-    #if isinstance(reactions, Reaction):
-    #    reactions = (reactions,)
+    if isinstance(reactions, Reaction):
+        reactions = (reactions,)
     if isinstance(omegas, (int, float)):
         omegas = (omegas,)
 
     with h5py.File(f"{fname}.hdf5", "a") as file:
 
         # First we save the reactions
-        '''for i, reaction in enumerate(reactions):
+        for i, reaction in enumerate(reactions):
 
             if reaction.name: react = file.create_group(f"reaction_{reaction.name}_{i}")
             else: react = file.create_group(f"reaction_{i}")
@@ -203,7 +198,7 @@ def saver(
                 else:
                     mol_group.attrs["type"] = "product"
                     mol_group["product_numbers"] = reaction.product_numbers[j-len(reaction.reactant_numbers)]
-        '''
+
         # Then we save the molecules
         for j, molecule in enumerate(molecules):
 
@@ -217,7 +212,8 @@ def saver(
             save_molecule_data(mol_group, molecule, training)
 
 def loader(fpath: str, randomize: Optional[bool] = False, training: Optional[bool] = True, config_omegas: Optional[Union[Scalar, Sequence[Scalar]]] = None):
-    """Reads the molecule, energy and precomputed chi matrix from a file.
+    r"""
+    Reads the molecule, energy and precomputed chi matrix from a file.
 
     Parameters
     ----------
@@ -271,7 +267,7 @@ def loader(fpath: str, randomize: Optional[bool] = False, training: Optional[boo
                         elif config_omegas == []: args[key] = None
                         else:
                             if isinstance(omegas, (int, float)): omegas = (omegas,)
-                            assert all([omega in omegas for omega in config_omegas]), "chi tensors for omega list {} were not all precomputed in the molecule".format(config_omegas)
+                            assert all([omega in omegas for omega in config_omegas]), f"chi tensors for omega list {config_omegas} were not all precomputed in the molecule"
                             indices = [omegas.index(omega) for omega in config_omegas]
                             args[key] = jnp.stack([jnp.asarray(value)[:, i] for i in indices], axis=1)
                     else: 
@@ -325,7 +321,7 @@ def loader(fpath: str, randomize: Optional[bool] = False, training: Optional[boo
                             elif config_omegas == []: args[key] = None
                             else:
                                 if isinstance(omegas, (int, float)): omegas = (omegas,)
-                                assert all([omega in omegas for omega in config_omegas]), "chi tensors for omega list {} were not all precomputed in the molecule".format(config_omegas)
+                                assert all([omega in omegas for omega in config_omegas]), f"chi tensors for omega list {config_omegas} were not all precomputed in the molecule"
                                 indices = [omegas.index(omega) for omega in config_omegas]
                                 args[key] = jnp.stack([jnp.asarray(value)[:, i] for i in indices], axis=1)
                         else: 
@@ -352,7 +348,7 @@ def loader(fpath: str, randomize: Optional[bool] = False, training: Optional[boo
                 yield 'reaction', reaction
 
 def save_molecule_data(mol_group: h5py.Group, molecule: Molecule, training: bool = True):
-    '''Auxiliary function'''
+    r"""Auxiliary function to save all data except for chi"""
 
     to_numpy = lambda arr: arr if (isinstance(arr, str) or isinstance(arr, float)) else np.asarray(arr)
     d = tree_map(to_numpy, molecule.to_dict())
@@ -372,7 +368,7 @@ def save_molecule_data(mol_group: h5py.Group, molecule: Molecule, training: bool
 
 def save_molecule_chi(molecule: Molecule, omegas: Union[Sequence[Scalar], Scalar], chunk_size: int,
                     mol_group: h5py.Group, precision: Precision = Precision.HIGHEST):
-    '''Auxiliary function'''
+    r"""Auxiliary function to save chi tensor"""
 
     grid_coords = molecule.grid.coords
     mol = mol_from_Molecule(molecule)
@@ -458,7 +454,7 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, train
     ao = ao_[0]
     grad_ao = ao_[1:].transpose(1, 2, 0)
 
-    h1e_energy = np.einsum("sij,ji->", dm, h1e)
+    #h1e_energy = np.einsum("sij,ji->", dm, h1e)
     vj = 2 * mf.get_j(mf.mol, dm, hermi = 1) # The 2 is to compensate for the /2 in the definition of the density matrix 
 
     if not training:
@@ -468,7 +464,7 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, train
     # v_j = jnp.einsum("pqrt,srt->spq", rep_tensor, dm)
     # v_k = jnp.einsum("ptqr,srt->spq", rep_tensor, dm)
 
-    coulomb2e_energy = np.einsum("sij,sji->", dm, vj)/2
+    #coulomb2e_energy = np.einsum("sij,sji->", dm, vj)/2
 
     mf_e_tot = mf.e_tot
     fock = np.stack([h1e,h1e], axis=0) + mf.get_veff(mf.mol, dm)
@@ -478,8 +474,6 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, train
     return ao, grad_ao, dm, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor
 
 ##############################################################################################################
-
-# Taken from https://jax.readthedocs.io/en/latest/notebooks/Neural_Network_and_Data_Loading.html
 
 def process_mol(mol, compute_energy=True, grid_level: int = 2, training: bool = False, max_cycle: Optional[int] = None, xc_functional = 'b3lyp'):
     if compute_energy:
@@ -504,8 +498,35 @@ def process_mol(mol, compute_energy=True, grid_level: int = 2, training: bool = 
     return energy,mf
 
 def generate_chi_tensor(rdm1, ao, grid_coords, mol, omegas, chunk_size = 1024, precision = Precision.HIGHEST):
-    """
-    Generates the chi tensor, according to the molecular data and omegas provided
+    
+    r"""
+    Generates the chi tensor, according to the molecular data and omegas provided.
+
+    Parameters
+    ----------
+    rdm1: Array
+        The molecular reduced density matrix Γbd^σ
+        Expected shape: (n_spin, n_orbitals, n_orbitals)
+
+    ao: Array
+        The atomic orbitals ψa(r)
+        Expected shape: (n_grid_points, n_orbitals)
+
+    grid_coords: Array
+        The coordinates of the grid.
+        Expected shape: (n_grid_points)
+
+    mol: A Pyscf mol object.
+
+    omegas: List
+
+
+
+    Returns
+    ----------
+    chi : Array
+        Xa^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψa(r') ψd(r')
+        Expected shape: (n_grid_points, n_omegas, n_spin, n_orbitals)
     """
 
     def chi_make(dm_, ao_, nu):

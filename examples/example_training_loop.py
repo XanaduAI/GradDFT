@@ -29,7 +29,7 @@ out_features = 4
 sigmoid_scale_factor = 2.
 activation = gelu
 
-def f(instance, rhoinputs, localfeatures, *_, **__):
+def function(instance, rhoinputs, localfeatures, *_, **__):
     x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
 
     # Initial layer: log -> dense -> tanh
@@ -56,7 +56,7 @@ def f(instance, rhoinputs, localfeatures, *_, **__):
 
     return jnp.einsum('ri,ri->r', x, localfeatures)
 
-functional = NeuralFunctional(f)
+functional = NeuralFunctional(function)
 
 key = PRNGKey(42) # Jax-style random seed
 

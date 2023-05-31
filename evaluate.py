@@ -32,7 +32,7 @@ def make_molecule_scf_loop(functional: Functional, feature_fn: Callable,  combin
                             smearing: Optional[str] = None, smearing_sigma: Optional[float] = 0.,
                             verbose: int = 0, **kwargs) -> Callable:
     
-    """
+    r"""
     Creates an scf_iterator object that can be called to implement a self-consistent loop.
 
     Main parameters
@@ -67,7 +67,7 @@ def make_molecule_scf_loop(functional: Functional, feature_fn: Callable,  combin
         params: PyTree, molecule: Molecule, *args
     ) -> Tuple[Scalar, Scalar]:
         
-        """
+        r"""
         Implements a scf loop for a Molecule and a functional implicitly defined predict_molecule with
         parameters params
 
@@ -112,7 +112,6 @@ def make_molecule_scf_loop(functional: Functional, feature_fn: Callable,  combin
             if abs(level_shift_factor[0])+abs(level_shift_factor[1]) > 1e-4:
                 fock = (level_shift(molecule.s1e, molecule.rdm1[0], fock[0], level_shift_factor[0]),
                     level_shift(molecule.s1e, molecule.rdm1[1], fock[1], level_shift_factor[1]))
-            if cycle >= diis_start_cycle: fock, diis_data = diis.run(new_data, diis_data, cycle)
 
             # Diagonalize Fock matrix
             mo_energy, mo_coeff = eig(fock, molecule.s1e)
@@ -122,7 +121,7 @@ def make_molecule_scf_loop(functional: Functional, feature_fn: Callable,  combin
             # Update the molecular occupation
             mo_occ = molecule.get_occ()
             if verbose > 2:
-                print("Cycle {} took {:.1e} seconds to compute and diagonalize Fock matrix".format(cycle, time.time() - start_time))
+                print(f"Cycle {cycle} took {time.time() - start_time:.1e} seconds to compute and diagonalize Fock matrix")
 
             if smearing:
                 def gaussian_smearing_occ(m, mo_energy, sigma):
@@ -159,22 +158,22 @@ def make_molecule_scf_loop(functional: Functional, feature_fn: Callable,  combin
                 chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = omegas, chunk_size=chunk_size, *args)
                 molecule = molecule.replace(chi = chi)
                 if verbose > 2:
-                    print("Cycle {} took {:.1e} seconds to compute chi matrix".format(cycle, time.time() - chi_start_time))
+                    print(f"Cycle {cycle} took {time.time() - chi_start_time:.1e} seconds to compute chi matrix")
 
             exc_start_time = time.time()
             predicted_e, fock = predict_molecule(params, molecule, *args)
             exc_time = time.time()
 
             if verbose > 2:
-                print("Cycle {} took {:.1e} seconds to compute exc and vhf".format(cycle, exc_time - exc_start_time))
+                print(f"Cycle {cycle} took {exc_time - exc_start_time:.1e} seconds to compute exc and vhf")
 
             # Compute the norm of the gradient
             norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
 
             if verbose > 1:
-                print("cycle: {}, energy: {:.7e}, energy difference: {:.4e}, norm_gradient_orbitals: {:.2e}, seconds: {:.1e}".format(cycle, predicted_e, abs(predicted_e - old_e), norm_gorb, time.time() - start_time))
+                print(f"cycle: {cycle}, energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}, seconds: {time.time() - start_time:.1e}")
             if verbose > 2:
-                print("       relative energy difference: {:.5e}".format(abs((predicted_e - old_e)/predicted_e)))
+                print(f"       relative energy difference: {abs((predicted_e - old_e)/predicted_e):.5e}")
             cycle += 1
 
         if (abs(predicted_e - old_e)*Hartree2kcalmol < e_conv and norm_gorb < g_conv):
@@ -203,17 +202,17 @@ def make_molecule_scf_loop(functional: Functional, feature_fn: Callable,  combin
             norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
 
         if verbose > 1:
-            print("cycle: {}, predicted energy: {:.7e}, energy difference: {:.4e}, norm_gradient_orbitals: {:.2e}".format(cycle, predicted_e, abs(predicted_e - old_e), norm_gorb))
+            print(f"cycle: {cycle}, predicted energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}")
 
         return predicted_e
 
     return scf_iterator
 
-def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chunk_size: int = 1024, 
+def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas: Sequence, chunk_size: int = 1024, 
                             max_cycles: int = 500, e_conv: float = 1e-7, whitening: str = "PCA",
                             precision = Precision.HIGHEST, verbose: int = 0, **kwargs) -> Callable:
     
-    """
+    r"""
     Creates an orbital_optimizer object that can be called to optimize the density matrix and minimize the energy.
     Follows the description in
 
@@ -223,7 +222,7 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chun
 
     Note: This only optimizes the rdm1, not the orbitals, also discussed in the article above.
     """
-
+    if len(omegas) > 0: raise NotImplementedError('The calculation of tensor chi is not implemented self differentiably, sorry!')
     predict_molecule = molecule_predictor(fxc, omegas = omegas, chunk_size = chunk_size, **kwargs)
 
     @partial(jax.value_and_grad, argnums=0)
@@ -242,6 +241,9 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chun
         # Compute the density matrix
         rdm1 = make_rdm1(C, molecule.mo_occ)
 
+        # todo: differentiably implement the calculation of the chi tensor,
+        # which now relies on pyscf's mol.intor("int1e_grids_sph", hermi=hermi, grids=coords)
+
         nelectron = molecule.atom_index.sum() - molecule.charge
 
         computed_charge = jnp.einsum('r,ra,rb,sab->', molecule.grid.weights, molecule.ao, molecule.ao, rdm1)
@@ -254,10 +256,6 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chun
     def neural_iterator(
         params: PyTree, molecule: Molecule, *args
     ) -> Tuple[Scalar, Scalar]:
-
-        # Used only for the chi matrix
-        #mol = mol_from_Molecule(molecule)
-        #_, mf = process_mol(mol, compute_energy=False, grid_level = int(molecule.grid_level), training = False)
 
         old_e = jnp.inf
         cycle = 0
@@ -307,7 +305,7 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chun
             cycle += 1
 
             if verbose > 1:
-                print("cycle: {}, predicted energy: {:.7e}, energy difference: {:.4e}".format(cycle, predicted_e, abs(predicted_e - old_e)))
+                print(f"cycle: {cycle}, predicted energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}")
 
         return predicted_e
 
@@ -320,7 +318,7 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chun
 @struct.dataclass
 class Diis:
 
-    """DIIS extrapolation, with different variants. The vanilla DIIS computes
+    r"""DIIS extrapolation, with different variants. The vanilla DIIS computes
     the Fock matrix as a linear combination of the previous Fock matrices, with
     ::math::
         F_{DIIS} = \sum_i x_i F_i,
@@ -465,7 +463,7 @@ class Diis:
         return x[:,1:]
 
     def ediis_minimize(self, density_vector, fock_vector, energy_vector):
-        '''SCF-EDIIS
+        r"""SCF-EDIIS
         Ref: JCP 116, 8255 (2002); DOI:10.1063/1.1470195
 
         Warning: This implementation of EDIIS uses jax.scipy.optimize.minimize() to minimize the cost function.
@@ -474,7 +472,7 @@ class Diis:
 
         Code taken from 
         https://github.com/pyscf/pyscf/blob/df92512c09c13063a056dbc543e980e1997d21c8/pyscf/scf/diis.py#L149
-        '''
+        """
         nx = energy_vector.size
         nao = density_vector.shape[-1]
         density_vector = density_vector.reshape(nx,-1,nao,nao)
@@ -491,7 +489,7 @@ class Diis:
         return (res.x**2)/(res.x**2).sum(), res.fun
 
     def adiis_minimize(self, density_vector, fock_vector, idnewest):
-        '''
+        r"""
         Ref: JCP 132, 054109 (2010); DOI:10.1063/1.3304922
 
         Warning: This implementation of EDIIS uses jax.scipy.optimize.minimize() to minimize the cost function.
@@ -500,7 +498,7 @@ class Diis:
 
         Code taken from 
         https://github.com/pyscf/pyscf/blob/df92512c09c13063a056dbc543e980e1997d21c8/pyscf/scf/diis.py#L208
-        '''
+        """
 
         nx = density_vector.shape[0]
         nao = density_vector.shape[-1]
@@ -521,7 +519,7 @@ class Diis:
         return (res.x**2)/(res.x**2).sum(), res.fun
 
 def damping(s, d, f, factor):
-    '''Copied from pyscf.scf.hf.damping'''
+    r"""Copied from pyscf.scf.hf.damping"""
     #dm_vir = s - reduce(numpy.dot, (s,d,s))
     #sinv = numpy.linalg.inv(s)
     #f0 = reduce(numpy.dot, (dm_vir, sinv, f, d, s))
@@ -531,7 +529,7 @@ def damping(s, d, f, factor):
     return f - f0
 
 def level_shift(s, d, f, factor):
-    r'''Copied from pyscf.scf.hf.level_shift
+    r"""Copied from pyscf.scf.hf.level_shift
     
     Apply level shift :math:`\Delta` to virtual orbitals
 
@@ -550,6 +548,6 @@ def level_shift(s, d, f, factor):
 
     Returns:
         New Fock matrix, 2D ndarray
-    '''
+    """
     dm_vir = s - reduce(jnp.dot, (s, d, s))
     return f + dm_vir * factor

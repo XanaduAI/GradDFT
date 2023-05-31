@@ -1,10 +1,9 @@
-from typing import Callable, Optional, Sequence, Tuple, Union, Dict
+from typing import Callable, Optional, Sequence, Tuple
 from functools import partial
 
 from jax import numpy as jnp
 from jax import value_and_grad
 from jax.profiler import annotate_function
-from jax.experimental import checkify
 
 from utils import Scalar, Array, PyTree
 from functional import Functional
@@ -18,7 +17,7 @@ def molecule_predictor(
     **kwargs,
 ) -> Callable:
     
-    """Generate a function that predicts the energy
+    r"""Generate a function that predicts the energy
     energy of a `Molecule` and a corresponding Fock matrix
 
     Parameters
@@ -87,7 +86,7 @@ def molecule_predictor(
     def energy_and_grads(
         params: PyTree, rdm1: Array, molecule: Molecule, *args, **functional_kwargs
     ) -> Scalar:
-        """
+        r"""
         Computes the energy and gradients with respect to the density matrix
 
         Parameters
@@ -120,7 +119,7 @@ def molecule_predictor(
     @partial(annotate_function, name="predict")
     def predict(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Array]:
 
-        """A DFT functional wrapper, returning the predicted exchange-correlation
+        r"""A DFT functional wrapper, returning the predicted exchange-correlation
         energy as well as the corresponding Fock matrix. This function does **not** require
         that the provided `feature_fn` returns derivatives (Jacobian matrix) of provided
         input features.

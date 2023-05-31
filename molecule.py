@@ -32,7 +32,8 @@ class Grid:
 
     def integrate(self, vals: Array, axis: int = 0) -> Array:
 
-        """A function that performs grid quadrature (integration) in a differentiable way (using jax.numpy).
+        r"""
+        A function that performs grid quadrature (integration) in a differentiable way (using jax.numpy).
 
         This function is glorified tensor contraction but it sometimes helps
         with readability and expresing intent in the rest of the code.
@@ -57,6 +58,10 @@ class Grid:
 
 @struct.dataclass
 class Molecule:
+    r"""
+    Base class for storing molecule properties
+    and methods
+    """
 
     grid: Grid
     atom_index: Array
@@ -102,7 +107,7 @@ class Molecule:
         return kinetic_density(self.rdm1, self.grad_ao, *args, **kwargs)
     
     def select_HF_omegas(self, omegas):
-        '''
+        r"""
         Selects the chi tensor according to the omegas passed. 
         self.chi is ordered according to self.omegas in dimension = 1.
         
@@ -122,7 +127,7 @@ class Molecule:
         .. math::
             Xc^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r') = Γbd^σ ψb(r) v_{cd}(r)
 
-        '''
+        """
 
         if self.chi is None: raise ValueError("Precomputed chi tensor has not been loaded.")
         for o in omegas:
@@ -160,7 +165,8 @@ class Molecule:
 #######################################################################
 
 def orbital_grad(mo_coeff, mo_occ, F):
-    '''RHF orbital gradients
+    r"""
+    RHF orbital gradients
 
     Args:
         mo_coeff: 2D ndarray
@@ -179,7 +185,7 @@ def orbital_grad(mo_coeff, mo_occ, F):
     g = reduce(jnp.dot, (mo_coeff[:,viridx].conj().T, fock_ao,
                            mo_coeff[:,occidx])) * 2
     return g.ravel()
-    '''
+    """
 
     C_occ = jax.vmap(jnp.where, in_axes = (None, 1, None), out_axes=1)(mo_occ > 0, mo_coeff, 0)
     C_vir = jax.vmap(jnp.where, in_axes = (None, 1, None), out_axes=1)(mo_occ == 0, mo_coeff, 0)
@@ -192,7 +198,7 @@ def default_molecule_features(
         rho_clip_cte: Optional[float] = 4.5e-11,
         *_, **__
     ):
-    '''
+    r"""
     Computes the electronic density and derivatives
 
     Parameters
@@ -205,7 +211,7 @@ def default_molecule_features(
     Returns
     -------
         Array: shape (n_grid, 7) where 7 is the number of features
-    '''
+    """
 
     rho = molecule.density()
     # We need to clip rho away from 0 to obtain good gradients.
@@ -222,7 +228,7 @@ def default_molecule_features(
 
 
 def default_functionals(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
-    '''
+    r"""
     Generates and concatenates different functional levels
 
     Parameters:
@@ -253,11 +259,11 @@ def default_functionals(molecule: Molecule, functional_type: Optional[Union[str,
     Returns:
     --------
         Array: shape (n_grid, n_features)
-    '''
+    """
 
     beta = 1/1024.
 
-    if type(functional_type) == str:
+    if isinstance(functional_type, str):
         if functional_type == 'LDA' or functional_type == 'DM21':  
             u_range, w_range = range(0,1), range(0,1)
         elif functional_type == 'GGA':
@@ -296,7 +302,8 @@ def default_functionals(molecule: Molecule, functional_type: Optional[Union[str,
 
 
 def default_features(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *args, **kwargs):
-    """
+
+    r"""
     Generates all features except the HF energy features.
     
     Parameters
@@ -325,7 +332,8 @@ def default_features(molecule: Molecule, functional_type: Optional[Union[str, Di
     return features, localfeatures
 
 def default_combine_features_hf(ehf, features, local_features):
-    """
+
+    r"""
     Default way to combine Hartree-Fock and the rest of the input default features.
 
     Parameters
@@ -362,7 +370,8 @@ def features_w_hf(molecule: Molecule,
                 functional_type: Optional[Union[str, Dict]] = 'LDA',
                 combine_features_hf: Optional[Callable] = default_combine_features_hf,
                 clip_cte: float = 1e-27, *_, **__):
-    """
+    
+    r"""
     Generates all features and the HF energy features.
 
     Parameters
@@ -406,7 +415,8 @@ default_features_w_hf = partial(features_w_hf, features = default_features)
 @partial(jax.jit, static_argnames="precision")
 def density(rdm1: Array, ao: Array, precision: Precision = Precision.HIGHEST) -> Array:
 
-    """Calculate electronic density from atomic orbitals.
+    r"""
+    Calculate electronic density from atomic orbitals.
 
     Parameters
     ----------
@@ -433,7 +443,8 @@ def grad_density(
     rdm1: Array, ao: Array, grad_ao: Array, precision: Precision = Precision.HIGHEST
 ) -> Array:
 
-    """Calculate the electronic density gradient from atomic orbitals.
+    r"""
+    Calculate the electronic density gradient from atomic orbitals.
 
     Parameters
     ----------
@@ -461,7 +472,8 @@ def grad_density(
 @partial(jax.jit, static_argnames="precision")
 def kinetic_density(rdm1: Array, grad_ao: Array, precision: Precision = Precision.HIGHEST) -> Array:
 
-    """Calculate kinetic energy density from atomic orbitals.
+    r"""
+    Calculate kinetic energy density from atomic orbitals.
 
     Parameters
     ----------
@@ -485,7 +497,9 @@ def kinetic_density(rdm1: Array, grad_ao: Array, precision: Precision = Precisio
 
 @partial(jax.jit, static_argnames=["precision"])
 def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision = Precision.HIGHEST):
-    """Calculate the Hartree-Fock energy density.
+
+    r"""
+    Calculate the Hartree-Fock energy density.
 
     Parameters
     ----------
@@ -530,7 +544,8 @@ def HF_density_grad_2_Fock(
     fxc_kwargs: dict = {}
 ) -> Array:
 
-    """Calculate the Hartree-Fock matrix contribution due to the partial derivative
+    r"""
+    Calculate the Hartree-Fock matrix contribution due to the partial derivative
     with respect to the Hartree Fock energy energy density.
 
     .. math::
@@ -616,7 +631,8 @@ def nonXC(
     rdm1: Array, h1e: Array, v_coul: Array, nuclear_repulsion: Scalar, precision = Precision.HIGHEST
 ) -> Scalar:
 
-    """A function that computes the non-XC part of a DFT functional.
+    r"""
+    A function that computes the non-XC part of a DFT functional.
 
     Parameters
     ----------
@@ -658,7 +674,9 @@ def one_body_energy(rdm1, h1e, precision = Precision.HIGHEST):
     return h1e_energy
 
 def coulomb_potential(rdm1, rep_tensor, precision = Precision.HIGHEST):
-    """A function that computes the non-XC part of a DFT functional.
+    
+    r"""
+    A function that computes the non-XC part of a DFT functional.
 
     Parameters
     ----------
@@ -684,43 +702,46 @@ def HF_exact_exchange(
     chi, rdm1, ao, precision = Precision.HIGHEST
 ) -> Array:
     
-        """A function that computes the exact exchange energy of a DFT functional.
+    r"""
+    A function that computes the exact exchange energy of a DFT functional.
 
-        Parameters
-        ----------
-        chi : Array
-            .. math::
-                Xc^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r')
+    Parameters
+    ----------
+    chi : Array
+        .. math::
+            Xc^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r')
 
-            Expected shape: (n_grid, n_omega, n_spin, n_orbitals)
-        rdm1 : Array
-            The 1-Reduced Density Matrix.
-            Equivalent to mf.make_rdm1() in pyscf.
-            Expected shape: (n_spin, n_orb, n_orb)
-        ao : Array
-            The atomic orbital basis.
-            Equivalent to pyscf.dft.numint.eval_ao(mf.mol, grids.coords, deriv=0) in pyscf.
-            Expected shape: (n_grid, n_orb)
-        precision : Precision, optional
-            The precision to use for the computation, by default Precision.HIGHEST
-    
-				Notes
-				-------
-				n_omega makes reference to different possible kernels, for example using
-				the kernel :math:`f(|r-r'|) = erf(w |r-r'|)/|r-r'|`.
+        Expected shape: (n_grid, n_omega, n_spin, n_orbitals)
+    rdm1 : Array
+        The 1-Reduced Density Matrix.
+        Equivalent to mf.make_rdm1() in pyscf.
+        Expected shape: (n_spin, n_orb, n_orb)
+    ao : Array
+        The atomic orbital basis.
+        Equivalent to pyscf.dft.numint.eval_ao(mf.mol, grids.coords, deriv=0) in pyscf.
+        Expected shape: (n_grid, n_orb)
+    precision : Precision, optional
+        The precision to use for the computation, by default Precision.HIGHEST
 
-        Returns
-        -------
-        Array
-            The exact exchange energy of the DFT functional at each point of the grid.
-        """
+            Notes
+            -------
+            n_omega makes reference to different possible kernels, for example using
+            the kernel :math:`f(|r-r'|) = erf(w |r-r'|)/|r-r'|`.
 
-        _hf_energy = lambda _chi, _dm, _ao: - jnp.einsum("wsc,sac,a->ws", _chi, _dm, _ao, precision=precision)/2
-        return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
+    Returns
+    -------
+    Array
+        The exact exchange energy of the DFT functional at each point of the grid.
+    """
+
+    _hf_energy = lambda _chi, _dm, _ao: - jnp.einsum("wsc,sac,a->ws", _chi, _dm, _ao, precision=precision)/2
+    return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
 
 
 def make_rdm1(mo_coeff, mo_occ):
-    '''One-particle density matrix in AO representation
+
+    r"""
+    One-particle density matrix in AO representation
 
     Args:
         mo_coeff : tuple of 2D ndarrays
@@ -737,7 +758,7 @@ def make_rdm1(mo_coeff, mo_occ):
     dm_b = jnp.dot(mo_b*mo_occ[1], mo_b.conj().T)
 
     return jnp.array((dm_a, dm_b))
-    '''
+    """
 
     return jnp.einsum('sij,sj,skj -> sik', mo_coeff, mo_occ, mo_coeff.conj())
 
@@ -778,7 +799,8 @@ def make_reaction(
     name: Optional[str] = None,
 ) -> Reaction:
 
-    """Parse inputs and make a `Reaction` object.
+    r"""
+    Parse inputs and make a `Reaction` object.
 
     Parameters
     ----------
