@@ -219,7 +219,7 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas:Sequence, chun
 
     Tianbo Li, Min Lin, Zheyuan Hu, Kunhao Zheng, Giovanni Vignale, Kenji Kawaguchi, A.H. Castro Neto, Kostya S. Novoselov, Shuicheng YAN
     D4FT: A Deep Learning Approach to Kohn-Sham Density Functional Theory
-    ICLR 2023
+    ICLR 2023, https://openreview.net/forum?id=aBWnqqsuot7
 
     Note: This only optimizes the rdm1, not the orbitals, also discussed in the article above.
     """
