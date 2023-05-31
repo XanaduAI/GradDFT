@@ -101,12 +101,28 @@ class Molecule:
     def kinetic_density(self, *args, **kwargs):
         return kinetic_density(self.rdm1, self.grad_ao, *args, **kwargs)
     
-    def HF_energy_density(self, *args, **kwargs):
-        return HF_energy_density(self.rdm1, self.ao, self.chi, *args, **kwargs)
-
-    def HF_density_grad_2_Fock(self, functional: Callable, params: PyTree, ehf: Array, *features, combine_features_hf, **kwargs):
+    def select_HF_omegas(self, omegas):
+        '''
+        Selects the chi tensor according to the omegas passed. 
+        self.chi is ordered according to self.omegas in dimension = 1.
+        Thus, we need to select and reorder it to match the passed omegas,
+        which should be a subset of self.omegas
+        '''
         if self.chi is None: raise ValueError("Precomputed chi tensor has not been loaded.")
-        return HF_density_grad_2_Fock(self, functional, params, self.chi, self.ao, ehf, *features, combine_features_hf = combine_features_hf, **kwargs)
+        for o in omegas:
+            if o not in self.omegas: 
+                raise ValueError(f"The molecule.chi tensor does not contain omega value {o}, only {self.omegas}")
+        indices = [list(self.omegas).index(o) for o in omegas]
+        chi = jnp.stack([self.chi[:,i] for i in indices], axis = 1)
+        return chi
+
+    def HF_energy_density(self, omegas, *args, **kwargs):
+        chi = self.select_HF_omegas(omegas)
+        return HF_energy_density(self.rdm1, self.ao, chi, *args, **kwargs)
+
+    def HF_density_grad_2_Fock(self, functional: Callable, params: PyTree, omegas: Array, ehf: Array, *features, combine_features_hf, **kwargs):
+        chi = self.select_HF_omegas(omegas)
+        return HF_density_grad_2_Fock(self, functional, params, chi, self.ao, ehf, *features, combine_features_hf = combine_features_hf, **kwargs)
 
     def nonXC(self, *args, **kwargs):
         return nonXC(self.rdm1, self.h1e, self.vj, self.nuclear_repulsion, *args, **kwargs)
@@ -274,8 +290,9 @@ def default_combine_features_hf(ehf, features, local_features):
     local_features = jnp.concatenate([local_features] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
     return features,local_features
 
-def features_w_hf(molecule: Molecule, 
-                features_fn: Callable, 
+def features_w_hf(molecule: Molecule,
+                features_fn: Callable,
+                omegas: Array, 
                 functional_type: Optional[Union[str, Dict]] = 'LDA',
                 combine_features_hf: Optional[Callable] = default_combine_features_hf,
                 clip_cte: float = 1e-27, *_, **__):
@@ -296,7 +313,7 @@ def features_w_hf(molecule: Molecule,
     """
 
     features = features_fn(molecule, functional_type, clip_cte)
-    ehf = stop_gradient(molecule.HF_energy_density())
+    ehf = stop_gradient(molecule.HF_energy_density(omegas))
 
     features = combine_features_hf(ehf, *features)
 
@@ -395,7 +412,7 @@ def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision =
     ----------
     rdm1 : Array
         The density matrix.
-        Expected shape: (*batch, n_spin, n_orbitals, n_orbitals)
+        Expected shape: (n_spin, n_orbitals, n_orbitals)
     ao : Array
         Atomic orbitals.
         Expected shape: (n_grid_points, n_orbitals)
@@ -403,14 +420,14 @@ def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision =
         Precomputed chi density.
         Xc^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r') = Γbd^σ ψb(r) v_{cd}(r)
         where v_{ab}(r) = ∫ dr' f(|r-r'|) ψa(r') ψd(r')
-        Expected shape: (*batch, n_grid_points, n_omega, n_spin, n_orbitals)
+        Expected shape: (n_grid_points, n_omega, n_spin, n_orbitals)
     precision : jax.lax.Precision, optional
         Jax `Precision` enum member, indicating desired numerical precision.
 
     Returns
     -------
     Array
-        The Hartree-Fock energy density. Shape: (*batch, n_omega, n_spin, n_grid_points).
+        The Hartree-Fock energy density. Shape: (n_omega, n_spin, n_grid_points).
     """
 
     #return - jnp.einsum("rwsc,sac,ra->wsr", chi, rdm1, ao, precision=precision)/2

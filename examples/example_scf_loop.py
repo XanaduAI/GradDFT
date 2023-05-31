@@ -1,11 +1,10 @@
-from jax.random import split, PRNGKey
 from jax import numpy as jnp
-from optax import adam, apply_updates
+from optax import adam
 from evaluate import make_molecule_scf_loop
 
 from interface.pyscf import molecule_from_pyscf
 from molecule import default_features
-from functional import NeuralFunctional, canonicalize_inputs, default_loss
+from functional import NeuralFunctional, canonicalize_inputs
 from jax.nn import gelu
 
 # First we define a molecule:

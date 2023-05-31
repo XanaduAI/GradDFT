@@ -23,12 +23,12 @@ def molecule_predictor(
 
     Parameters
     ----------
-    fxc : Functional
+    functional : Functional
         A callable or a `flax.linen.Module` that predicts the
         exchange-correlation energy given some parameters.
         A callable must have the following signature:
 
-        fxc.apply_and_integrate(params: Array, molecule: Molecule, **functional_kwargs) -> Scalar
+        fxc.energy(params: Array, molecule: Molecule, **functional_kwargs) -> Scalar
 
         where `params` is any parameter pytree, and `molecule`
         is a Molecule class instance.
@@ -40,7 +40,16 @@ def molecule_predictor(
 
         If given, it must be a callable with the following signature:
 
-        feature_fn(molecule: Molecule, *args, **kwargs) -> Tuple[Array, Array, Optional[Array]]
+        feature_fn(molecule: Molecule, *args, **kwargs) -> Union[Array, Sequence[Arrays]]
+
+    combine_features_hf : Callable, optional
+        A function that joins the non-HF features computed by feature_fn with the HF components
+        given by molecule.HF_energy_density(omegas), 
+
+        If given, it must be a callable with the following signature:
+
+        feature_fn(molecule: Molecule, *args, **kwargs) -> Union[Array, Sequence[Arrays]]
+
 
 
     Returns
@@ -83,12 +92,12 @@ def molecule_predictor(
         for omega in omegas:
             assert omega in molecule.omegas, f"omega {omega} not in the molecule.omegas"
         if len(omegas) > 0:
-            feature_fn_w_hf = partial(features_w_hf, features_fn = features_fn, combine_features_hf = combine_features_hf)
+            feature_fn_w_hf = partial(features_w_hf, features_fn = features_fn, omegas = omegas, combine_features_hf = combine_features_hf)
             functional_inputs = feature_fn_w_hf(molecule, *args, **kwargs)
         else:
             functional_inputs = features_fn(molecule, *args, **kwargs)
 
-        return functional.apply_and_integrate(params, molecule, *functional_inputs, **functional_kwargs)
+        return functional.energy(params, molecule, *functional_inputs, **functional_kwargs)
 
     @partial(annotate_function, name="predict")
     def predict(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Array]:
@@ -122,8 +131,8 @@ def molecule_predictor(
         # HF Potential
         if len(omegas) > 0:
             features = features_fn(molecule, rho_clip_cte = 4.5e-11, *args, **kwargs)
-            ehf = molecule.HF_energy_density()
-            vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, ehf, *features, 
+            ehf = molecule.HF_energy_density(omegas)
+            vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, *features, 
                                                     combine_features_hf = combine_features_hf)
             fock += vxc_hf.sum(axis=0) # Sum over omega
 

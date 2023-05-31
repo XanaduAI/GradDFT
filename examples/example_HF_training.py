@@ -30,10 +30,8 @@ key = PRNGKey(42) # Jax-style random seed
 omegas = molecule.omegas
 features_fn = default_features
 
-for omega in omegas:
-    assert omega in molecule.omegas, f"omega {omega} not in the molecule.omegas"
 if len(omegas) > 0:
-    feature_fn_w_hf = partial(features_w_hf, features_fn = features_fn)
+    feature_fn_w_hf = partial(features_w_hf, omegas = omegas, features_fn = features_fn)
     functional_inputs = feature_fn_w_hf(molecule, functional_type = 'DM21')
 else:
     functional_inputs = features_fn(molecule)

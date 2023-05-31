@@ -27,13 +27,13 @@ params = functional.generate_DM21_weights()
 key = PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before
-omegas = molecule.omegas
+omegas = [0.4, 1e20] #molecule.omegas
 features_fn = default_features
 
 for omega in omegas:
     assert omega in molecule.omegas, f"omega {omega} not in the molecule.omegas"
 if len(omegas) > 0:
-    feature_fn_w_hf = partial(features_w_hf, features_fn = features_fn)
+    feature_fn_w_hf = partial(features_w_hf, features_fn = features_fn, omegas = omegas)
     functional_inputs = feature_fn_w_hf(molecule)
 else:
     functional_inputs = features_fn(molecule)
