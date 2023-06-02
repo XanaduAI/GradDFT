@@ -49,13 +49,10 @@ class Functional(nn.Module):
     is_xc: bool
         Whether the functional models only the exchange-correlation energy
 
-    is_local: bool
-        Whether the functional is local
     """
 
     function: staticmethod
     is_xc: bool
-    is_local: bool
 
     @nn.compact
     def __call__(self, *inputs) -> Scalar:
@@ -110,15 +107,12 @@ class Functional(nn.Module):
 
         Note
         -------
-        If the functional is_local, it will integrate the energy over the grid.
+        Integrates the energy over the grid.
         If the function is_xc, it will add the rest of the energy components
         computed with function molecule.nonXC()
         """
 
-        if self.is_local: 
-            energy = self.apply_and_integrate(params, molecule, *args)
-        else: 
-            energy = self.apply(params, molecule, *args)
+        energy = self.apply_and_integrate(params, molecule, *args)
 
         if self.is_xc:
             energy += molecule.nonXC()
@@ -148,8 +142,6 @@ class Functional(nn.Module):
         Array
         """
 
-        if not self.is_local: raise TypeError("This function should only be used with local functionals")
-
         return jnp.einsum("r,r...->...", gridweights, features, precision = precision)
 
 @dataclass
@@ -160,7 +152,6 @@ class NeuralFunctional(Functional):
 
     function: staticmethod
     is_xc: bool = True
-    is_local: bool = True
     kernel_init: Callable = he_normal()
     bias_init: Callable = zeros
     activation: Callable = gelu

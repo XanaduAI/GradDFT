@@ -1,0 +1,41 @@
+from flax.core import freeze
+from popular_functionals import B3LYP, b3lyp_combine, b3lyp_exhf_features
+
+from interface.pyscf import molecule_from_pyscf
+
+# First we define a molecule:
+from pyscf import gto, dft
+from train import molecule_predictor
+mol = gto.M(atom = 'H 0 0 0; F 0 0 1.1')
+
+grids = dft.gen_grid.Grids(mol)
+grids.level = 2
+grids.build()
+
+mf = dft.UKS(mol)
+mf.grids = grids
+ground_truth_energy = mf.kernel()
+
+# Then we compute quite a few properties which we pack into a class called Molecule
+molecule = molecule_from_pyscf(mf)
+
+predict_molecule = molecule_predictor(B3LYP, b3lyp_exhf_features, b3lyp_combine, omegas = [0])
+
+params = freeze({'params': {}})
+
+predicted_e, fock = predict_molecule(params, molecule)
+
+
+### An alternative way of generating the params (which is an empty dict)
+'''# We generate the features from the molecule we created before
+features = b3lyp_exhf_features(molecule = molecule, functional_type='MGGA')
+ehf = molecule.HF_energy_density([0])
+ehf = jnp.sum(ehf, axis = (0,1)).T
+inputs = jnp.concatenate([features, ehf], axis=1)
+
+# We initialize the Functional parameters
+key = PRNGKey(42)
+key, = split(key, 1)
+params = B3LYP.init(key, inputs)'''
+
+

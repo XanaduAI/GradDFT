@@ -68,6 +68,7 @@ class Molecule:
     nuclear_pos: Array
     ao: Array
     grad_ao: Array
+    grad_grad_ao: Array
     rdm1: Array
     nuclear_repulsion: Scalar
     h1e: Array
@@ -276,14 +277,14 @@ def default_functionals(molecule: Molecule, functional_type: Optional[Union[str,
     rho = molecule.density()
     grad_rho = molecule.grad_density()
     tau = molecule.kinetic_density()
-    grad_rho_norm = jnp.sum(grad_rho**2, axis=-1)
+    grad_rho_norm_sq = jnp.sum(grad_rho**2, axis=-1)
 
     # LDA preprocessing data
     log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
 
     # GGA preprocessing data
-    log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm, a_min = clip_cte))
-    log_x_sigma = log_grad_rho_norm/2 - 4/3.*log_rho
+    log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm_sq, a_min = clip_cte))/2
+    log_x_sigma = log_grad_rho_norm - 4/3.*log_rho
     log_u_sigma = jnp.where(jnp.greater(log_rho,jnp.log2(clip_cte)), log_x_sigma - jnp.log2(1 + beta*(2**log_x_sigma)) + jnp.log2(beta), 0)
 
     # MGGA preprocessing data

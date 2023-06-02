@@ -44,7 +44,7 @@ def molecule_from_pyscf(
     #mf, grids = _maybe_run_kernel(mf, grids)
     grid = grid_from_pyscf(mf.grids, dtype=dtype)
 
-    ao, grad_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor = to_device_arrays(
+    ao, grad_ao, grad_grad_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor = to_device_arrays(
         *_package_outputs(mf, mf.grids, training, scf_iteration), dtype=dtype
     )
 
@@ -68,7 +68,7 @@ def molecule_from_pyscf(
     grid_level = mf.grids.level
 
     return Molecule(
-        grid, atom_index, nuclear_pos, ao, grad_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_occ, mo_energy,
+        grid, atom_index, nuclear_pos, ao, grad_ao, grad_grad_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_occ, mo_energy,
         mf_e_tot, s1e, omegas, chi, rep_tensor, energy, basis, name, spin, charge, unit_Angstrom, grid_level, scf_iteration, fock
     )
 
@@ -421,41 +421,52 @@ def _maybe_run_kernel(mf: HartreeFock, grids: Optional[Grids] = None):
 
 def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, training: bool = False, scf_iteration: int = 50):
 
-    ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=1, non0tab=grids.non0tab)
+    ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=2)#, non0tab=grids.non0tab)
     if scf_iteration != 0:
-        dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
+        rdm1 = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
     else:
-        dm = mf.get_init_guess(mf.mol, mf.init_guess)
+        rdm1 = mf.get_init_guess(mf.mol, mf.init_guess)
 
     s1e = mf.get_ovlp(mf.mol)
     h1e = mf.get_hcore(mf.mol)
 
-    if dm.ndim == 2:  # Restricted HF
+    if rdm1.ndim == 2:  # Restricted HF
 
-        half_dm = dm / 2
+        half_dm = rdm1 / 2
         half_mo_coeff = mf.mo_coeff
         half_mo_energy = mf.mo_energy
         half_mo_occ = mf.mo_occ / 2
 
-        dm = np.stack([half_dm, half_dm], axis=0)
+        rdm1 = np.stack([half_dm, half_dm], axis=0)
         mo_coeff = np.stack([half_mo_coeff, half_mo_coeff], axis=0)
         mo_energy = np.stack([half_mo_energy, half_mo_energy], axis=0)
         mo_occ = np.stack([half_mo_occ, half_mo_occ], axis=0)
 
         # Warning: this is for closed shell systems only.
 
-    elif dm.ndim == 3:  # Unrestricted HF
+    elif rdm1.ndim == 3:  # Unrestricted HF
         mo_coeff = np.stack(mf.mo_coeff, axis=0)
         mo_energy = np.stack(mf.mo_energy, axis=0)
         mo_occ = np.stack(mf.mo_occ, axis=0)
     else:
-        raise RuntimeError(f"Invalid density matrix shape. Got {dm.shape} for AO shape {ao.shape}")
+        raise RuntimeError(f"Invalid density matrix shape. Got {rdm1.shape} for AO shape {ao.shape}")
+
+    def reshape_grad2ao(ao):
+        components = ao[..., 4:]
+        matrix = np.zeros(ao.shape[:-1] + (3, 3))
+        indices = np.triu_indices(3)
+        matrix[..., indices[0], indices[1]] = components
+        matrix = matrix + np.transpose(matrix, axes=(0,1,3,2)) - np.einsum('raij,ij->raij', matrix, np.identity(matrix.shape[2]))
+        return matrix
 
     ao = ao_[0]
-    grad_ao = ao_[1:].transpose(1, 2, 0)
+    grad_ao = ao_[1:4].transpose(1, 2, 0)
+
+    #grad_grad_ao = compute_grad2_ao(ao_)
+    grad_grad_ao = reshape_grad2ao(ao_.transpose(1,2,0))
 
     #h1e_energy = np.einsum("sij,ji->", dm, h1e)
-    vj = 2 * mf.get_j(mf.mol, dm, hermi = 1) # The 2 is to compensate for the /2 in the definition of the density matrix 
+    vj = 2 * mf.get_j(mf.mol, rdm1, hermi = 1) # The 2 is to compensate for the /2 in the definition of the density matrix 
 
     if not training:
         rep_tensor = mf.mol.intor('int2e')
@@ -467,11 +478,11 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, train
     #coulomb2e_energy = np.einsum("sij,sji->", dm, vj)/2
 
     mf_e_tot = mf.e_tot
-    fock = np.stack([h1e,h1e], axis=0) + mf.get_veff(mf.mol, dm)
+    fock = np.stack([h1e,h1e], axis=0) + mf.get_veff(mf.mol, rdm1)
 
     energy_nuc = mf.energy_nuc()
 
-    return ao, grad_ao, dm, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor
+    return ao, grad_ao, grad_grad_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor
 
 ##############################################################################################################
 
