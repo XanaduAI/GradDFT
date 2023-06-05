@@ -52,7 +52,7 @@ class Functional(nn.Module):
     """
 
     function: staticmethod
-    is_xc: bool
+    is_xc: bool = True
 
     @nn.compact
     def __call__(self, *inputs) -> Scalar:

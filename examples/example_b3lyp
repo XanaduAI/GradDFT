@@ -17,9 +17,9 @@ mf.grids = grids
 ground_truth_energy = mf.kernel()
 
 # Then we compute quite a few properties which we pack into a class called Molecule
-molecule = molecule_from_pyscf(mf)
+molecule = molecule_from_pyscf(mf, omegas = [0])
 
-predict_molecule = molecule_predictor(B3LYP, b3lyp_exhf_features, b3lyp_combine, omegas = [0])
+predict_molecule = molecule_predictor(B3LYP, b3lyp_exhf_features, b3lyp_combine, omegas = [0], functional_type = 'GGA')
 
 params = freeze({'params': {}})
 
