@@ -1,3 +1,4 @@
+from jax import grad
 import jax.numpy as jnp
 from molecule import Molecule
 from utils import Array
@@ -11,15 +12,14 @@ def b88(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
     B88 exchange functional
     See eq 8 in https://journals.aps.org/pra/pdf/10.1103/PhysRevA.38.3098
     See also https://github.com/ElectronicStructureLibrary/libxc/blob/4bd0e1e36347c6d0a4e378a2c8d891ae43f8c951/maple/gga_exc/gga_x_b88.mpl#L22
-    Remember that the exchange energy of spin polarized densities are E_x(n) = ( E_x(2n_\uparrow) +E_x(2n_\downarrow) )/2, see eq 8.4 in Electronic Structure by Richard Martin. 
     """
 
     beta = 0.0042
 
     # LDA preprocessing data: Note that we duplicate the density to sum and divide in the last eq.
-    log_rho = jnp.log2(jnp.clip(2*rho, a_min = clip_cte))
+    log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
 
-    grad_rho_norm_sq = jnp.sum((2*grad_rho)**2, axis=-1)
+    grad_rho_norm_sq = jnp.sum(grad_rho**2, axis=-1)
 
     log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm_sq, a_min = clip_cte))/2
 
@@ -29,11 +29,11 @@ def b88(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
     assert not jnp.isnan(log_x_sigma).any() and not jnp.isinf(log_x_sigma).any()
 
     x_sigma = 2**log_x_sigma
-    return jnp.where(jnp.greater(log_rho,jnp.log2(clip_cte)), 
-                log_x_sigma - jnp.log2(1 + 6*beta*x_sigma*jnp.arcsinh(2**log_x_sigma)) + jnp.log2(beta), 
-                0).sum(axis = 0)/2.
-
-B88 = Functional(b88)
+    
+    # Eq 2.78 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    return jnp.where(jnp.greater(2**log_rho,clip_cte), 2**(
+                4*log_rho/3 + 2*log_x_sigma - jnp.log2(1 + 6*beta*x_sigma*jnp.arcsinh(x_sigma)) + jnp.log2(beta)), 
+                0).sum(axis = 0)
 
 
 def vwn(rho: Array, clip_cte: float = 1e-27):
@@ -45,15 +45,21 @@ def vwn(rho: Array, clip_cte: float = 1e-27):
 
     """
 
-    A =  0.0621814
-    b = 3.72744
-    c = 12.9352
-    x0 = -0.10498
+    A = jnp.array([[0.0621814],
+                    [0.0621814/2]])
+    b = jnp.array([[3.72744], 
+                    [7.06042]])
+    c = jnp.array([[12.9352],
+                   [18.0578]])
+    x0 = jnp.array([[-0.10498], 
+                    [-0.325]])
 
-    log_rho = jnp.log2(jnp.clip(2*rho, a_min = clip_cte))
+    rho = jnp.clip(rho, a_min = clip_cte)
+    log_rho = jnp.log2(rho.sum(axis = 0))
     assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
-
-    log_x = jnp.log2((3/(4*jnp.pi))**(1/3))/2 - jnp.log2(jnp.clip(rho, a_min = clip_cte).sum(axis = 0))/6.
+    log_rs = jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
+    log_x = log_rs /2
+    rs = 2**log_rs
     x = 2**log_x
 
     X = 2**(2*log_x) + 2**(log_x+ jnp.log2(b)) + c
@@ -62,10 +68,29 @@ def vwn(rho: Array, clip_cte: float = 1e-27):
 
     Q = jnp.sqrt(4*c-b**2)
 
-    return A/2 * ( 2*jnp.log(x)-jnp.log(X) + 2*b/Q * jnp.arctan(Q/(2*x+b)) - b*x0/X0 *
+    e_PF = A/2 * ( 2*jnp.log(x)-jnp.log(X) + 2*b/Q * jnp.arctan(Q/(2*x+b)) - b*x0/X0 *
                 (jnp.log((x-x0)**2/X) + 2*(2*x0+b)/Q * jnp.arctan(Q/(2*x+b))) )
+    
+    # Spin polarization using eq 2.75 from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    
+    e_tilde_PF = jnp.einsum('sr,r->sr', e_PF, rho.sum(axis = 0))
 
-VWN = Functional(vwn)
+    zeta = jnp.where(rho.sum(axis = 0) > 0, (rho[0] - rho[1]) / (rho.sum(axis = 0)), 0)
+    def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
+
+    A_ = 0.016887
+    alpha1 = 0.11125
+    beta1 = 10.357
+    beta2 = 3.6231
+    beta3 = 0.88026
+    beta4 = 0.49671
+    alphac = 2*A_*(1+2*alpha1*rs)*jnp.log(1+(1/(2*A_))/(beta1*jnp.sqrt(rs) + beta2*rs + beta3*rs**(3/2) + beta4*rs**2)) #, 2*A_)
+    assert not jnp.isnan(alphac).any() and not jnp.isinf(alphac).any()
+
+    e_tilde = e_tilde_PF[0] + alphac*(fzeta(zeta)/(grad(grad(fzeta))(0.)))*(1-zeta**4) + (e_tilde_PF[1] - e_tilde_PF[0])*fzeta(zeta)*zeta**4
+    assert not jnp.isnan(e_tilde).any() and not jnp.isinf(e_tilde).any()
+
+    return jnp.where(rho.sum(axis = 0)>clip_cte, e_tilde/rho.sum(axis = 0), 0.)
 
 
 def lyp(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
@@ -116,7 +141,6 @@ def lyp(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     return -a * gamma/(1+d*rhom1_3)* (rho.sum(axis=0) + jnp.where(exp_factor > clip_cte, 2*b*rhom5_3*
         (CF*2**(2/3)*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18)* exp_factor, 0))
 
-LYP = Functional(lyp)
 
 def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_cte: float = 1e-27):
 
@@ -129,7 +153,16 @@ def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_c
     grad_rho = molecule.grad_density()
     grad2rho = molecule.lapl_density()
 
-    lda_e = -2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3) * (rho**(4/3)).sum(axis = 0)
+    # Eq 2.72 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    rho = jnp.clip(rho, a_min = clip_cte)
+    lda_es = -3./4. * (jnp.array([[3.],[6.]]) / jnp.pi) ** (1 / 3) * (rho.sum(axis = 0))**(4/3)
+    zeta = (rho[0] - rho[1])/ rho.sum(axis = 0)
+    def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
+
+    # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    lda_e = lda_es[0] + (lda_es[1]-lda_es[0])*fzeta(zeta)
+    assert not jnp.isnan(lda_e).any() and not jnp.isinf(lda_e).any()
+
     b88_e = b88(rho, grad_rho, clip_cte)
     assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
     vwn_e = vwn(rho, clip_cte)
@@ -144,7 +177,7 @@ def b3lyp_combine(ehf, features):
     ehf = jnp.sum(ehf, axis = (0,1))
     return [jnp.concatenate([features, jnp.expand_dims(ehf, axis = 1)], axis=1)]
 
-def b3lyp(features):
+def b3lyp(instance, features):
     r"""
     The dot product between the features and the weights
     """

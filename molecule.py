@@ -406,8 +406,10 @@ def features_w_hf(molecule: Molecule,
 
     features = features_fn(molecule, functional_type, clip_cte)
     ehf = stop_gradient(molecule.HF_energy_density(omegas))
+    assert not jnp.isnan(ehf).any() and not jnp.isinf(ehf).any()
 
     features = combine_features_hf(ehf, *features)
+    assert not jnp.isnan(features[0]).any() and not jnp.isinf(features[0]).any()
 
     return features
 

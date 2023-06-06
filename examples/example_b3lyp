@@ -14,6 +14,7 @@ grids.build()
 
 mf = dft.UKS(mol)
 mf.grids = grids
+mf.xc = 'b3lyp'
 ground_truth_energy = mf.kernel()
 
 # Then we compute quite a few properties which we pack into a class called Molecule
