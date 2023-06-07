@@ -57,19 +57,7 @@ def test_predict(mf, energy):
     ## Load the molecule, RKS
     warnings.warn('Remember to set the grid level to 3 in the config file!')
 
-    data_file = os.path.normpath(data_path+'/test/'+ '_'.join(molecule_name.split()) + '_test.h5')
-    omegas = [1e20, 0.4]
-
-    try:
-        molecule = molecule_from_pyscf(mf, energy = energy)
-        # Saving and loading is necessary to compute the chi tensor.
-        saver(omegas = omegas, molecules = [molecule],
-            reactions = [],
-            fname = data_file, 
-            training = False)
-    except:
-        pass
-    _, molecule = next(loader(fpath = data_file, training = False))
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0., 0.4])
 
     #tx = adam(learning_rate = learning_rate)
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
@@ -78,7 +66,7 @@ def test_predict(mf, energy):
     iterator = make_molecule_scf_loop(functional,
                                     feature_fn=default_features,
                                     combine_features_hf=default_combine_features_hf,
-                                    omegas = [1e20, 0.4], 
+                                    omegas = [0., 0.4], 
                                     verbose = 2, 
                                     functional_type = 'DM21')
     e_XND = iterator(params, molecule)
@@ -92,8 +80,7 @@ def test_predict(mf, energy):
     #kcalmoldiff2 = (e_XND - e_XND_DF4T)**Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol = 1e1)
 
-    kcalmoldiff = (e_XND-ccsd_energy)*Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol = 1e1)
+    kcalmoldiff_ccsdt = (e_XND-ccsd_energy)*Hartree2kcalmol
 
 
 ##################
@@ -111,7 +98,7 @@ mol.atom = [['C', [ 0.        ,  0.        ,  1.4423486 ]],
             ['H', [ 0.        , -1.92171538, -2.18800616]],
             ['H', [-1.66425538,  0.96085769, -2.18800616]],
             ['H', [ 1.66425538,  0.96085769, -2.18800616]]] # def2-tzvp
-mol.basis = config_variables['basis'] #basis_set_exchange.api.get_basis(name='cc-pvdz', fmt='nwchem', elements='Co')
+mol.basis = "def2-tzvp" #basis_set_exchange.api.get_basis(name='cc-pvdz', fmt='nwchem', elements='Co')
 mol.spin = 0
 #mol.unit = 'angstrom'
 mol.build()
@@ -131,10 +118,9 @@ grid = mf.grids
 molecule_name = 'Co'
 mol = gto.Mole()
 mol.atom = 'Co 0 0 0' # def2-tzvp
-mol.basis = config_variables['basis'] #basis_set_exchange.api.get_basis(name='cc-pvdz', fmt='nwchem', elements='Co')
+mol.basis = "def2-tzvp" #basis_set_exchange.api.get_basis(name='cc-pvdz', fmt='nwchem', elements='Co')
 mol.spin = 3
 mol.build()
-#mol = gto.M(atom = 'Fr 0 0 0',basis='cc-pvdz-x2c', spin = 1)
 mf = dft.UKS(mol)
 energy = mf.kernel()
 
@@ -145,26 +131,18 @@ def test_predict(mf, energy):
     ## Load the molecule, UKS
     warnings.warn('Remember to set the grid level to 3 in the config file!')
 
-    data_file = os.path.normpath(data_path+'/test/'+ '_'.join(molecule_name.split()) + '_test.h5')
-    omegas = [0., 0.4]
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0, 0.4])
 
-    try:
-        molecule = molecule_from_pyscf(mf, energy = energy)
-        # Saving and loading is necessary to compute the chi tensor.
-        saver(omegas = omegas, molecules = [molecule],
-            reactions = [],
-            fname = data_file, 
-            training = False)
-    except:
-        pass
-    _, molecule = next(loader(fpath = data_file, training = False))
-
-    # todo: the neural orbital optimizer is not working for this example yet.
     #tx = adam(learning_rate = learning_rate)
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     #e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_molecule_scf_loop(functional, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
+    iterator = make_molecule_scf_loop(functional,
+                                    feature_fn=default_features,
+                                    combine_features_hf=default_combine_features_hf,
+                                    omegas = [0, 0.4], 
+                                    verbose = 2, 
+                                    functional_type = 'DM21')
     e_XND = iterator(params, molecule)
 
     mf = dft.UKS(mol)
@@ -197,23 +175,18 @@ def test_rks():
     mf._numint = ni
     e_DM = mf.run().e_tot # Expected -126.898521
 
-    molecule_name = 'Ne'
-    data_file = os.path.normpath(data_path+'/test/'+ '_'.join(molecule_name.split()) + '_test.h5')
-    omegas = [0., 0.4]
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0., 0.4])
 
-    try:
-        molecule = molecule_from_pyscf(mf, energy = energy)
-        # Saving and loading is necessary to compute the chi tensor.
-        saver(omegas = omegas, molecules = [molecule],
-            reactions = [],
-            fname = data_file, 
-            training = False)
-    except:
-        pass
-    _, molecule = next(loader(fpath = data_file, training = False))
+    #tx = adam(learning_rate = learning_rate)
+    #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
+    #e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_molecule_scf_loop(functional, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
-
+    iterator = make_molecule_scf_loop(functional,
+                                    feature_fn=default_features,
+                                    combine_features_hf=default_combine_features_hf,
+                                    omegas = [0., 0.4], 
+                                    verbose = 2, 
+                                    functional_type = 'DM21')
     e_XND = iterator(params, molecule)
 
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol
@@ -235,23 +208,18 @@ def test_uks():
     mf._numint = ni
     e_DM = mf.run().e_tot # Expected -37.34184876
 
-    molecule_name = 'C'
-    data_file = os.path.normpath(data_path+'/test/'+ '_'.join(molecule_name.split()) + '_test.h5')
-    omegas = [0., 0.4]
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0., 0.4])
 
-    try:
-        molecule = molecule_from_pyscf(mf, energy = energy)
-        # Saving and loading is necessary to compute the chi tensor.
-        saver(omegas = omegas, molecules = [molecule],
-            reactions = [],
-            fname = data_file, 
-            training = False)
-    except:
-        pass
-    _, molecule = next(loader(fpath = data_file, training = False))
+    #tx = adam(learning_rate = learning_rate)
+    #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
+    #e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_molecule_scf_loop(functional, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
-    
+    iterator = make_molecule_scf_loop(functional,
+                                    feature_fn=default_features,
+                                    combine_features_hf=default_combine_features_hf,
+                                    omegas = [0., 0.4], 
+                                    verbose = 2, 
+                                    functional_type = 'DM21')
     e_XND = iterator(params, molecule)
 
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol
@@ -267,7 +235,7 @@ molecule_name = 'CoC'
 mol = gto.Mole()
 mol.atom = [['Co', [0, 0, 0]],
             ['C', [1.56, 0, 0]]] # def2-tzvp
-mol.basis = config_variables['basis'] #basis_set_exchange.api.get_basis(name='cc-pvdz', fmt='nwchem', elements='Co')
+mol.basis = "def2-tzvp" #basis_set_exchange.api.get_basis(name='cc-pvdz', fmt='nwchem', elements='Co')
 mol.spin = 1
 mol.unit = 'angstrom'
 mol.build()

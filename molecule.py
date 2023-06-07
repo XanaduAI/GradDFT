@@ -671,11 +671,16 @@ def nonXC(
     Scalar
         The non-XC energy of the DFT functional.
     """
-
+    rdm1 = symmetrize_rdm1(rdm1)
     h1e_energy = one_body_energy(rdm1, h1e, precision)
     coulomb2e_energy = two_body_energy(rdm1, rep_tensor, precision)
 
     return nuclear_repulsion + h1e_energy + coulomb2e_energy
+
+def symmetrize_rdm1(rdm1):
+    dm = rdm1.sum(axis = 0)
+    rdm1 = jnp.stack([dm, dm], axis = 0)/2.
+    return rdm1
 
 def two_body_energy(rdm1, rep_tensor, precision = Precision.HIGHEST):
     v_coul = 2 * jnp.einsum("pqrt,srt->spq", rep_tensor, rdm1, precision=precision) # The 2 is to compensate for the /2 in the dm definition

@@ -7,7 +7,7 @@ from jax.profiler import annotate_function
 
 from utils import Scalar, Array, PyTree
 from functional import Functional
-from molecule import Molecule, coulomb_potential, default_combine_features_hf, default_features, features_w_hf
+from molecule import Molecule, coulomb_potential, default_combine_features_hf, default_features, features_w_hf, symmetrize_rdm1
 
 def molecule_predictor(
     functional: Functional,
@@ -153,8 +153,7 @@ def molecule_predictor(
             fock += vxc_hf+vxc_hf.transpose(0,2,1) # Sum over omega
 
         if functional.is_xc:
-            dm = molecule.rdm1.sum(axis = 0)
-            rdm1 = jnp.stack([dm, dm], axis = 0)/2.
+            rdm1 = symmetrize_rdm1(molecule.rdm1)
             fock += coulomb_potential(rdm1, molecule.rep_tensor)
             if int(molecule.spin) == 0: fock = fock.sum(axis = 0)/2.
             fock = fock + jnp.stack([molecule.h1e, molecule.h1e], axis=0)
