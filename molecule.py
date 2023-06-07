@@ -150,7 +150,7 @@ class Molecule:
         return HF_density_grad_2_Fock(self, functional, params, chi, self.ao, ehf, *features, combine_features_hf = combine_features_hf, **kwargs)
 
     def nonXC(self, *args, **kwargs):
-        return nonXC(self.rdm1, self.h1e, self.vj, self.nuclear_repulsion, *args, **kwargs)
+        return nonXC(self.rdm1, self.h1e, self.rep_tensor, self.nuclear_repulsion, *args, **kwargs)
     
     def make_rdm1(self):
         return make_rdm1(self.mo_coeff, self.mo_occ)
@@ -640,7 +640,7 @@ def eig(h,x):
 ######################################################################
 
 def nonXC(
-    rdm1: Array, h1e: Array, v_coul: Array, nuclear_repulsion: Scalar, precision = Precision.HIGHEST
+    rdm1: Array, h1e: Array, rep_tensor: Array, nuclear_repulsion: Scalar, precision = Precision.HIGHEST
 ) -> Scalar:
 
     r"""
@@ -673,11 +673,12 @@ def nonXC(
     """
 
     h1e_energy = one_body_energy(rdm1, h1e, precision)
-    coulomb2e_energy = two_body_energy(rdm1, v_coul, precision)
+    coulomb2e_energy = two_body_energy(rdm1, rep_tensor, precision)
 
     return nuclear_repulsion + h1e_energy + coulomb2e_energy
 
-def two_body_energy(rdm1, v_coul, precision = Precision.HIGHEST):
+def two_body_energy(rdm1, rep_tensor, precision = Precision.HIGHEST):
+    v_coul = 2 * jnp.einsum("pqrt,srt->spq", rep_tensor, rdm1, precision=precision) # The 2 is to compensate for the /2 in the dm definition
     coulomb2e_energy = jnp.einsum('sji,sij->', rdm1, v_coul, precision=precision)/2.
     return coulomb2e_energy
 
