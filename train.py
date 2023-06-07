@@ -149,13 +149,16 @@ def molecule_predictor(
             ehf = molecule.HF_energy_density(omegas)
             vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, *features, 
                                                     combine_features_hf = combine_features_hf)
-            fock += vxc_hf.sum(axis=0) # Sum over omega
+            vxc_hf = vxc_hf.sum(axis=0)
+            fock += vxc_hf+vxc_hf.transpose(0,2,1) # Sum over omega
 
         if functional.is_xc:
-            energy += molecule.nonXC()
-            fock += coulomb_potential(molecule.rdm1, molecule.rep_tensor) 
-            fock += jnp.stack([molecule.h1e, molecule.h1e], axis=0)
+            dm = molecule.rdm1.sum(axis = 0)
+            rdm1 = jnp.stack([dm, dm], axis = 0)/2.
+            fock += coulomb_potential(rdm1, molecule.rep_tensor)
+            if int(molecule.spin) == 0: fock = fock.sum(axis = 0)/2.
+            fock = fock + jnp.stack([molecule.h1e, molecule.h1e], axis=0)
 
         return energy, fock
-        
+
     return predict

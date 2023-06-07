@@ -551,4 +551,6 @@ def generate_chi_tensor(rdm1, ao, grid_coords, mol, omegas, chunk_size = 1024, p
             chi_omega.append(chi_chunk)
         chi_omega = jnp.concatenate(chi_omega, axis = 0)
         chi.append(chi_omega)
-    return jnp.stack(chi, axis = 1)
+    if chi:
+        return jnp.stack(chi, axis = 1)
+    else: return jnp.array(chi)

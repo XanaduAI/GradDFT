@@ -4,7 +4,7 @@ from functools import partial
 
 from jax import value_and_grad
 from jax import numpy as jnp
-from jax.lax import Precision
+from jax.lax import Precision, stop_gradient
 from jax.nn import sigmoid, gelu, elu
 from jax.nn.initializers import zeros, he_normal
 from jax.random import normal, PRNGKey
@@ -115,7 +115,7 @@ class Functional(nn.Module):
         energy = self.apply_and_integrate(params, molecule, *args)
 
         if self.is_xc:
-            energy += molecule.nonXC()
+            energy += stop_gradient(molecule.nonXC())
 
         return energy
 

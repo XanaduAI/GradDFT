@@ -7,7 +7,7 @@ from functional import Functional
 from jax.lax import Precision, stop_gradient
 
 
-def b88(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
+def b88_x_e(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
     r"""
     B88 exchange functional
     See eq 8 in https://journals.aps.org/pra/pdf/10.1103/PhysRevA.38.3098
@@ -35,8 +35,10 @@ def b88(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
                 4*log_rho/3 + 2*log_x_sigma - jnp.log2(1 + 6*beta*x_sigma*jnp.arcsinh(x_sigma)) + jnp.log2(beta)), 
                 0).sum(axis = 0)
 
+def b88(instance, x): return jnp.einsum('ri->r',x)
+B88 = Functional(b88)
 
-def vwn(rho: Array, clip_cte: float = 1e-27):
+def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
 
     r"""
     VWN correlation functional
@@ -50,7 +52,7 @@ def vwn(rho: Array, clip_cte: float = 1e-27):
     b = jnp.array([[3.72744], 
                     [7.06042]])
     c = jnp.array([[12.9352],
-                   [18.0578]])
+                    [18.0578]])
     x0 = jnp.array([[-0.10498], 
                     [-0.325]])
 
@@ -92,8 +94,9 @@ def vwn(rho: Array, clip_cte: float = 1e-27):
 
     return jnp.where(rho.sum(axis = 0)>clip_cte, e_tilde/rho.sum(axis = 0), 0.)
 
+VWN = Functional(vwn_c_e)
 
-def lyp(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
+def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
 
     r"""
     LYP correlation functional
@@ -141,6 +144,21 @@ def lyp(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     return -a * gamma/(1+d*rhom1_3)* (rho.sum(axis=0) + jnp.where(exp_factor > clip_cte, 2*b*rhom5_3*
         (CF*2**(2/3)*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18)* exp_factor, 0))
 
+LYP = Functional(lyp_c_e)
+
+def lsda_x_e(rho, clip_cte):
+    # Eq 2.72 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    rho = jnp.clip(rho, a_min = clip_cte)
+    lda_es = -3./4. * (jnp.array([[3.],[6.]]) / jnp.pi) ** (1 / 3) * (rho.sum(axis = 0))**(4/3)
+    zeta = (rho[0] - rho[1])/ rho.sum(axis = 0)
+    def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
+    # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    lda_e = lda_es[0] + (lda_es[1]-lda_es[0])*fzeta(zeta)
+
+    # LDA version
+    #lda_e = -3./4. * (3. / jnp.pi) ** (1 / 3) * (rho.sum(axis = 0))**(4/3)
+
+    return lda_e
 
 def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_cte: float = 1e-27):
 
@@ -153,24 +171,27 @@ def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_c
     grad_rho = molecule.grad_density()
     grad2rho = molecule.lapl_density()
 
-    # Eq 2.72 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
-    rho = jnp.clip(rho, a_min = clip_cte)
-    lda_es = -3./4. * (jnp.array([[3.],[6.]]) / jnp.pi) ** (1 / 3) * (rho.sum(axis = 0))**(4/3)
-    zeta = (rho[0] - rho[1])/ rho.sum(axis = 0)
-    def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
-
-    # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
-    lda_e = lda_es[0] + (lda_es[1]-lda_es[0])*fzeta(zeta)
+    lda_e = lsda_x_e(rho, clip_cte)
     assert not jnp.isnan(lda_e).any() and not jnp.isinf(lda_e).any()
-
-    b88_e = b88(rho, grad_rho, clip_cte)
+    b88_e = b88_x_e(rho, grad_rho, clip_cte)
     assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
-    vwn_e = vwn(rho, clip_cte)
+    vwn_e = vwn_c_e(rho, clip_cte)
     assert not jnp.isnan(vwn_e).any() and not jnp.isinf(vwn_e).any()
-    lyp_e = lyp(rho, grad_rho, grad2rho, clip_cte)
+    lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
     assert not jnp.isnan(lyp_e).any() and not jnp.isinf(lyp_e).any()
 
     return [jnp.stack((lda_e, b88_e, vwn_e, lyp_e), axis = 1)]
+
+def b88_features(molecule: Molecule, functional_type: str = 'GGA', clip_cte: float = 1e-27):
+    rho = molecule.density()
+    grad_rho = molecule.grad_density()
+    b88_e = b88_x_e(rho, grad_rho, clip_cte)
+    lda_e = lsda_x_e(rho, clip_cte)
+    assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
+    return [jnp.stack((lda_e, b88_e), axis = 1)]
+
+def b88_combine(features):
+    return [features]
 
 def b3lyp_combine(ehf, features):
 

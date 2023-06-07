@@ -3,7 +3,7 @@ from optax import adam
 from evaluate import make_molecule_scf_loop
 
 from interface.pyscf import molecule_from_pyscf
-from molecule import default_features
+from molecule import default_combine_features_hf, default_features
 from functional import NeuralFunctional, canonicalize_inputs
 from jax.nn import gelu
 
@@ -69,5 +69,5 @@ tx = train_state.tx
 opt_state = tx.init(params)
 
 # Create the scf iterator
-scf_iterator = make_molecule_scf_loop(functional, feature_fn=default_features, verbose = 2)
+scf_iterator = make_molecule_scf_loop(functional, feature_fn=default_features, combine_features_hf = default_combine_features_hf, verbose = 2)
 predicted_e = scf_iterator(params, molecule)

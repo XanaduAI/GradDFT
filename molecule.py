@@ -199,7 +199,7 @@ def orbital_grad(mo_coeff, mo_occ, F):
 
 def default_molecule_features(
         molecule: Molecule, 
-        rho_clip_cte: Optional[float] = 4.5e-11,
+        rho_clip_cte: Optional[float] = 1e-27,
         *_, **__
     ):
     r"""
