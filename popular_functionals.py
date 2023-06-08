@@ -122,14 +122,11 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
 
     grad_rho_norm_sq = jnp.sum(grad_rho**2, axis=-1)
 
-    log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
-    log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm_sq, a_min = clip_cte))/2
-
-    t = 2**(2*log_grad_rho_norm-log_rho - 3) - grad2rho/8.
+    t = (jnp.where(rho > clip_cte, grad_rho_norm_sq/rho, 0) - grad2rho)/8.
     assert not jnp.isnan(t).any() and not jnp.isinf(t).any()
 
     frac = jnp.where(rho.sum(axis=0) > clip_cte, 
-                    2**(jnp.log2((rho**2).sum(axis =0)) - 2*jnp.log2(rho.sum(axis =0))), 1)
+                    ((rho**2).sum(axis =0))/(rho.sum(axis =0))**2, 1)
     gamma = 2 * (1-frac)
 
     rhos_ts = rho.sum(axis = 0) * t.sum(axis = 0)
