@@ -16,6 +16,9 @@ def b88_x_e(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
 
     beta = 0.0042
 
+    rho = jnp.clip(rho, a_min = clip_cte)
+    zeta = (rho[0] - rho[1])/ rho.sum(axis = 0)
+
     # LDA preprocessing data: Note that we duplicate the density to sum and divide in the last eq.
     log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
 
@@ -31,12 +34,15 @@ def b88_x_e(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
     x_sigma = 2**log_x_sigma
     
     # Eq 2.78 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
-    return jnp.where(jnp.greater(2**log_rho,clip_cte), 2**(
-                4*log_rho/3 + 2*log_x_sigma - jnp.log2(1 + 6*beta*x_sigma*jnp.arcsinh(x_sigma)) + jnp.log2(beta)), 
-                0).sum(axis = 0)
+    b88_e = - (beta*2**(4*log_rho/3 + 2*log_x_sigma - 
+                jnp.log2(1 + 6*beta*x_sigma*jnp.arcsinh(x_sigma)))).sum(axis = 0)
 
-def b88(instance, x): return jnp.einsum('ri->r',x)
-B88 = Functional(b88)
+    #def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
+    # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    #b88_e = b88_es[0] + (b88_es[1]-b88_es[0])*fzeta(zeta)
+
+    return b88_e
+
 
 def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
 
@@ -156,9 +162,6 @@ def lsda_x_e(rho, clip_cte):
     # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
     lda_e = lda_es[0] + (lda_es[1]-lda_es[0])*fzeta(zeta)
 
-    # LDA version
-    #lda_e = -3./4. * (3. / jnp.pi) ** (1 / 3) * (rho.sum(axis = 0))**(4/3)
-
     return lda_e
 
 def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_cte: float = 1e-27):
@@ -191,7 +194,15 @@ def b88_features(molecule: Molecule, functional_type: str = 'GGA', clip_cte: flo
     assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
     return [jnp.stack((lda_e, b88_e), axis = 1)]
 
+def lsda_features(molecule: Molecule, functional_type: str = 'LDA', clip_cte: float = 1e-27):
+    rho = molecule.density()
+    lda_e = lsda_x_e(rho, clip_cte)
+    return [jnp.expand_dims(lda_e, axis = 1)]
+
 def b88_combine(features):
+    return [features]
+
+def lsda_combine(features):
     return [features]
 
 def b3lyp_combine(ehf, features):
@@ -209,7 +220,10 @@ def b3lyp(instance, features):
     weights = jnp.array([1-a0, ax, ac, 1-ac, a0])
 
     return jnp.einsum('rf,f->r',features, weights)
-
+def b88(instance, x): return jnp.einsum('ri->r',x)
+def lsda(instance, x): return jnp.einsum('ri->r',x)
+B88 = Functional(b88)
+LSDA = Functional(lsda)
 B3LYP = Functional(b3lyp)
 
 

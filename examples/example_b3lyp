@@ -1,6 +1,6 @@
 from flax.core import freeze
 from jax import numpy as jnp
-from popular_functionals import B3LYP, B88, b3lyp_combine, b3lyp_exhf_features, b88_features, b88_combine
+from popular_functionals import B3LYP, B88, LSDA, b3lyp_combine, b3lyp_exhf_features, b88_features, b88_combine, lsda_combine, lsda_features
 
 from interface.pyscf import molecule_from_pyscf
 
@@ -21,29 +21,47 @@ grids.build()
 
 params = freeze({'params': {}})
 
+#### LSDA ####
+
 mf = dft.UKS(mol)
 mf.grids = grids
-mf.xc = 'B88,VWN*.0'
+mf.xc = 'LDA'
+ground_truth_energy = mf.kernel()
+
+molecule = molecule_from_pyscf(mf, omegas = [])
+predict_molecule = molecule_predictor(LSDA, lsda_features, lsda_combine, omegas = [], functional_type = 'GGA')
+predicted_e, fock = predict_molecule(params, molecule)
+
+kcalmoldiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
+assert jnp.allclose(kcalmoldiff, 0, atol = 1e1)
+
+##### B88 ####
+
+mf = dft.UKS(mol)
+mf.grids = grids
+mf.xc = 'B88'
 ground_truth_energy = mf.kernel()
 
 molecule = molecule_from_pyscf(mf, omegas = [])
 predict_molecule = molecule_predictor(B88, b88_features, b88_combine, omegas = [], functional_type = 'GGA')
 predicted_e, fock = predict_molecule(params, molecule)
 
+kcalmoldiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
+assert jnp.allclose(kcalmoldiff, 0, atol = 1e1)
+
+#### B3LYP ####
 
 mf = dft.UKS(mol)
 mf.grids = grids
 mf.xc = 'b3lyp'
 ground_truth_energy = mf.kernel()
+
 molecule = molecule_from_pyscf(mf, omegas = [0])
 predict_molecule = molecule_predictor(B3LYP, b3lyp_exhf_features, b3lyp_combine, omegas = [0], functional_type = 'GGA')
-
-
 predicted_e, fock = predict_molecule(params, molecule)
 
-diff = (predicted_e-ground_truth_energy)*Hartree2kcalmol
-
-assert diff < 1e1
+kcalmoldiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
+assert jnp.allclose(kcalmoldiff, 0, atol = 1e1)
 
 
 ### An alternative way of generating the params (which is an empty dict)
