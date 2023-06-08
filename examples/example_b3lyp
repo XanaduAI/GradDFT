@@ -6,6 +6,8 @@ from interface.pyscf import molecule_from_pyscf
 
 # again, this only works on startup!
 from jax import config
+
+from utils.types import Hartree2kcalmol
 config.update("jax_enable_x64", True)
 
 # First we define a molecule:
@@ -24,17 +26,6 @@ mf.grids = grids
 mf.xc = 'B88,VWN*.0'
 ground_truth_energy = mf.kernel()
 
-rdm1 = mf.make_rdm1()
-vj = 2 * mf.get_j(mf.mol, rdm1, hermi = 1)
-coulomb2e_energy = jnp.einsum("sij,sji->", rdm1, vj)/2
-h1e = mf.get_hcore(mf.mol)
-h1e_energy = jnp.einsum("sij,ji->", rdm1, h1e)
-e2 = coulomb2e_energy + h1e_energy
-
-e_e = mf.energy_elec()
-e_n = mf.energy_nuc()
-e2_p = e_e + e_n
-
 molecule = molecule_from_pyscf(mf, omegas = [])
 predict_molecule = molecule_predictor(B88, b88_features, b88_combine, omegas = [], functional_type = 'GGA')
 predicted_e, fock = predict_molecule(params, molecule)
@@ -44,11 +35,15 @@ mf = dft.UKS(mol)
 mf.grids = grids
 mf.xc = 'b3lyp'
 ground_truth_energy = mf.kernel()
-molecule = molecule_from_pyscf(mf, omegas = [])
+molecule = molecule_from_pyscf(mf, omegas = [0])
 predict_molecule = molecule_predictor(B3LYP, b3lyp_exhf_features, b3lyp_combine, omegas = [0], functional_type = 'GGA')
 
 
 predicted_e, fock = predict_molecule(params, molecule)
+
+diff = (predicted_e-ground_truth_energy)*Hartree2kcalmol
+
+assert diff < 1e1
 
 
 ### An alternative way of generating the params (which is an empty dict)
