@@ -199,7 +199,7 @@ def orbital_grad(mo_coeff, mo_occ, F):
 
 def default_molecule_features(
         molecule: Molecule, 
-        rho_clip_cte: Optional[float] = 1e-27,
+        clip_cte: Optional[float] = 1e-27,
         *_, **__
     ):
     r"""
@@ -209,8 +209,8 @@ def default_molecule_features(
     ----------
     molecule:
         class Molecule
-    rho_clip_cte: Optional[float]
-        default 4.5e-11 (chosen carefully, take care if decrease)
+    clip_cte: Optional[float]
+        default 1e-27 (chosen carefully, take care if decrease)
     
     Returns
     -------
@@ -219,7 +219,7 @@ def default_molecule_features(
 
     rho = molecule.density()
     # We need to clip rho away from 0 to obtain good gradients.
-    rho = jnp.maximum(abs(rho) , rho_clip_cte)*jnp.sign(rho)
+    rho = jnp.maximum(abs(rho) , clip_cte)*jnp.sign(rho)
     grad_rho = molecule.grad_density()
     tau = molecule.kinetic_density()
 

@@ -56,11 +56,11 @@ def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
     x0 = jnp.array([[-0.10498], 
                     [-0.325]])
 
-    rho = jnp.clip(rho, a_min = clip_cte)
-    log_rho = jnp.log2(rho.sum(axis = 0))
+    rho = jnp.where(rho > clip_cte, rho, 0.)
+    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
     assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
     log_rs = jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
-    log_x = log_rs /2
+    log_x = log_rs / 2
     rs = 2**log_rs
     x = 2**log_x
 
@@ -70,6 +70,7 @@ def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
 
     Q = jnp.sqrt(4*c-b**2)
 
+    # check eq with https://github.com/ElectronicStructureLibrary/libxc/blob/master/maple/vwn.mpl
     e_PF = A/2 * ( 2*jnp.log(x)-jnp.log(X) + 2*b/Q * jnp.arctan(Q/(2*x+b)) - b*x0/X0 *
                 (jnp.log((x-x0)**2/X) + 2*(2*x0+b)/Q * jnp.arctan(Q/(2*x+b))) )
     
@@ -77,7 +78,7 @@ def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
     
     e_tilde_PF = jnp.einsum('sr,r->sr', e_PF, rho.sum(axis = 0))
 
-    zeta = jnp.where(rho.sum(axis = 0) > 0, (rho[0] - rho[1]) / (rho.sum(axis = 0)), 0)
+    zeta = jnp.where(rho.sum(axis = 0) > clip_cte, (rho[0] - rho[1]) / (rho.sum(axis = 0)), 0)
     def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
 
     A_ = 0.016887
@@ -92,7 +93,7 @@ def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
     e_tilde = e_tilde_PF[0] + alphac*(fzeta(zeta)/(grad(grad(fzeta))(0.)))*(1-zeta**4) + (e_tilde_PF[1] - e_tilde_PF[0])*fzeta(zeta)*zeta**4
     assert not jnp.isnan(e_tilde).any() and not jnp.isinf(e_tilde).any()
 
-    return jnp.where(rho.sum(axis = 0)>clip_cte, e_tilde/rho.sum(axis = 0), 0.)
+    return e_tilde # We have to integrate e_tilde = e * n as per eq 2.1 in original article
 
 VWN = Functional(vwn_c_e)
 

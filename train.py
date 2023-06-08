@@ -145,7 +145,7 @@ def molecule_predictor(
 
         # HF Potential
         if len(omegas) > 0:
-            features = features_fn(molecule, rho_clip_cte = 4.5e-11, *args, **kwargs)
+            features = features_fn(molecule, clip_cte = 1e-27, *args, **kwargs)
             ehf = molecule.HF_energy_density(omegas)
             vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, *features, 
                                                     combine_features_hf = combine_features_hf)
