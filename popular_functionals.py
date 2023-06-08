@@ -117,39 +117,37 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     d = 0.349
     CF = (3/10)*(3*jnp.pi**2)**(2/3)
 
+    rho = jnp.where(rho > clip_cte, rho, 0)
+    grad_rho = jnp.where(abs(grad_rho) > clip_cte, grad_rho, 0)
+
     grad_rho_norm_sq = jnp.sum(grad_rho**2, axis=-1)
 
     log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
     log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm_sq, a_min = clip_cte))/2
 
-    t = 1/8 * ( 2**(2*log_grad_rho_norm-log_rho) - grad2rho)
+    t = 2**(2*log_grad_rho_norm-log_rho - 3) - grad2rho/8.
     assert not jnp.isnan(t).any() and not jnp.isinf(t).any()
 
-    frac = jnp.where(rho.sum(axis=0) > clip_cte, 2**(jnp.log2((rho**2).sum(axis =0)) - 2*jnp.log2(rho.sum(axis =0))), 1)
+    frac = jnp.where(rho.sum(axis=0) > clip_cte, 
+                    2**(jnp.log2((rho**2).sum(axis =0)) - 2*jnp.log2(rho.sum(axis =0))), 1)
     gamma = 2 * (1-frac)
 
-    rhos_ts = jnp.where(jnp.logical_and(t.sum(axis=0) > clip_cte, rho.sum(axis=0) > clip_cte), 
-                    2**(jnp.log2(rho.sum(axis=0))+jnp.log2(t.sum(axis=0))), 0)
-
+    rhos_ts = rho.sum(axis = 0) * t.sum(axis = 0)
     assert not jnp.isnan(rhos_ts).any() and not jnp.isinf(rhos_ts).any()
 
-    rho_t = jnp.where(jnp.logical_and(rho.sum(axis=0) > clip_cte, t.sum(axis=0) > clip_cte), 
-                    (2**(jnp.log2(rho)+jnp.log2(t))).sum(axis=0), 0)
-
+    rho_t = (rho*t).sum(axis = 0)
     assert not jnp.isnan(rho_t).any() and not jnp.isinf(rho_t).any()
 
-    rho_grad2rho = jnp.where(jnp.logical_and(rho.sum(axis=0) > clip_cte, grad2rho.sum(axis=0) > clip_cte), 
-                    (2**(jnp.log2(rho)+jnp.log2(grad2rho))).sum(axis=0), 0)
-
+    rho_grad2rho = (rho*grad2rho).sum(axis = 0)
     assert not jnp.isnan(rho_grad2rho).any() and not jnp.isinf(rho_grad2rho).any()
 
-    exp_factor = jnp.where(rho.sum(axis=0)**(-1/3) > clip_cte, jnp.exp(-c*rho.sum(axis=0)**(-1/3)), 1)
+    exp_factor = jnp.exp(-c*rho.sum(axis=0)**(-1/3))
 
     rhom1_3 = 2**(-jnp.log2(rho.sum(axis=0))/3.)
     rhom5_3 = 2**(-5*jnp.log2(rho.sum(axis=0))/3.)
-    rho8_3 = (2**(8*jnp.log2(rho)/3)).sum(axis=0)
-    return -a * gamma/(1+d*rhom1_3)* (rho.sum(axis=0) + jnp.where(exp_factor > clip_cte, 2*b*rhom5_3*
-        (CF*2**(2/3)*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18)* exp_factor, 0))
+    rho8_3 = (2**(8*jnp.log2(rho)/3.)).sum(axis=0)
+    return - a * gamma/(1+d*rhom1_3) * (rho.sum(axis=0) + jnp.where(exp_factor > clip_cte, 2*b*rhom5_3*
+        (2**(2/3)*CF*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18)* exp_factor, 0))
 
 LYP = Functional(lyp_c_e)
 
