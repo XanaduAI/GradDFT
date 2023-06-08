@@ -199,10 +199,28 @@ def lsda_features(molecule: Molecule, functional_type: str = 'LDA', clip_cte: fl
     lda_e = lsda_x_e(rho, clip_cte)
     return [jnp.expand_dims(lda_e, axis = 1)]
 
+def lyp_features(molecule: Molecule, functional_type: str = 'MGGA', clip_cte: float = 1e-27):
+    rho = molecule.density()
+    grad_rho = molecule.grad_density()
+    grad2rho = molecule.lapl_density()
+    lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
+    return [jnp.expand_dims(lyp_e, axis = 1)]
+
+def vwn_features(molecule: Molecule, functional_type: str = 'LDA', clip_cte: float = 1e-27):
+    rho = molecule.density()
+    lyp_e = vwn_c_e(rho, clip_cte)
+    return [jnp.expand_dims(lyp_e, axis = 1)]
+
 def b88_combine(features):
     return [features]
 
 def lsda_combine(features):
+    return [features]
+
+def vwn_combine(features):
+    return [features]
+
+def lyp_combine(features):
     return [features]
 
 def b3lyp_combine(ehf, features):
@@ -217,13 +235,18 @@ def b3lyp(instance, features):
     a0=0.2
     ax=0.72
     ac=0.81
-    weights = jnp.array([1-a0, ax, ac, 1-ac, a0])
+    weights = jnp.array([1-a0, ax, 1-ac, ac, a0])
 
     return jnp.einsum('rf,f->r',features, weights)
 def b88(instance, x): return jnp.einsum('ri->r',x)
 def lsda(instance, x): return jnp.einsum('ri->r',x)
+def lyp(instance, x): return jnp.einsum('ri->r',x)
+def vwn(instance, x): return jnp.einsum('ri->r',x)
+
 B88 = Functional(b88)
 LSDA = Functional(lsda)
 B3LYP = Functional(b3lyp)
+LYP = Functional(lyp)
+VWN = Functional(vwn)
 
 

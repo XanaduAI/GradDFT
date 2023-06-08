@@ -1,6 +1,6 @@
 from flax.core import freeze
 from jax import numpy as jnp
-from popular_functionals import B3LYP, B88, LSDA, b3lyp_combine, b3lyp_exhf_features, b88_features, b88_combine, lsda_combine, lsda_features
+from popular_functionals import B3LYP, B88, LSDA, LYP, VWN, b3lyp_combine, b3lyp_exhf_features, b88_features, b88_combine, lsda_combine, lsda_features, lyp_combine, lyp_features, vwn_combine, vwn_features
 
 from interface.pyscf import molecule_from_pyscf
 
@@ -32,8 +32,8 @@ molecule = molecule_from_pyscf(mf, omegas = [])
 predict_molecule = molecule_predictor(LSDA, lsda_features, lsda_combine, omegas = [], functional_type = 'GGA')
 predicted_e, fock = predict_molecule(params, molecule)
 
-kcalmoldiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
-assert jnp.allclose(kcalmoldiff, 0, atol = 1e1)
+lsdadiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
+assert jnp.allclose(lsdadiff, 0, atol = 1e1)
 
 ##### B88 ####
 
@@ -46,8 +46,36 @@ molecule = molecule_from_pyscf(mf, omegas = [])
 predict_molecule = molecule_predictor(B88, b88_features, b88_combine, omegas = [], functional_type = 'GGA')
 predicted_e, fock = predict_molecule(params, molecule)
 
-kcalmoldiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
-assert jnp.allclose(kcalmoldiff, 0, atol = 1e1)
+b88diff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
+assert jnp.allclose(b88diff, 0, atol = 1e1)
+
+##### LYP ####
+
+mf = dft.UKS(mol)
+mf.grids = grids
+mf.xc = 'GGA_C_LYP'
+lyp_ground_truth_energy = mf.kernel()
+
+molecule = molecule_from_pyscf(mf, omegas = [])
+predict_molecule = molecule_predictor(LYP, lyp_features, lyp_combine, omegas = [], functional_type = 'GGA')
+lyp_predicted_e, fock = predict_molecule(params, molecule)
+
+lypdiff = (lyp_ground_truth_energy-lyp_predicted_e)*Hartree2kcalmol
+assert jnp.allclose(lypdiff, 0, atol = 1e1)
+
+##### VWN ####
+
+mf = dft.UKS(mol)
+mf.grids = grids
+mf.xc = 'LDA_C_VWN'
+ground_truth_energy = mf.kernel()
+
+molecule = molecule_from_pyscf(mf, omegas = [])
+predict_molecule = molecule_predictor(VWN, vwn_features, vwn_combine, omegas = [], functional_type = 'LDA')
+predicted_e, fock = predict_molecule(params, molecule)
+
+vwndiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
+assert jnp.allclose(vwndiff, 0, atol = 1e1)
 
 #### B3LYP ####
 
@@ -60,8 +88,8 @@ molecule = molecule_from_pyscf(mf, omegas = [0])
 predict_molecule = molecule_predictor(B3LYP, b3lyp_exhf_features, b3lyp_combine, omegas = [0], functional_type = 'GGA')
 predicted_e, fock = predict_molecule(params, molecule)
 
-kcalmoldiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
-assert jnp.allclose(kcalmoldiff, 0, atol = 1e1)
+b3lypdiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
+assert jnp.allclose(b3lypdiff, 0, atol = 1e1)
 
 
 ### An alternative way of generating the params (which is an empty dict)
