@@ -181,7 +181,7 @@ def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_c
 
     return [jnp.stack((lda_e, b88_e, vwn_e, lyp_e), axis = 1)]
 
-def b88_features(molecule: Molecule, functional_type: str = 'GGA', clip_cte: float = 1e-27):
+def b88_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     rho = molecule.density()
     grad_rho = molecule.grad_density()
     b88_e = b88_x_e(rho, grad_rho, clip_cte)
@@ -189,19 +189,19 @@ def b88_features(molecule: Molecule, functional_type: str = 'GGA', clip_cte: flo
     assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
     return [jnp.stack((lda_e, b88_e), axis = 1)]
 
-def lsda_features(molecule: Molecule, functional_type: str = 'LDA', clip_cte: float = 1e-27):
+def lsda_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     rho = molecule.density()
     lda_e = lsda_x_e(rho, clip_cte)
     return [jnp.expand_dims(lda_e, axis = 1)]
 
-def lyp_features(molecule: Molecule, functional_type: str = 'MGGA', clip_cte: float = 1e-27):
+def lyp_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     rho = molecule.density()
     grad_rho = molecule.grad_density()
     grad2rho = molecule.lapl_density()
     lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
     return [jnp.expand_dims(lyp_e, axis = 1)]
 
-def vwn_features(molecule: Molecule, functional_type: str = 'LDA', clip_cte: float = 1e-27):
+def vwn_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     rho = molecule.density()
     lyp_e = vwn_c_e(rho, clip_cte)
     return [jnp.expand_dims(lyp_e, axis = 1)]
