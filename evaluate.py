@@ -23,8 +23,7 @@ from utils.types import Hartree2kcalmol
 
 
 
-def make_molecule_scf_loop(functional: Functional, feature_fn: Callable,  combine_features_hf: Callable, 
-                            omegas: Optional[Sequence] = [],
+def make_molecule_scf_loop(functional: Functional,
                             level_shift_factor: tuple[float, float] = (0.,0.), damp_factor: tuple[float, float] = (0.,0.),
                             chunk_size: int = 1024, max_cycles: int = 50, diis_start_cycle: int = 0,
                             e_conv: float = 1e-5, g_conv: float = 1e-5, diis_method = 'CDIIS',
@@ -60,7 +59,7 @@ def make_molecule_scf_loop(functional: Functional, feature_fn: Callable,  combin
     float
     """
 
-    predict_molecule = molecule_predictor(functional, feature_fn, combine_features_hf, omegas = omegas, chunk_size = chunk_size, **kwargs)
+    predict_molecule = molecule_predictor(functional, chunk_size = chunk_size, **kwargs)
 
     def scf_iterator(
         params: PyTree, molecule: Molecule, *args
@@ -152,9 +151,9 @@ def make_molecule_scf_loop(functional: Functional, feature_fn: Callable,  combin
             assert jnp.isclose(nelectron, computed_charge, atol = 1e-3), "Total charge is not conserved"
 
             # Update the chi matrix
-            if len(omegas) > 0:
+            if len(functional.omegas) > 0:
                 chi_start_time = time.time()
-                chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = omegas, chunk_size=chunk_size, *args)
+                chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = functional.omegas, chunk_size=chunk_size, *args)
                 molecule = molecule.replace(chi = chi)
                 if verbose > 2:
                     print(f"Cycle {cycle} took {time.time() - chi_start_time:.1e} seconds to compute chi matrix")
@@ -191,8 +190,8 @@ def make_molecule_scf_loop(functional: Functional, feature_fn: Callable,  combin
             molecule = molecule.replace(rdm1 = rdm1)
 
             # Update the chi matrix
-            if len(omegas) > 0:
-                chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = omegas, chunk_size=chunk_size, *args)
+            if len(functional.omegas) > 0:
+                chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = functional.omegas, chunk_size=chunk_size, *args)
                 molecule = molecule.replace(chi = chi)
 
             predicted_e, fock = predict_molecule(params, molecule, *args)

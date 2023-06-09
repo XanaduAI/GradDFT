@@ -7,13 +7,10 @@ from jax.profiler import annotate_function
 
 from utils import Scalar, Array, PyTree
 from functional import Functional
-from molecule import Molecule, coulomb_potential, default_combine_features_hf, default_features, features_w_hf, symmetrize_rdm1
+from molecule import Molecule, coulomb_potential, dm21_combine, dm21_features, features_w_hf, symmetrize_rdm1
 
 def molecule_predictor(
     functional: Functional,
-    features_fn: Optional[Callable] = default_features,
-    combine_features_hf: Optional[Callable] = default_combine_features_hf,
-    omegas: Optional[Sequence] = [],
     **kwargs,
 ) -> Callable:
     
@@ -106,13 +103,13 @@ def molecule_predictor(
         """
 
         molecule = molecule.replace(rdm1 = rdm1)
-        for omega in omegas:
+        for omega in functional.omegas:
             assert omega in molecule.omegas, f"omega {omega} not in the molecule.omegas"
-        if len(omegas) > 0:
-            feature_fn_w_hf = partial(features_w_hf, features_fn = features_fn, omegas = omegas, combine_features_hf = combine_features_hf)
+        if len(functional.omegas) > 0:
+            feature_fn_w_hf = partial(features_w_hf, features_fn = functional.features, omegas = functional.omegas, combine_features_hf = functional.combine)
             functional_inputs = feature_fn_w_hf(molecule, *args, **kwargs)
         else:
-            functional_inputs = features_fn(molecule, *args, **kwargs)
+            functional_inputs = functional.features(molecule, *args, **kwargs)
 
         return functional.energy(params, molecule, *functional_inputs, **functional_kwargs)
 
@@ -144,11 +141,10 @@ def molecule_predictor(
         fock = 1/2*(fock + fock.transpose(0,2,1))
 
         # HF Potential
-        if len(omegas) > 0:
-            features = features_fn(molecule, clip_cte = 1e-27, *args, **kwargs)
-            ehf = molecule.HF_energy_density(omegas)
-            vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, *features, 
-                                                    combine_features_hf = combine_features_hf)
+        if len(functional.omegas) > 0:
+            features = functional.features(molecule, clip_cte = 1e-27, *args, **kwargs)
+            ehf = molecule.HF_energy_density(functional.omegas)
+            vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, ehf, *features)
             vxc_hf = vxc_hf.sum(axis=0)
             fock += vxc_hf+vxc_hf.transpose(0,2,1) # Sum over omega
 

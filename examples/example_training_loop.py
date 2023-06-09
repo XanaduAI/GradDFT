@@ -3,7 +3,7 @@ from jax import numpy as jnp
 from optax import adam, apply_updates
 
 from interface.pyscf import molecule_from_pyscf
-from molecule import default_features
+from molecule import dm21_features
 from functional import NeuralFunctional, canonicalize_inputs, default_loss
 from jax.nn import gelu
 
@@ -61,7 +61,7 @@ functional = NeuralFunctional(function)
 key = PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before
-rhoinputs, localfeatures = default_features(molecule = molecule, functional_type='MGGA')
+rhoinputs, localfeatures = dm21_features(molecule = molecule, functional_type='MGGA')
 
 # We initialize the Functional parameters
 key, = split(key, 1)

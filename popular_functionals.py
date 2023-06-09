@@ -101,8 +101,6 @@ def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
 
     return e_tilde # We have to integrate e_tilde = e * n as per eq 2.1 in original article
 
-VWN = Functional(vwn_c_e)
-
 def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
 
     r"""
@@ -145,8 +143,6 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     rho8_3 = (2**(8*jnp.log2(rho)/3.)).sum(axis=0)
     return - a * gamma/(1+d*rhom1_3) * (rho.sum(axis=0) + jnp.where(exp_factor > clip_cte, 2*b*rhom5_3*
         (2**(2/3)*CF*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18)* exp_factor, 0))
-
-LYP = Functional(lyp_c_e)
 
 def lsda_x_e(rho, clip_cte):
     # Eq 2.72 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
@@ -238,10 +234,10 @@ def lsda(instance, x): return jnp.einsum('ri->r',x)
 def lyp(instance, x): return jnp.einsum('ri->r',x)
 def vwn(instance, x): return jnp.einsum('ri->r',x)
 
-B88 = Functional(b88)
-LSDA = Functional(lsda)
-B3LYP = Functional(b3lyp)
-LYP = Functional(lyp)
-VWN = Functional(vwn)
+B88 = Functional(b88, b88_features, b88_combine, [])
+LSDA = Functional(lsda, lsda_features, lsda_combine, [])
+VWN = Functional(vwn, vwn_features,vwn_combine, [])
+LYP = Functional(lyp, lyp_features, lyp_combine, [])
+B3LYP = Functional(b3lyp, b3lyp_exhf_features, b3lyp_combine, [0.])
 
 

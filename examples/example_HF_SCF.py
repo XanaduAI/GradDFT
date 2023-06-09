@@ -3,7 +3,7 @@ from jax.random import PRNGKey
 from evaluate import make_molecule_scf_loop
 
 from interface.pyscf import molecule_from_pyscf
-from molecule import default_combine_features_hf, default_features, features_w_hf
+from molecule import dm21_combine, dm21_features, features_w_hf
 from functional import DM21
 
 # First we define a molecule:
@@ -28,7 +28,7 @@ key = PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before
 omegas = molecule.omegas
-features_fn = default_features
+features_fn = dm21_features
 
 for omega in omegas:
     assert omega in molecule.omegas, f"omega {omega} not in the molecule.omegas"
@@ -47,7 +47,7 @@ print('Predicted_energy:',predicted_energy)
 # If we had a non-local functional, eg whose function f outputs an energy instead of an array,
 # we'd just avoid the integrate step.
 
-scf_iterator = make_molecule_scf_loop(functional, feature_fn=default_features, combine_features_hf = default_combine_features_hf, 
+scf_iterator = make_molecule_scf_loop(functional, feature_fn=dm21_features, combine_features_hf = dm21_combine, 
                                     verbose = 2, omegas = molecule.omegas, functional_type = "DM21")
 predicted_e = scf_iterator(params, molecule)
 

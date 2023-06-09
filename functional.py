@@ -17,7 +17,7 @@ from optax import GradientTransformation
 from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 
 from utils import Scalar, Array, PyTree, DType, default_dtype
-from molecule import Molecule
+from molecule import Molecule, dm21_combine, dm21_features
 
 def external_f(instance, x):
     x = instance.dense(x)
@@ -52,6 +52,9 @@ class Functional(nn.Module):
     """
 
     function: staticmethod
+    features: staticmethod
+    combine: staticmethod = lambda inputs: [inputs]
+    omegas: Array = jnp.array([])
     is_xc: bool = True
 
     @nn.compact
@@ -151,6 +154,9 @@ class NeuralFunctional(Functional):
     """
 
     function: staticmethod
+    features: staticmethod
+    combine: staticmethod
+    omegas: Array = jnp.array([0., 0.4])
     is_xc: bool = True
     kernel_init: Callable = he_normal()
     bias_init: Callable = zeros
@@ -257,7 +263,10 @@ class DM21(NeuralFunctional):
     layer_widths: Array = jnp.array([256,256,256,256,256,256])
     local_features: int = 3
     sigmoid_scale_factor: float = 2.
+    omegas = jnp.array([0., 0.4])
     function: Callable = lambda self, *inputs: self.default_nn(*inputs)
+    features: Callable = dm21_features
+    combine: Callable = dm21_combine
 
     def default_nn(instance, rhoinputs, localfeatures, *_, **__):
         x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct

@@ -145,9 +145,9 @@ class Molecule:
         chi = self.select_HF_omegas(omegas)
         return HF_energy_density(self.rdm1, self.ao, chi, *args, **kwargs)
 
-    def HF_density_grad_2_Fock(self, functional: nn.Module, params: PyTree, omegas: Array, ehf: Array, *features, combine_features_hf, **kwargs):
-        chi = self.select_HF_omegas(omegas)
-        return HF_density_grad_2_Fock(self, functional, params, chi, self.ao, ehf, *features, combine_features_hf = combine_features_hf, **kwargs)
+    def HF_density_grad_2_Fock(self, functional: nn.Module, params: PyTree, ehf: Array, *features, **kwargs):
+        chi = self.select_HF_omegas(functional.omegas)
+        return HF_density_grad_2_Fock(self, functional, params, chi, self.ao, ehf, *features, **kwargs)
 
     def nonXC(self, *args, **kwargs):
         return nonXC(self.rdm1, self.h1e, self.rep_tensor, self.nuclear_repulsion, *args, **kwargs)
@@ -197,7 +197,7 @@ def orbital_grad(mo_coeff, mo_occ, F):
     return jnp.einsum("sab,sac,scd->bd", C_vir.conj(), F, C_occ)
 
 
-def default_molecule_features(
+def dm21_molecule_features(
         molecule: Molecule, 
         clip_cte: Optional[float] = 1e-27,
         *_, **__
@@ -231,7 +231,7 @@ def default_molecule_features(
     return features.T
 
 
-def default_functionals(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+def dm21_local_features(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
     r"""
     Generates and concatenates different functional levels
 
@@ -305,7 +305,7 @@ def default_functionals(molecule: Molecule, functional_type: Optional[Union[str,
     return localfeatures.T
 
 
-def default_features(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *args, **kwargs):
+def dm21_features(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *args, **kwargs):
 
     r"""
     Generates all features except the HF energy features.
@@ -329,13 +329,13 @@ def default_features(molecule: Molecule, functional_type: Optional[Union[str, Di
         The features and local features, similar to those used by DM21
     """
     
-    features = default_molecule_features(molecule, *args, **kwargs)
-    localfeatures = default_functionals(molecule, functional_type, clip_cte)
+    features = dm21_molecule_features(molecule, *args, **kwargs)
+    localfeatures = dm21_local_features(molecule, functional_type, clip_cte)
 
     # We return them with the first index being the position r and the second the feature.
     return features, localfeatures
 
-def default_combine_features_hf(ehf, features, local_features):
+def dm21_combine(ehf, features, local_features):
 
     r"""
     Default way to combine Hartree-Fock and the rest of the input default features.
@@ -372,7 +372,7 @@ def features_w_hf(molecule: Molecule,
                 features_fn: Callable,
                 omegas: Array, 
                 functional_type: Optional[Union[str, Dict]] = 'LDA',
-                combine_features_hf: Optional[Callable] = default_combine_features_hf,
+                combine_features_hf: Optional[Callable] = dm21_combine,
                 clip_cte: float = 1e-27, *_, **__):
     
     r"""
@@ -413,7 +413,7 @@ def features_w_hf(molecule: Molecule,
 
     return features
 
-default_features_w_hf = partial(features_w_hf, features = default_features)
+default_features_w_hf = partial(features_w_hf, features = dm21_features)
 
 ##########################################################
 
@@ -550,7 +550,6 @@ def HF_density_grad_2_Fock(
     ao: Array,
     ehf: Array,
     *features_wout_hf,
-    combine_features_hf: Callable = default_combine_features_hf,
     chunk_size: Optional[int] = None,
     precision: Precision = Precision.HIGHEST,
     fxc_kwargs: dict = {}
@@ -620,7 +619,7 @@ def HF_density_grad_2_Fock(
 
     def partial_fxc(params, molecule, ehf, *features):
 
-        features = combine_features_hf(ehf, *features)
+        features = functional.combine(ehf, *features)
 
         return functional.energy(params, molecule, *features, **fxc_kwargs)
 

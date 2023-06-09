@@ -29,7 +29,7 @@ mf.xc = 'LDA'
 ground_truth_energy = mf.kernel()
 
 molecule = molecule_from_pyscf(mf, omegas = [])
-predict_molecule = molecule_predictor(LSDA, lsda_features, lsda_combine, omegas = [], functional_type = 'GGA')
+predict_molecule = molecule_predictor(LSDA)
 predicted_e, fock = predict_molecule(params, molecule)
 
 lsdadiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
@@ -43,7 +43,7 @@ mf.xc = 'B88'
 ground_truth_energy = mf.kernel()
 
 molecule = molecule_from_pyscf(mf, omegas = [])
-predict_molecule = molecule_predictor(B88, b88_features, b88_combine, omegas = [], functional_type = 'GGA')
+predict_molecule = molecule_predictor(B88)
 predicted_e, fock = predict_molecule(params, molecule)
 
 b88diff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
@@ -57,7 +57,7 @@ mf.xc = 'LDA_C_VWN'
 ground_truth_energy = mf.kernel()
 
 molecule = molecule_from_pyscf(mf, omegas = [])
-predict_molecule = molecule_predictor(VWN, vwn_features, vwn_combine, omegas = [], functional_type = 'LDA')
+predict_molecule = molecule_predictor(VWN)
 predicted_e, fock = predict_molecule(params, molecule)
 
 vwndiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
@@ -71,7 +71,7 @@ mf.xc = 'GGA_C_LYP'
 lyp_ground_truth_energy = mf.kernel()
 
 molecule = molecule_from_pyscf(mf, omegas = [])
-predict_molecule = molecule_predictor(LYP, lyp_features, lyp_combine, omegas = [], functional_type = 'MGGA')
+predict_molecule = molecule_predictor(LYP)
 lyp_predicted_e, fock = predict_molecule(params, molecule)
 
 lypdiff = (lyp_ground_truth_energy-lyp_predicted_e)*Hartree2kcalmol
@@ -84,8 +84,8 @@ mf.grids = grids
 mf.xc = 'b3lyp'
 ground_truth_energy = mf.kernel()
 
-molecule = molecule_from_pyscf(mf, omegas = [0])
-predict_molecule = molecule_predictor(B3LYP, b3lyp_exhf_features, b3lyp_combine, omegas = [0], functional_type = 'GGA')
+molecule = molecule_from_pyscf(mf, omegas = [0.])
+predict_molecule = molecule_predictor(B3LYP)
 predicted_e, fock = predict_molecule(params, molecule)
 
 b3lypdiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol

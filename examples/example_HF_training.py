@@ -3,7 +3,7 @@ from jax.random import PRNGKey
 from optax import adam, apply_updates
 
 from interface.pyscf import molecule_from_pyscf
-from molecule import default_features, features_w_hf
+from molecule import dm21_features, features_w_hf
 from functional import DM21, default_loss
 
 # First we define a molecule:
@@ -28,7 +28,7 @@ key = PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before
 omegas = molecule.omegas
-features_fn = default_features
+features_fn = dm21_features
 
 if len(omegas) > 0:
     feature_fn_w_hf = partial(features_w_hf, omegas = omegas, features_fn = features_fn)
