@@ -56,7 +56,7 @@ def function(instance, rhoinputs, localfeatures, *_, **__):
 
     return jnp.einsum('ri,ri->r', x, localfeatures)
 
-functional = NeuralFunctional(function)
+functional = NeuralFunctional(function, dm21_features, None, None)
 
 # Load the saved checkpoints
 learning_rate = 1e-5
@@ -69,5 +69,5 @@ tx = train_state.tx
 opt_state = tx.init(params)
 
 # Create the scf iterator
-scf_iterator = make_molecule_scf_loop(functional, feature_fn=dm21_features, combine_features_hf = dm21_combine, verbose = 2)
+scf_iterator = make_molecule_scf_loop(functional, verbose = 2)
 predicted_e = scf_iterator(params, molecule)

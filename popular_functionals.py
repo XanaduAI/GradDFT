@@ -2,6 +2,8 @@ from jax import grad
 import jax.numpy as jnp
 from molecule import Molecule
 from utils import Array
+from typing import Dict, List
+from flax import linen as nn
 
 from functional import Functional
 from jax.lax import Precision, stop_gradient
@@ -211,12 +213,13 @@ def lsda_combine(features):
 def vwn_combine(features):
     return [features]
 
-def lyp_combine(features):
-    return [features]
+def lyp_combine(features, ehf):
+    return [ehf]
 
-def b3lyp_combine(ehf, features):
+def b3lyp_combine(features, ehf):
 
     ehf = jnp.sum(ehf, axis = (0,1))
+    features = features[0]
     return [jnp.concatenate([features, jnp.expand_dims(ehf, axis = 1)], axis=1)]
 
 def b3lyp(instance, features):
@@ -234,10 +237,15 @@ def lsda(instance, x): return jnp.einsum('ri->r',x)
 def lyp(instance, x): return jnp.einsum('ri->r',x)
 def vwn(instance, x): return jnp.einsum('ri->r',x)
 
-B88 = Functional(b88, b88_features, b88_combine, [])
-LSDA = Functional(lsda, lsda_features, lsda_combine, [])
-VWN = Functional(vwn, vwn_features,vwn_combine, [])
-LYP = Functional(lyp, lyp_features, lyp_combine, [])
-B3LYP = Functional(b3lyp, b3lyp_exhf_features, b3lyp_combine, [0.])
+def b3lyp_nograd_features(molecule, *_, **__): 
+    return molecule.HF_energy_density([0.])
 
+def lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = jnp.array([0.])):
+    # Not implemented
+    return jnp.nan*jnp.zeros((2, molecule.ao.shape[1], molecule.ao.shape[1]))
 
+B88 = Functional(b88, b88_features, None, None, b88_combine)
+LSDA = Functional(lsda, lsda_features, None, None, lsda_combine)
+VWN = Functional(vwn, vwn_features, None, None,vwn_combine)
+LYP = Functional(lyp, None, lyp_features, lyp_hfgrads, lyp_combine)
+B3LYP = Functional(b3lyp, b3lyp_exhf_features, b3lyp_nograd_features, lyp_hfgrads, b3lyp_combine)

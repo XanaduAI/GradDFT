@@ -72,6 +72,7 @@ lyp_ground_truth_energy = mf.kernel()
 
 molecule = molecule_from_pyscf(mf, omegas = [])
 predict_molecule = molecule_predictor(LYP)
+# This will return a Fock matrix composed of nan because the potential of LYP cannot be computed via self.differentiation
 lyp_predicted_e, fock = predict_molecule(params, molecule)
 
 lypdiff = (lyp_ground_truth_energy-lyp_predicted_e)*Hartree2kcalmol
@@ -86,6 +87,7 @@ ground_truth_energy = mf.kernel()
 
 molecule = molecule_from_pyscf(mf, omegas = [0.])
 predict_molecule = molecule_predictor(B3LYP)
+# This will return a Fock matrix composed of nan because the potential of LYP cannot be computed via self.differentiation
 predicted_e, fock = predict_molecule(params, molecule)
 
 b3lypdiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol

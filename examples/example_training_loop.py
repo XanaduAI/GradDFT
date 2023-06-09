@@ -56,7 +56,7 @@ def function(instance, rhoinputs, localfeatures, *_, **__):
 
     return jnp.einsum('ri,ri->r', x, localfeatures)
 
-functional = NeuralFunctional(function)
+functional = NeuralFunctional(function, dm21_features, None, None)
 
 key = PRNGKey(42) # Jax-style random seed
 

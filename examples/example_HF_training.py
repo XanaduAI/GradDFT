@@ -1,9 +1,10 @@
 from functools import partial
 from jax.random import PRNGKey
 from optax import adam, apply_updates
+from jax.lax import stop_gradient
 
 from interface.pyscf import molecule_from_pyscf
-from molecule import dm21_features, features_w_hf
+from molecule import dm21_features
 from functional import DM21, default_loss
 
 # First we define a molecule:
@@ -30,11 +31,9 @@ key = PRNGKey(42) # Jax-style random seed
 omegas = molecule.omegas
 features_fn = dm21_features
 
-if len(omegas) > 0:
-    feature_fn_w_hf = partial(features_w_hf, omegas = omegas, features_fn = features_fn)
-    functional_inputs = feature_fn_w_hf(molecule, functional_type = 'DM21')
-else:
-    functional_inputs = features_fn(molecule)
+functional_inputs = functional.features(molecule)
+nograd_functional_inputs = stop_gradient(functional.nograd_features(molecule))
+functional_inputs = functional.combine(functional_inputs, nograd_functional_inputs)
 
 energy = functional.apply_and_integrate(params, molecule, *functional_inputs)
 energy += molecule.nonXC()

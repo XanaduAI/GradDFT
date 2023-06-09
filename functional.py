@@ -17,7 +17,7 @@ from optax import GradientTransformation
 from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 
 from utils import Scalar, Array, PyTree, DType, default_dtype
-from molecule import Molecule, dm21_combine, dm21_features
+from molecule import Molecule, dm21_combine, dm21_features, dm21_hfgrads
 
 def external_f(instance, x):
     x = instance.dense(x)
@@ -46,6 +46,32 @@ class Functional(nn.Module):
             return x
         ```
 
+    features : Callable, optional
+        A function that calculates and/or loads the molecule features where gradient is
+        computed via auto differentiation.
+
+        If given, it must be a callable with the following signature:
+
+        feature_fn(molecule: Molecule, *args, **kwargs) -> Union[Array, Sequence[Arrays]]
+
+    nograd_features : Callable, optional
+        A function that calculates and/or loads the molecule features where gradient is
+        computed via in featuregrads.
+
+        nograd_features(molecule: Molecule, *args, **kwargs) -> Union[Array, Sequence[Arrays]]
+
+    featuregrads: Callable, optional
+        A function to compute the Fock matrix using gradients of with respect to those features 
+        where autodifferentiation is not used.
+
+        If given has signature
+
+        featuregrads(functional: nn.Module, params: Dict, molecule: Molecule, 
+            features: List[Array], nogradfeatures: Array, *args) - > Fock matrix: Array of shape (2, nao, nao)
+
+    combine : Callable, optional
+        A function that joins the features computed with and without autodifferentiation.
+
     is_xc: bool
         Whether the functional models only the exchange-correlation energy
 
@@ -53,8 +79,9 @@ class Functional(nn.Module):
 
     function: staticmethod
     features: staticmethod
+    nograd_features: staticmethod
+    featuregrads: staticmethod
     combine: staticmethod = lambda inputs: [inputs]
-    omegas: Array = jnp.array([])
     is_xc: bool = True
 
     @nn.compact
@@ -155,8 +182,9 @@ class NeuralFunctional(Functional):
 
     function: staticmethod
     features: staticmethod
+    nograd_features: staticmethod
+    featuregrads: staticmethod
     combine: staticmethod
-    omegas: Array = jnp.array([0., 0.4])
     is_xc: bool = True
     kernel_init: Callable = he_normal()
     bias_init: Callable = zeros
@@ -258,15 +286,16 @@ class DM21(NeuralFunctional):
     Contains a function to generate the weights, called `generate_DM21_weights`
     """
 
+    function: Callable = lambda self, *inputs: self.default_nn(*inputs)
+    features: Callable = dm21_features
+    nograd_features: Callable = lambda molecule, *_, **__: molecule.HF_energy_density([0., 0.4])
+    featuregrads: Callable = lambda self, params, molecule, features, nograd_features, *_, **__: dm21_hfgrads(self, params, molecule, features, nograd_features)
+    combine: Callable = dm21_combine
     activation: Callable = elu
     squash_offset: float = 1e-4
     layer_widths: Array = jnp.array([256,256,256,256,256,256])
     local_features: int = 3
     sigmoid_scale_factor: float = 2.
-    omegas = jnp.array([0., 0.4])
-    function: Callable = lambda self, *inputs: self.default_nn(*inputs)
-    features: Callable = dm21_features
-    combine: Callable = dm21_combine
 
     def default_nn(instance, rhoinputs, localfeatures, *_, **__):
         x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct

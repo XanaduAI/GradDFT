@@ -36,20 +36,6 @@ def make_molecule_scf_loop(functional: Functional,
     Main parameters
     ---------------
     functional: Functional
-    feature_fn: Callable
-        Generates the functional inputs except for the HF features
-    combine_features_hf: Callable
-        Combines the features with the HF components
-    omegas: Sequence
-        HF components to include according to
-
-        .. math::
-            ehf^σ =  Γac^σ Γbd^σ ψa(r) ψb(r) ∫ dr' f(|r-r'|) ψc(r') ψd(r') =  Γac^σ Γbd^σ ψa(r) ψb(r) v_{cd}(r)
-
-        with        
-        
-        .. math::
-            f(|r-r'|) = \erf(\omega|r-r'|)/|r-r'|
 
     verbose: int
         Controls the level of printout
@@ -151,9 +137,9 @@ def make_molecule_scf_loop(functional: Functional,
             assert jnp.isclose(nelectron, computed_charge, atol = 1e-3), "Total charge is not conserved"
 
             # Update the chi matrix
-            if len(functional.omegas) > 0:
+            if molecule.omegas:
                 chi_start_time = time.time()
-                chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = functional.omegas, chunk_size=chunk_size, *args)
+                chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = molecule.omegas, chunk_size=chunk_size, *args)
                 molecule = molecule.replace(chi = chi)
                 if verbose > 2:
                     print(f"Cycle {cycle} took {time.time() - chi_start_time:.1e} seconds to compute chi matrix")
@@ -190,8 +176,8 @@ def make_molecule_scf_loop(functional: Functional,
             molecule = molecule.replace(rdm1 = rdm1)
 
             # Update the chi matrix
-            if len(functional.omegas) > 0:
-                chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = functional.omegas, chunk_size=chunk_size, *args)
+            if molecule.omegas:
+                chi = generate_chi_tensor(molecule.rdm1, molecule.ao, molecule.grid.coords, mf.mol, omegas = molecule.omegas, chunk_size=chunk_size, *args)
                 molecule = molecule.replace(chi = chi)
 
             predicted_e, fock = predict_molecule(params, molecule, *args)

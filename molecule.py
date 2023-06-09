@@ -1,5 +1,5 @@
 from utils import Scalar, Array
-from typing import Optional, Union, Callable, Dict, Sequence, Tuple, NamedTuple
+from typing import Optional, Union, Callable, Dict, Sequence, Tuple, NamedTuple, List
 from dataclasses import fields
 from utils import Array, Scalar
 from functools import partial
@@ -145,8 +145,8 @@ class Molecule:
         chi = self.select_HF_omegas(omegas)
         return HF_energy_density(self.rdm1, self.ao, chi, *args, **kwargs)
 
-    def HF_density_grad_2_Fock(self, functional: nn.Module, params: PyTree, ehf: Array, *features, **kwargs):
-        chi = self.select_HF_omegas(functional.omegas)
+    def HF_density_grad_2_Fock(self, functional: nn.Module, params: PyTree, omegas: Array, ehf: Array, features, **kwargs):
+        chi = self.select_HF_omegas(omegas)
         return HF_density_grad_2_Fock(self, functional, params, chi, self.ao, ehf, *features, **kwargs)
 
     def nonXC(self, *args, **kwargs):
@@ -335,7 +335,7 @@ def dm21_features(molecule: Molecule, functional_type: Optional[Union[str, Dict]
     # We return them with the first index being the position r and the second the feature.
     return features, localfeatures
 
-def dm21_combine(ehf, features, local_features):
+def dm21_combine(features, ehf):
 
     r"""
     Default way to combine Hartree-Fock and the rest of the input default features.
@@ -360,6 +360,7 @@ def dm21_combine(ehf, features, local_features):
         features, shape: (n_grid, n_features + n_spin * n_omegas)
         local_features, shape: (n_grid, n_local_features + n_omegas)
     """
+    features, local_features = features
 
     # Remember that DM concatenates the hf density in the x features by spin...
     features = jnp.concatenate([features, ehf[:,0].T, ehf[:,1].T], axis=1)
@@ -368,55 +369,12 @@ def dm21_combine(ehf, features, local_features):
     local_features = jnp.concatenate([local_features] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
     return features,local_features
 
-def features_w_hf(molecule: Molecule,
-                features_fn: Callable,
-                omegas: Array, 
-                functional_type: Optional[Union[str, Dict]] = 'LDA',
-                combine_features_hf: Optional[Callable] = dm21_combine,
-                clip_cte: float = 1e-27, *_, **__):
-    
-    r"""
-    Generates all features and the HF energy features.
+def dm21_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = jnp.array([0., 0.4])):
+    vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, features)
+    return vxc_hf.sum(axis=0) # Sum over omega
 
-    Parameters
-    ----------
-    molecule: Molecule
-    features_fn: Callable
-        Function to generate default features (without HF components)
-        Signature:
-            molecule: Molecule, functional_type: Optional[Union[str, Dict]], clip_cte: Optional[clip_cte].
-                -> Sequence[Arrays]
-    omegas: Array,
-        List of omega values in the definition of the HF component
-    functional_type: Optional[Union[str, Dict]]
-        Either a dictionary of ranges, {'u_range': range(...), 'w_range': range(...)}
-        or one of "DM21", "LDA", "GGA", "MGGA".
-    combine_features_hf: Callable
-        Function to combine the HF features and the rest of the features
-        Signature: 
-            Array, Sequence[Arrays] -> Sequence[Arrays]
-    clip_cte: float
-        A small constant to clip and avoid numerical instabilities,
-        defaults at 1e-27.
-
-    Returns
-    -----------
-    Sequence[Arrays]
-    """
-
-    features = features_fn(molecule, functional_type, clip_cte)
-    ehf = stop_gradient(molecule.HF_energy_density(omegas))
-    assert not jnp.isnan(ehf).any() and not jnp.isinf(ehf).any()
-
-    features = combine_features_hf(ehf, *features)
-    assert not jnp.isnan(features[0]).any() and not jnp.isinf(features[0]).any()
-
-    return features
-
-default_features_w_hf = partial(features_w_hf, features = dm21_features)
 
 ##########################################################
-
 
 @partial(jax.jit, static_argnames="precision")
 def density(rdm1: Array, ao: Array, precision: Precision = Precision.HIGHEST) -> Array:
@@ -617,13 +575,13 @@ def HF_density_grad_2_Fock(
         Shape: (n_omegas, n_spin, n_orbitals, n_orbitals).
     """
 
-    def partial_fxc(params, molecule, ehf, *features):
+    def partial_fxc(params, molecule, ehf, features):
 
-        features = functional.combine(ehf, *features)
+        features = functional.combine(features, ehf)
 
         return functional.energy(params, molecule, *features, **fxc_kwargs)
 
-    gr = grad(partial_fxc, argnums = 2)(params, molecule, ehf, *features_wout_hf)
+    gr = grad(partial_fxc, argnums = 2)(params, molecule, ehf, features_wout_hf)
 
     @partial(vmap_chunked, in_axes=(0, None, None), chunk_size=chunk_size)
     def chunked_jvp(chi_tensor, gr_tensor, ao_tensor):

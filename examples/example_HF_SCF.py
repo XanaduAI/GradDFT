@@ -1,9 +1,10 @@
 from functools import partial
 from jax.random import PRNGKey
+from jax.lax import stop_gradient
 from evaluate import make_molecule_scf_loop
 
 from interface.pyscf import molecule_from_pyscf
-from molecule import dm21_combine, dm21_features, features_w_hf
+from molecule import dm21_combine, dm21_features
 from functional import DM21
 
 # First we define a molecule:
@@ -30,13 +31,9 @@ key = PRNGKey(42) # Jax-style random seed
 omegas = molecule.omegas
 features_fn = dm21_features
 
-for omega in omegas:
-    assert omega in molecule.omegas, f"omega {omega} not in the molecule.omegas"
-if len(omegas) > 0:
-    feature_fn_w_hf = partial(features_w_hf, features_fn = features_fn, omegas = omegas)
-    functional_inputs = feature_fn_w_hf(molecule)
-else:
-    functional_inputs = features_fn(molecule)
+functional_inputs = functional.features(molecule)
+nograd_functional_inputs = stop_gradient(functional.nograd_features(molecule))
+functional_inputs = functional.combine(functional_inputs, nograd_functional_inputs)
 
 energy = functional.apply_and_integrate(params, molecule, *functional_inputs)
 energy += molecule.nonXC()
@@ -47,8 +44,7 @@ print('Predicted_energy:',predicted_energy)
 # If we had a non-local functional, eg whose function f outputs an energy instead of an array,
 # we'd just avoid the integrate step.
 
-scf_iterator = make_molecule_scf_loop(functional, feature_fn=dm21_features, combine_features_hf = dm21_combine, 
-                                    verbose = 2, omegas = molecule.omegas, functional_type = "DM21")
+scf_iterator = make_molecule_scf_loop(functional, verbose = 2, functional_type = "DM21")
 predicted_e = scf_iterator(params, molecule)
 
 print(f'The predicted energy is {energy}')
