@@ -147,7 +147,7 @@ class Molecule:
 
     def HF_density_grad_2_Fock(self, functional: nn.Module, params: PyTree, omegas: Array, ehf: Array, features, **kwargs):
         chi = self.select_HF_omegas(omegas)
-        return HF_density_grad_2_Fock(self, functional, params, chi, self.ao, ehf, *features, **kwargs)
+        return HF_density_grad_2_Fock(self, functional, params, chi, self.ao, ehf, features, **kwargs)
 
     def nonXC(self, *args, **kwargs):
         return nonXC(self.rdm1, self.h1e, self.rep_tensor, self.nuclear_repulsion, *args, **kwargs)
@@ -507,7 +507,7 @@ def HF_density_grad_2_Fock(
     chi: Array, 
     ao: Array,
     ehf: Array,
-    *features_wout_hf,
+    features_wout_hf,
     chunk_size: Optional[int] = None,
     precision: Precision = Precision.HIGHEST,
     fxc_kwargs: dict = {}

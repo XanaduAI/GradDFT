@@ -106,8 +106,9 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     d = 0.349
     CF = (3/10)*(3*jnp.pi**2)**(2/3)
 
-    rho = jnp.where(rho > clip_cte, rho, 0)
+    #rho = jnp.where(rho > clip_cte, rho, 0)
     grad_rho = jnp.where(abs(grad_rho) > clip_cte, grad_rho, 0)
+    rho = jnp.clip(rho, a_min = clip_cte)
 
     grad_rho_norm_sq = jnp.sum(grad_rho**2, axis=-1)
 
@@ -128,12 +129,22 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     assert not jnp.isnan(rho_grad2rho).any() and not jnp.isinf(rho_grad2rho).any()
 
     exp_factor = jnp.exp(-c*rho.sum(axis=0)**(-1/3))
+    log_exp_factor = jnp.log2(jnp.clip(exp_factor, a_min = clip_cte))
+    assert not jnp.isnan(exp_factor).any() and not jnp.isinf(exp_factor).any()
 
     rhom1_3 = 2**(-jnp.log2(rho.sum(axis=0))/3.)
-    rhom5_3 = 2**(-5*jnp.log2(rho.sum(axis=0))/3.)
+    log_rhom5_3 = (-5*jnp.log2(rho.sum(axis=0))/3.)
     rho8_3 = (2**(8*jnp.log2(rho)/3.)).sum(axis=0)
-    return - a * gamma/(1+d*rhom1_3) * (rho.sum(axis=0) + jnp.where(exp_factor > clip_cte, 2*b*rhom5_3*
-        (2**(2/3)*CF*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18)* exp_factor, 0))
+
+    par = 2**(2/3)*CF*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18
+    log2 = jnp.where(log_rhom5_3 + jnp.log2(par) + log_exp_factor > jnp.log2(clip_cte),
+                    log_rhom5_3 + jnp.log2(par) + log_exp_factor, jnp.log2(clip_cte))
+    sum_ = jnp.where(exp_factor > clip_cte, 2*b * 2**log2, 0)
+    return - a * 2**( jnp.log2(gamma) - jnp.log2(1+d*rhom1_3) + 
+                jnp.log2(jnp.clip(rho.sum(axis=0) +  sum_, a_min = clip_cte)) )
+
+    # return - a * gamma/(1+d*rhom1_3) * (rho.sum(axis=0) + jnp.where(exp_factor > clip_cte, 2*b*rhom5_3*
+    #    (2**(2/3)*CF*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18)* exp_factor, 0))
 
 def lsda_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     rho = molecule.density()
@@ -169,6 +180,7 @@ def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_c
 
     rho = molecule.density()
     grad_rho = molecule.grad_density()
+    grad2rho = molecule.lapl_density()
 
     lda_e = lsda_x_e(rho, clip_cte)
     assert not jnp.isnan(lda_e).any() and not jnp.isinf(lda_e).any()
@@ -176,8 +188,10 @@ def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_c
     assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
     vwn_e = vwn_c_e(rho, clip_cte)
     assert not jnp.isnan(vwn_e).any() and not jnp.isinf(vwn_e).any()
+    lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
+    assert not jnp.isnan(lyp_e).any() and not jnp.isinf(lyp_e).any()
 
-    return jnp.stack((lda_e, b88_e, vwn_e), axis = 1)
+    return jnp.stack((lda_e, b88_e, vwn_e, lyp_e), axis = 1)
 
 
 def b88_combine(features):
@@ -192,8 +206,10 @@ def vwn_combine(features):
 def lyp_combine(features, ehf):
     return [ehf]
 
-def b3lyp_combine(features, nogradfeatures):
-    return [jnp.concatenate([features, nogradfeatures], axis=1)]
+def b3lyp_combine(features, ehf):
+    ehf = jnp.sum(ehf, axis = (0,1))
+    ehf = jnp.expand_dims(ehf, axis = 1)
+    return [jnp.concatenate([features, ehf], axis=1)]
 
 def b3lyp(instance, features):
     r"""
@@ -203,7 +219,6 @@ def b3lyp(instance, features):
     ax=0.72
     ac=0.81
     weights = jnp.array([1-a0, ax, 1-ac, ac, a0])
-
     return jnp.einsum('rf,f->r',features, weights)
 def b88(instance, x): return jnp.einsum('ri->r',x)
 def lsda(instance, x): return jnp.einsum('ri->r',x)
@@ -211,23 +226,24 @@ def lyp(instance, x): return jnp.einsum('ri->r',x)
 def vwn(instance, x): return jnp.einsum('ri->r',x)
 
 def b3lyp_nograd_features(molecule, clip_cte = 1e-27, *_, **__):
-    rho = molecule.density()
-    grad_rho = molecule.grad_density()
-    grad2rho = molecule.lapl_density()
 
-    lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
-    assert not jnp.isnan(lyp_e).any() and not jnp.isinf(lyp_e).any()
     ehf = molecule.HF_energy_density([0.])
     assert not jnp.isnan(ehf).any() and not jnp.isinf(ehf).any()
-    ehf = jnp.sum(ehf, axis = (0,1))
-    return jnp.stack((lyp_e, ehf), axis = 1)
+    return ehf
 
 def lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = jnp.array([0.])):
     # Not implemented
     return jnp.nan*jnp.zeros((2, molecule.ao.shape[1], molecule.ao.shape[1]))
 
+def b3lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = jnp.array([0.])):
+    a0=0.2
+    vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, features)
+    return a0*vxc_hf.sum(axis=0) # Sum over omega
+
 B88 = Functional(b88, b88_features, None, None, b88_combine)
 LSDA = Functional(lsda, lsda_features, None, None, lsda_combine)
 VWN = Functional(vwn, vwn_features, None, None,vwn_combine)
 LYP = Functional(lyp, None, lyp_features, lyp_hfgrads, lyp_combine)
-B3LYP = Functional(b3lyp, b3lyp_exhf_features, b3lyp_nograd_features, lyp_hfgrads, b3lyp_combine)
+B3LYP = Functional(b3lyp, b3lyp_exhf_features, b3lyp_nograd_features, 
+                b3lyp_hfgrads,
+                b3lyp_combine)
