@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional, List
 from functools import partial
 
-from jax import value_and_grad
+from jax import grad, value_and_grad
 from jax import numpy as jnp
 from jax.lax import Precision, stop_gradient
 from jax.nn import sigmoid, gelu, elu
@@ -466,3 +466,79 @@ def _canonicalize_fxc(fxc: Functional) -> Callable:
         raise RuntimeError(
             f"`fxc` should be a flax `Module` with a `predict_exc` method or a callable, got {type(fxc)}"
         )
+
+################ Spin polarization correction functions ################
+
+
+def exchange_polarization_correction(e_PF, rho):
+    r"""Spin polarization correction to an exchange functional using eq 2.71 from 
+    Carsten A. Ullrich, "Time-Dependent Density-Functional Theory".
+
+    Parameters
+    ----------
+    e_PF: 
+        Array, shape (2, n_grid)
+        The paramagnetic/ferromagnetic energy contributions on the grid, to be combined.
+
+    rho:
+        Array, shape (2, n_grid)
+        The electronic density of each spin polarization at each grid point.
+
+    Returns
+    ----------
+    e_tilde
+        Array, shape (n_grid)
+        The ready to be integrated electronic energy density.
+    """
+    zeta = (rho[0] - rho[1])/ rho.sum(axis = 0)
+    def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
+    # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    return e_PF[0] + (e_PF[1]-e_PF[0])*fzeta(zeta)
+
+
+def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float = 1e-27):
+    r"""Spin polarization correction to a correlation functional using eq 2.75 from 
+    Carsten A. Ullrich, "Time-Dependent Density-Functional Theory".
+
+    Parameters
+    ----------
+    e_PF: 
+        Array, shape (2, n_grid)
+        The paramagnetic/ferromagnetic energy contributions on the grid, to be combined.
+
+    rho:
+        Array, shape (2, n_grid)
+        The electronic density of each spin polarization at each grid point.
+
+    clip_cte:
+        float, defaults to 1e-27
+        Small constant to avoid numerical issues when dividing by rho.
+
+    Returns
+    ----------
+    e_tilde
+        Array, shape (n_grid)
+        The ready to be integrated electronic energy density.
+    """
+    e_tilde_PF = jnp.einsum('sr,r->sr', e_PF, rho.sum(axis = 0))
+
+    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
+    assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
+    rs = 2**( jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3. )
+
+    zeta = jnp.where(rho.sum(axis = 0) > clip_cte, (rho[0] - rho[1]) / (rho.sum(axis = 0)), 0)
+    def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
+
+    A_ = 0.016887
+    alpha1 = 0.11125
+    beta1 = 10.357
+    beta2 = 3.6231
+    beta3 = 0.88026
+    beta4 = 0.49671
+    alphac = 2*A_*(1+2*alpha1*rs)*jnp.log(1+(1/(2*A_))/(beta1*jnp.sqrt(rs) + beta2*rs + beta3*rs**(3/2) + beta4*rs**2)) #, 2*A_)
+    assert not jnp.isnan(alphac).any() and not jnp.isinf(alphac).any()
+
+    e_tilde = e_tilde_PF[0] + alphac*(fzeta(zeta)/(grad(grad(fzeta))(0.)))*(1-zeta**4) + (e_tilde_PF[1] - e_tilde_PF[0])*fzeta(zeta)*zeta**4
+    assert not jnp.isnan(e_tilde).any() and not jnp.isinf(e_tilde).any()
+
+    return e_tilde

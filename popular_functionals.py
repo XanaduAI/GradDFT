@@ -1,13 +1,10 @@
-from jax import grad
 import jax.numpy as jnp
 from molecule import Molecule
 from utils import Array
 from typing import Dict, List
 from flax import linen as nn
 
-from functional import Functional
-from jax.lax import Precision, stop_gradient
-
+from functional import Functional, correlation_polarization_correction, exchange_polarization_correction
 
 def b88_x_e(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
     r"""
@@ -81,27 +78,11 @@ def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
     # check eq with https://github.com/ElectronicStructureLibrary/libxc/blob/master/maple/vwn.mpl
     e_PF = A/2 * ( 2*jnp.log(x)-jnp.log(X) + 2*b/Q * jnp.arctan(Q/(2*x+b)) - b*x0/X0 *
                 (jnp.log((x-x0)**2/X) + 2*(2*x0+b)/Q * jnp.arctan(Q/(2*x+b))) )
-    
-    # Spin polarization using eq 2.75 from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
-    
-    e_tilde_PF = jnp.einsum('sr,r->sr', e_PF, rho.sum(axis = 0))
 
-    zeta = jnp.where(rho.sum(axis = 0) > clip_cte, (rho[0] - rho[1]) / (rho.sum(axis = 0)), 0)
-    def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
+    e_tilde = correlation_polarization_correction(e_PF, rho, clip_cte)
 
-    A_ = 0.016887
-    alpha1 = 0.11125
-    beta1 = 10.357
-    beta2 = 3.6231
-    beta3 = 0.88026
-    beta4 = 0.49671
-    alphac = 2*A_*(1+2*alpha1*rs)*jnp.log(1+(1/(2*A_))/(beta1*jnp.sqrt(rs) + beta2*rs + beta3*rs**(3/2) + beta4*rs**2)) #, 2*A_)
-    assert not jnp.isnan(alphac).any() and not jnp.isinf(alphac).any()
-
-    e_tilde = e_tilde_PF[0] + alphac*(fzeta(zeta)/(grad(grad(fzeta))(0.)))*(1-zeta**4) + (e_tilde_PF[1] - e_tilde_PF[0])*fzeta(zeta)*zeta**4
-    assert not jnp.isnan(e_tilde).any() and not jnp.isinf(e_tilde).any()
-
-    return e_tilde # We have to integrate e_tilde = e * n as per eq 2.1 in original article
+    # We have to integrate e_tilde = e * n as per eq 2.1 in original LYP article
+    return e_tilde 
 
 def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
 
@@ -150,10 +131,7 @@ def lsda_x_e(rho, clip_cte):
     # Eq 2.72 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
     rho = jnp.clip(rho, a_min = clip_cte)
     lda_es = -3./4. * (jnp.array([[3.],[6.]]) / jnp.pi) ** (1 / 3) * (rho.sum(axis = 0))**(4/3)
-    zeta = (rho[0] - rho[1])/ rho.sum(axis = 0)
-    def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
-    # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
-    lda_e = lda_es[0] + (lda_es[1]-lda_es[0])*fzeta(zeta)
+    lda_e = exchange_polarization_correction(lda_es, rho)
 
     return lda_e
 
