@@ -99,6 +99,7 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     See eq 22 in
     https://journals.aps.org/prb/pdf/10.1103/PhysRevB.37.785
     """
+    clip_cte = 1e-33
 
     a = 0.04918
     b = 0.132
@@ -139,9 +140,13 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     par = 2**(2/3)*CF*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18
     log2 = jnp.where(log_rhom5_3 + jnp.log2(par) + log_exp_factor > jnp.log2(clip_cte),
                     log_rhom5_3 + jnp.log2(par) + log_exp_factor, jnp.log2(clip_cte))
-    sum_ = jnp.where(exp_factor > clip_cte, 2*b * 2**log2, 0)
-    return - a * 2**( jnp.log2(gamma) - jnp.log2(1+d*rhom1_3) + 
-                jnp.log2(jnp.clip(rho.sum(axis=0) +  sum_, a_min = clip_cte)) )
+    sum_ = jnp.where(jnp.logical_and(exp_factor > clip_cte, 
+                                    log_rhom5_3 + jnp.log2(par) + log_exp_factor > jnp.log2(clip_cte)),
+                    2*b * 2**log2, 0.)
+    unscaled_result = jnp.where(rho.sum(axis=0) +  sum_ > clip_cte, 2**( jnp.log2(gamma) - jnp.log2(1+d*rhom1_3) + 
+                                jnp.log2(rho.sum(axis=0) +  sum_) ), 0.)
+
+    return - a * unscaled_result
 
     # return - a * gamma/(1+d*rhom1_3) * (rho.sum(axis=0) + jnp.where(exp_factor > clip_cte, 2*b*rhom5_3*
     #    (2**(2/3)*CF*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18)* exp_factor, 0))
