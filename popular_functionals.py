@@ -166,7 +166,6 @@ def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_c
 
     rho = molecule.density()
     grad_rho = molecule.grad_density()
-    grad2rho = molecule.lapl_density()
 
     lda_e = lsda_x_e(rho, clip_cte)
     assert not jnp.isnan(lda_e).any() and not jnp.isinf(lda_e).any()
@@ -174,10 +173,8 @@ def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_c
     assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
     vwn_e = vwn_c_e(rho, clip_cte)
     assert not jnp.isnan(vwn_e).any() and not jnp.isinf(vwn_e).any()
-    lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
-    assert not jnp.isnan(lyp_e).any() and not jnp.isinf(lyp_e).any()
 
-    return [jnp.stack((lda_e, b88_e, vwn_e, lyp_e), axis = 1)]
+    return jnp.stack((lda_e, b88_e, vwn_e), axis = 1)
 
 def b88_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     rho = molecule.density()
@@ -216,11 +213,8 @@ def vwn_combine(features):
 def lyp_combine(features, ehf):
     return [ehf]
 
-def b3lyp_combine(features, ehf):
-
-    ehf = jnp.sum(ehf, axis = (0,1))
-    features = features[0]
-    return [jnp.concatenate([features, jnp.expand_dims(ehf, axis = 1)], axis=1)]
+def b3lyp_combine(features, nogradfeatures):
+    return [jnp.concatenate([features, nogradfeatures], axis=1)]
 
 def b3lyp(instance, features):
     r"""
@@ -237,8 +231,17 @@ def lsda(instance, x): return jnp.einsum('ri->r',x)
 def lyp(instance, x): return jnp.einsum('ri->r',x)
 def vwn(instance, x): return jnp.einsum('ri->r',x)
 
-def b3lyp_nograd_features(molecule, *_, **__): 
-    return molecule.HF_energy_density([0.])
+def b3lyp_nograd_features(molecule, clip_cte = 1e-27, *_, **__):
+    rho = molecule.density()
+    grad_rho = molecule.grad_density()
+    grad2rho = molecule.lapl_density()
+
+    lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
+    assert not jnp.isnan(lyp_e).any() and not jnp.isinf(lyp_e).any()
+    ehf = molecule.HF_energy_density([0.])
+    assert not jnp.isnan(ehf).any() and not jnp.isinf(ehf).any()
+    ehf = jnp.sum(ehf, axis = (0,1))
+    return jnp.stack((lyp_e, ehf), axis = 1)
 
 def lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = jnp.array([0.])):
     # Not implemented
