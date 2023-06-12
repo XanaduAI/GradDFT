@@ -6,6 +6,14 @@ from flax import linen as nn
 
 from functional import Functional, correlation_polarization_correction, exchange_polarization_correction
 
+def lsda_x_e(rho, clip_cte):
+    # Eq 2.72 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+    rho = jnp.clip(rho, a_min = clip_cte)
+    lda_es = -3./4. * (jnp.array([[3.],[6.]]) / jnp.pi) ** (1 / 3) * (rho.sum(axis = 0))**(4/3)
+    lda_e = exchange_polarization_correction(lda_es, rho)
+
+    return lda_e
+
 def b88_x_e(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
     r"""
     B88 exchange functional
@@ -127,13 +135,30 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     return - a * gamma/(1+d*rhom1_3) * (rho.sum(axis=0) + jnp.where(exp_factor > clip_cte, 2*b*rhom5_3*
         (2**(2/3)*CF*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18)* exp_factor, 0))
 
-def lsda_x_e(rho, clip_cte):
-    # Eq 2.72 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
-    rho = jnp.clip(rho, a_min = clip_cte)
-    lda_es = -3./4. * (jnp.array([[3.],[6.]]) / jnp.pi) ** (1 / 3) * (rho.sum(axis = 0))**(4/3)
-    lda_e = exchange_polarization_correction(lda_es, rho)
+def lsda_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+    rho = molecule.density()
+    lda_e = lsda_x_e(rho, clip_cte)
+    return [jnp.expand_dims(lda_e, axis = 1)]
 
-    return lda_e
+def b88_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+    rho = molecule.density()
+    grad_rho = molecule.grad_density()
+    b88_e = b88_x_e(rho, grad_rho, clip_cte)
+    lda_e = lsda_x_e(rho, clip_cte)
+    assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
+    return [jnp.stack((lda_e, b88_e), axis = 1)]
+
+def vwn_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+    rho = molecule.density()
+    lyp_e = vwn_c_e(rho, clip_cte)
+    return [jnp.expand_dims(lyp_e, axis = 1)]
+
+def lyp_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+    rho = molecule.density()
+    grad_rho = molecule.grad_density()
+    grad2rho = molecule.lapl_density()
+    lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
+    return [jnp.expand_dims(lyp_e, axis = 1)]
 
 def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_cte: float = 1e-27):
 
@@ -154,30 +179,6 @@ def b3lyp_exhf_features(molecule: Molecule, functional_type: str = 'GGA', clip_c
 
     return jnp.stack((lda_e, b88_e, vwn_e), axis = 1)
 
-def b88_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
-    rho = molecule.density()
-    grad_rho = molecule.grad_density()
-    b88_e = b88_x_e(rho, grad_rho, clip_cte)
-    lda_e = lsda_x_e(rho, clip_cte)
-    assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
-    return [jnp.stack((lda_e, b88_e), axis = 1)]
-
-def lsda_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
-    rho = molecule.density()
-    lda_e = lsda_x_e(rho, clip_cte)
-    return [jnp.expand_dims(lda_e, axis = 1)]
-
-def lyp_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
-    rho = molecule.density()
-    grad_rho = molecule.grad_density()
-    grad2rho = molecule.lapl_density()
-    lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
-    return [jnp.expand_dims(lyp_e, axis = 1)]
-
-def vwn_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
-    rho = molecule.density()
-    lyp_e = vwn_c_e(rho, clip_cte)
-    return [jnp.expand_dims(lyp_e, axis = 1)]
 
 def b88_combine(features):
     return [features]
