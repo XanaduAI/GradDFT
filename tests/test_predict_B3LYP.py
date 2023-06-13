@@ -6,7 +6,6 @@ from interface import molecule_from_pyscf
 # again, this only works on startup!
 from jax.config import config
 
-from molecule import dm21_combine, dm21_features
 config.update("jax_enable_x64", True)
 
 dirpath = os.path.dirname(os.path.dirname(__file__))
@@ -29,7 +28,7 @@ import numpy as np
 from functional import DM21
 from utils.types import Hartree2kcalmol
 
-from popular_functionals import B88, b88_combine, b88_features
+from popular_functionals import B3LYP
 
 
 params = {'params': {}}
@@ -46,10 +45,10 @@ mf2.kernel()
 mycc = cc.CCSD(mf2).run()
 ccsd_energy = mycc.e_tot
 mf = dft.RKS(mol)
-mf.xc = 'B88'
+mf.xc = 'B3LYP'
 mf.kernel()
 
-functional = B88
+functional = B3LYP
 grid = mf.grids
 
 
@@ -57,7 +56,7 @@ def test_predict(mf, energy):
     ## Load the molecule, RKS
     warnings.warn('Remember to set the grid level to 3 in the config file!')
 
-    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [])
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0.])
 
     #tx = adam(learning_rate = learning_rate)
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
@@ -67,7 +66,7 @@ def test_predict(mf, energy):
     e_XND = iterator(params, molecule)
 
     mf = dft.RKS(mol)
-    mf.xc = 'B88'
+    mf.xc = 'B3LYP'
     e_DM = mf.kernel()
 
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol
@@ -98,7 +97,7 @@ def test_predict(mf, energy):
     ## Load the molecule, UKS
     warnings.warn('Remember to set the grid level to 3 in the config file!')
 
-    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [])
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0.])
 
     #tx = adam(learning_rate = learning_rate)
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
@@ -108,7 +107,7 @@ def test_predict(mf, energy):
     e_XND = iterator(params, molecule)
 
     mf = dft.UKS(mol)
-    mf.xc = 'B88'
+    mf.xc = 'B3LYP'
     e_DM = mf.kernel()
 
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol

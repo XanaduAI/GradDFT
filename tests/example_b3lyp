@@ -1,6 +1,6 @@
 from flax.core import freeze
 from jax import numpy as jnp
-from popular_functionals import B3LYP, B88, LSDA, LYP, VWN, b3lyp_combine, b3lyp_exhf_features, b88_features, b88_combine, lsda_combine, lsda_features, lyp_combine, lyp_features, vwn_combine, vwn_features
+from popular_functionals import B3LYP, B88, LSDA, LYP, VWN
 
 from interface.pyscf import molecule_from_pyscf
 
@@ -72,11 +72,7 @@ lyp_ground_truth_energy = mf.kernel()
 
 molecule = molecule_from_pyscf(mf, omegas = [])
 predict_molecule = molecule_predictor(LYP)
-# This will return a Fock matrix composed of nan because the potential of LYP cannot be computed via self.differentiation
-#lyp_predicted_e, fock = predict_molecule(params, molecule)
 
-#lypdiff = (lyp_ground_truth_energy-lyp_predicted_e)*Hartree2kcalmol
-#assert jnp.allclose(lypdiff, 0, atol = 1e1)
 
 #### B3LYP ####
 
@@ -87,7 +83,6 @@ ground_truth_energy = mf.kernel()
 
 molecule = molecule_from_pyscf(mf, omegas = [0.])
 predict_molecule = molecule_predictor(B3LYP)
-# This will return a Fock matrix composed of nan because the potential of LYP cannot be computed via self.differentiation
 predicted_e, fock = predict_molecule(params, molecule)
 
 b3lypdiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
