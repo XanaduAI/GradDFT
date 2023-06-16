@@ -26,10 +26,9 @@ from openfermion import geometry_from_pubchem
 
 from pyscf import gto, dft, cc, scf
 import numpy as np
-from functional import DM21
 from utils.types import Hartree2kcalmol
 
-from popular_functionals import B88, b88_combine, b88_features
+from popular_functionals import B88
 
 
 params = {'params': {}}

@@ -51,6 +51,31 @@ def b88_x_e(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
     return b88_e
 
 
+def pw92_c_e(rho: Array, clip_cte: float = 1e-27):
+
+    A_ = jnp.array([[0.031091],
+                    [0.015545]])
+    alpha1 = jnp.array([[0.21370],
+                    [0.20548]])
+    beta1 = jnp.array([[7.5957],
+                    [14.1189]])
+    beta2 = jnp.array([[3.5876],
+                    [6.1977]])
+    beta3 = jnp.array([[1.6382],
+                    [3.3662]])
+    beta4 = jnp.array([[0.49294],
+                    [0.62517]])
+    
+    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
+    log_rs = jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
+    rs = 2**log_rs
+
+    e_PF = -2*A_*(1+alpha1*rs)*jnp.log(1+(1/(2*A_))/(beta1*jnp.sqrt(rs) + beta2*rs + beta3*rs**(3/2) + beta4*rs**2))
+
+    e_tilde = correlation_polarization_correction(e_PF, rho, clip_cte)
+
+    return e_tilde
+
 def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
 
     r"""
@@ -155,8 +180,13 @@ def b88_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
 
 def vwn_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     rho = molecule.density()
-    lyp_e = vwn_c_e(rho, clip_cte)
-    return [jnp.expand_dims(lyp_e, axis = 1)]
+    vwn_e = vwn_c_e(rho, clip_cte)
+    return [jnp.expand_dims(vwn_e, axis = 1)]
+
+def pw92_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+    rho = molecule.density()
+    pw92_e = pw92_c_e(rho, clip_cte)
+    return [jnp.expand_dims(pw92_e, axis = 1)]
 
 def lyp_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     rho = molecule.density()
@@ -197,6 +227,9 @@ def lsda_combine(features):
 def vwn_combine(features):
     return [features]
 
+def pw92_combine(features):
+    return [features]
+
 def lyp_combine(features, ehf):
     return [ehf]
 
@@ -218,6 +251,7 @@ def b88(instance, x): return jnp.einsum('ri->r',x)
 def lsda(instance, x): return jnp.einsum('ri->r',x)
 def lyp(instance, x): return jnp.einsum('ri->r',x)
 def vwn(instance, x): return jnp.einsum('ri->r',x)
+def pw92(instance, x): return jnp.einsum('ri->r',x)
 
 def b3lyp_nograd_features(molecule, *_, **__):
 
@@ -240,3 +274,5 @@ LYP = Functional(lyp, None, lyp_features, lyp_hfgrads, lyp_combine)
 B3LYP = Functional(b3lyp, b3lyp_exhf_features, b3lyp_nograd_features, 
                 b3lyp_hfgrads,
                 b3lyp_combine)
+
+PW92 = Functional(pw92, pw92_features, None, None,pw92_combine)

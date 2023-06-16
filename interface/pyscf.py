@@ -1,6 +1,6 @@
 from random import shuffle
 from typing import List, Optional, Union, Sequence, Tuple, NamedTuple
-from itertools import chain
+from itertools import chain, combinations_with_replacement
 import os
 
 import numpy as np
@@ -417,6 +417,20 @@ def _maybe_run_kernel(mf: HartreeFock, grids: Optional[Grids] = None):
         mf.kernel()
 
     return mf, grids
+
+
+def spatial_derivative(mf: DensityFunctional, grids: Optional[Grids] = None, order = 0):
+    ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=order)
+    result = 0
+    i = 0
+    for o in range(0, order):
+        for c in combinations_with_replacement('xyz', r = o):
+            i += 1
+    for c in combinations_with_replacement('xyz', r = order):
+        i += 1
+        if len(set(c)) == 1:
+            result += ao_[i]
+    return result
 
 
 def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, training: bool = False, scf_iteration: int = 50):

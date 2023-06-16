@@ -1,6 +1,6 @@
 from flax.core import freeze
 from jax import numpy as jnp
-from popular_functionals import B3LYP, B88, LSDA, LYP, VWN
+from popular_functionals import B3LYP, B88, LSDA, LYP, VWN, PW92
 
 from interface.pyscf import molecule_from_pyscf
 
@@ -87,6 +87,21 @@ predicted_e, fock = predict_molecule(params, molecule)
 
 b3lypdiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
 assert jnp.allclose(b3lypdiff, 0, atol = 1e1)
+
+
+#### PW92 ####
+
+mf = dft.UKS(mol)
+mf.grids = grids
+mf.xc = 'LDA_C_PW'
+ground_truth_energy = mf.kernel()
+
+molecule = molecule_from_pyscf(mf, omegas = [])
+predict_molecule = molecule_predictor(PW92)
+predicted_e, fock = predict_molecule(params, molecule)
+
+pw92diff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
+assert jnp.allclose(pw92diff, 0, atol = 1e1)
 
 
 ### An alternative way of generating the params (which is an empty dict)

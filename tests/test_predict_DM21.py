@@ -10,7 +10,7 @@ from optax import adam
 # again, this only works on startup!
 from jax.config import config
 
-from molecule import dm21_combine, dm21_features
+from functional import dm21_combine, dm21_features
 config.update("jax_enable_x64", True)
 
 dirpath = os.path.dirname(os.path.dirname(__file__))
