@@ -3,8 +3,7 @@ from jax import numpy as jnp
 from optax import adam, apply_updates
 
 from interface.pyscf import molecule_from_pyscf
-from molecule import dm21_features
-from functional import NeuralFunctional, canonicalize_inputs, default_loss
+from functional import NeuralFunctional, canonicalize_inputs, default_loss, dm21_features
 from jax.nn import gelu
 
 # First we define a molecule:

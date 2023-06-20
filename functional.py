@@ -782,19 +782,75 @@ def local_features(molecule: Molecule, functional_type: Optional[Union[str, Dict
     # GGA preprocessing data
     log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm_sq, a_min = clip_cte))/2
     log_x_sigma = log_grad_rho_norm - 4/3.*log_rho
-    log_u_sigma = jnp.where(jnp.greater(log_rho,jnp.log2(clip_cte)), log_x_sigma - jnp.log2(1 + beta*(2**log_x_sigma)) + jnp.log2(beta), 0)
+    log_u_sigma = jnp.where(jnp.greater(log_rho,jnp.log2(clip_cte)), 
+                            log_x_sigma - jnp.log2(1 + beta*(2**log_x_sigma)) + jnp.log2(beta), 0)
 
     # MGGA preprocessing data
     log_tau = jnp.log2(jnp.clip(tau, a_min = clip_cte))
-    log_1t_sigma = -(5/3.*log_rho - log_tau)
-    log_w_sigma = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
+    log_1t_sigma = log_tau -5/3.*log_rho
+    log_w_sigma = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), 
+                            log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
 
     # Compute the local features
     localfeatures = jnp.empty((0, log_rho.shape[-1]))
-    for i, j in itertools.product(u_range, w_range): #todo: instead of sum perhaps we should use exchange extrapolation; also use correlation
-        mgga_term = jnp.sum(2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma), axis = 0, keepdims = True)
-        e_tilde = correlation_polarization_correction(mgga_term, rho, clip_cte)
+    for i, j in itertools.product(u_range, w_range):
+        mgga_term = 2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)
 
+        # First we concatenate the exchange terms
+        localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
+
+    ######### Correlation features ###############
+
+    grad_rho_norm_sq_ss = jnp.sum((grad_rho.sum(axis = 0))**2, axis=-1)
+    log_grad_rho_norm_ss = jnp.log2(jnp.clip(grad_rho_norm_sq_ss, a_min = clip_cte))/2
+    log_rho_ss = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
+    log_x_ss = log_grad_rho_norm_ss - 4/3.*log_rho_ss
+
+    log_u_ss = jnp.where(jnp.greater(log_rho_ss,jnp.log2(clip_cte)), 
+                            log_x_ss - jnp.log2(1 + beta*(2**log_x_ss)) + jnp.log2(beta), 0)
+    
+    log_u_ab = jnp.where(jnp.greater(log_rho_ss,jnp.log2(clip_cte)), 
+                            log_x_ss - 1 - jnp.log2(1 + beta*(2**(log_x_ss-1))) + jnp.log2(beta), 0)
+
+    log_u_c = jnp.concat((log_u_ss, log_u_ab), axis = 0)
+
+
+    log_tau_ss = jnp.log2(jnp.clip(tau.sum(axis = 0), a_min = clip_cte))
+    log_1t_ss = log_tau_ss - 5/3.*log_rho_ss
+    log_w_ss = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), 
+                            log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
+    
+    log_w_ab = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), 
+                            log_1t_sigma - 1 - jnp.log2(1 + beta*(2**(log_1t_sigma-1))) + jnp.log2(beta), 0)
+    
+    log_w_c = jnp.concat((log_w_ss, log_w_ab), axis = 0)
+
+
+    A_ = jnp.array([[0.031091],
+                    [0.015545]])
+    alpha1 = jnp.array([[0.21370],
+                    [0.20548]])
+    beta1 = jnp.array([[7.5957],
+                    [14.1189]])
+    beta2 = jnp.array([[3.5876],
+                    [6.1977]])
+    beta3 = jnp.array([[1.6382],
+                    [3.3662]])
+    beta4 = jnp.array([[0.49294],
+                    [0.62517]])
+    
+    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
+    log_rs = jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
+    rs = 2**log_rs
+
+    e_PW92 = -2*A_*(1+alpha1*rs)*jnp.log(1+(1/(2*A_))/(beta1*jnp.sqrt(rs) + beta2*rs + beta3*rs**(3/2) + beta4*rs**2))
+
+    # Compute the local features
+    localfeatures = jnp.empty((0, log_rho.shape[-1]))
+    for i, j in itertools.product(u_range, w_range):
+        mgga_term = 2**(jnp.log2(e_PW92) + i * log_u_c + j * log_w_c)
+
+        # First we concatenate the exchange terms
         localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
 
     return localfeatures.T

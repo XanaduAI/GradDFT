@@ -1,11 +1,9 @@
-from functools import partial
 from jax.random import PRNGKey
 from optax import adam, apply_updates
 from jax.lax import stop_gradient
 
 from interface.pyscf import molecule_from_pyscf
-from molecule import dm21_features
-from functional import DM21, default_loss
+from functional import DM21, default_loss, dm21_features
 
 # First we define a molecule:
 from pyscf import gto, dft

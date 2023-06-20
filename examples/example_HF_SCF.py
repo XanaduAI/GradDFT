@@ -4,8 +4,7 @@ from jax.lax import stop_gradient
 from evaluate import make_molecule_scf_loop
 
 from interface.pyscf import molecule_from_pyscf
-from molecule import dm21_combine, dm21_features
-from functional import DM21
+from functional import DM21, dm21_features
 
 # First we define a molecule:
 from pyscf import gto, dft
