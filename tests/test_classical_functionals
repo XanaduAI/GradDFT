@@ -4,6 +4,9 @@ from popular_functionals import B3LYP, B88, LSDA, LYP, VWN, PW92
 
 from interface.pyscf import molecule_from_pyscf
 
+# This file aims to test, given some electronic density, whether our
+# implementation of classical functionals closely matches libxc (pyscf default).
+
 # again, this only works on startup!
 from jax import config
 
@@ -105,18 +108,3 @@ predicted_e, fock = predict_molecule(params, molecule)
 
 pw92diff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
 assert jnp.allclose(pw92diff, 0, atol = 1e1)
-
-
-### An alternative way of generating the params (which is an empty dict)
-'''# We generate the features from the molecule we created before
-features = b3lyp_exhf_features(molecule = molecule, functional_type='MGGA')
-ehf = molecule.HF_energy_density([0])
-ehf = jnp.sum(ehf, axis = (0,1)).T
-inputs = jnp.concatenate([features, ehf], axis=1)
-
-# We initialize the Functional parameters
-key = PRNGKey(42)
-key, = split(key, 1)
-params = B3LYP.init(key, inputs)'''
-
-

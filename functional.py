@@ -80,9 +80,9 @@ class Functional(nn.Module):
 
     function: staticmethod
     features: staticmethod
-    nograd_features: staticmethod
-    featuregrads: staticmethod
-    combine: staticmethod = lambda inputs: [inputs]
+    nograd_features: staticmethod = None
+    featuregrads: staticmethod = None
+    combine: staticmethod = None
     is_xc: bool = True
 
     @nn.compact
@@ -183,9 +183,9 @@ class NeuralFunctional(Functional):
 
     function: staticmethod
     features: staticmethod
-    nograd_features: staticmethod
-    featuregrads: staticmethod
-    combine: staticmethod
+    nograd_features: staticmethod = None
+    featuregrads: staticmethod = None
+    combine: staticmethod = None
     is_xc: bool = True
     kernel_init: Callable = he_normal()
     bias_init: Callable = zeros

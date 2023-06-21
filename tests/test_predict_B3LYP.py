@@ -18,7 +18,7 @@ model_path = os.path.normpath(dirpath + "/DM21_model")
 
 learning_rate = 1e-3
 
-from interface import molecule_from_pyscf, saver, loader
+from interface import molecule_from_pyscf
 from evaluate import make_molecule_scf_loop, make_orbital_optimizer
 from external.density_functional_approximation_dm21.density_functional_approximation_dm21.compute_hfx_density import get_hf_density
 from openfermion import geometry_from_pubchem
@@ -82,8 +82,8 @@ test_predict(mf, energy = ccsd_energy)
 
 molecule_name = 'Co'
 mol = gto.Mole()
-mol.atom = 'Co 0 0 0' # def2-tzvp
-mol.basis = "def2-tzvp" #basis_set_exchange.api.get_basis(name='cc-pvdz', fmt='nwchem', elements='Co')
+mol.atom = 'Co 0 0 0'
+mol.basis = "def2-tzvp" # alternatively basis_set_exchange.api.get_basis(name='cc-pvdz', fmt='nwchem', elements='Co')
 mol.spin = 3
 mol.build()
 mf = dft.UKS(mol)

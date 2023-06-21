@@ -5,8 +5,6 @@ from interface import molecule_from_pyscf
 from external import NeuralNumInt
 from external import Functional
 
-from optax import adam
-
 # again, this only works on startup!
 from jax.config import config
 
@@ -85,8 +83,8 @@ test_predict(mf, energy = ccsd_energy)
 
 molecule_name = 'Co'
 mol = gto.Mole()
-mol.atom = 'Co 0 0 0' # def2-tzvp
-mol.basis = "def2-tzvp" #basis_set_exchange.api.get_basis(name='cc-pvdz', fmt='nwchem', elements='Co')
+mol.atom = 'Co 0 0 0'
+mol.basis = "def2-tzvp" # alternatively basis_set_exchange.api.get_basis(name='cc-pvdz', fmt='nwchem', elements='Co')
 mol.spin = 3
 mol.build()
 mf = dft.UKS(mol)
