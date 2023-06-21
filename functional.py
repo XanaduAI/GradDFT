@@ -699,7 +699,7 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
         Array, shape (n_grid)
         The ready to be integrated electronic energy density.
     """
-    clip_cte = 1e-10
+
     e_tilde_PF = jnp.einsum('sr,r->sr', e_PF, rho.sum(axis = 0))
 
     log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
