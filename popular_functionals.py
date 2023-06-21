@@ -3,6 +3,7 @@ from molecule import Molecule
 from utils import Array
 from typing import Dict, List
 from flax import linen as nn
+from jax.lax import stop_gradient
 
 from functional import Functional, correlation_polarization_correction, exchange_polarization_correction
 
@@ -53,6 +54,11 @@ def b88_x_e(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
 
 def pw92_c_e(rho: Array, clip_cte: float = 1e-27):
 
+    r"""
+    Eq 10 in
+    https://journals.aps.org/prb/abstract/10.1103/PhysRevB.45.13244
+    """
+
     A_ = jnp.array([[0.031091],
                     [0.015545]])
     alpha1 = jnp.array([[0.21370],
@@ -68,9 +74,13 @@ def pw92_c_e(rho: Array, clip_cte: float = 1e-27):
     
     log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
     log_rs = jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
-    rs = 2**log_rs
+    brs_1_2 = 2**(log_rs/2 + jnp.log2(beta1))
+    ars = 2**(log_rs + jnp.log2(alpha1))
+    brs = 2**(log_rs + jnp.log2(beta2))
+    brs_3_2 = 2**(3*log_rs/2+ jnp.log2(beta3))
+    brs2 = 2**(2*log_rs+ jnp.log2(beta4))
 
-    e_PF = -2*A_*(1+alpha1*rs)*jnp.log(1+(1/(2*A_))/(beta1*jnp.sqrt(rs) + beta2*rs + beta3*rs**(3/2) + beta4*rs**2))
+    e_PF = -2*A_*(1+ars)*jnp.log(1+(1/(2*A_))/(brs_1_2 + brs + brs_3_2 + brs2))
 
     e_tilde = correlation_polarization_correction(e_PF, rho, clip_cte)
 
@@ -166,11 +176,13 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
                             gamma/(1+d*rhom1_3)*(rho.sum(axis=0) +  sum_), 0.)
 
 def lsda_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+    r"""Auxiliary function to generate the features of LSDA."""
     rho = molecule.density()
     lda_e = lsda_x_e(rho, clip_cte)
     return [jnp.expand_dims(lda_e, axis = 1)]
 
 def b88_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+    r"""Auxiliary function to generate the features of B88 functional."""
     rho = molecule.density()
     grad_rho = molecule.grad_density()
     b88_e = b88_x_e(rho, grad_rho, clip_cte)
@@ -179,16 +191,19 @@ def b88_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     return [jnp.stack((lda_e, b88_e), axis = 1)]
 
 def vwn_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+    r"""Auxiliary function to generate the features of VWN functional."""
     rho = molecule.density()
     vwn_e = vwn_c_e(rho, clip_cte)
     return [jnp.expand_dims(vwn_e, axis = 1)]
 
 def pw92_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+    r"""Auxiliary function to generate the features of PW92 functional."""
     rho = molecule.density()
     pw92_e = pw92_c_e(rho, clip_cte)
     return [jnp.expand_dims(pw92_e, axis = 1)]
 
 def lyp_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+    r"""Auxiliary function to generate the features of LYP functional."""
     rho = molecule.density()
     grad_rho = molecule.grad_density()
     grad2rho = molecule.lapl_density()
@@ -198,6 +213,7 @@ def lyp_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
 def b3lyp_exhf_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
 
     r"""
+    Auxiliary function to generate the non Hartree-Fock features of B3LYP functional
     See eq 2 in
     https://pubs.acs.org/doi/pdf/10.1021/j100096a001
     """
@@ -240,7 +256,7 @@ def b3lyp_combine(features, ehf):
 
 def b3lyp(instance, features):
     r"""
-    The dot product between the features and the weights
+    The dot product between the features and the weights in B3LYP.
     """
     a0=0.2
     ax=0.72
@@ -270,7 +286,7 @@ def b3lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, featu
 B88 = Functional(b88, b88_features, None, None, b88_combine)
 LSDA = Functional(lsda, lsda_features, None, None, lsda_combine)
 VWN = Functional(vwn, vwn_features, None, None,vwn_combine)
-LYP = Functional(lyp, None, lyp_features, lyp_hfgrads, lyp_combine)
+LYP = Functional(lyp, lyp_features, None, None, lyp_combine)
 B3LYP = Functional(b3lyp, b3lyp_exhf_features, b3lyp_nograd_features, 
                 b3lyp_hfgrads,
                 b3lyp_combine)

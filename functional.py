@@ -699,14 +699,18 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
         Array, shape (n_grid)
         The ready to be integrated electronic energy density.
     """
+    clip_cte = 1e-10
     e_tilde_PF = jnp.einsum('sr,r->sr', e_PF, rho.sum(axis = 0))
 
     log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
     assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
-    rs = 2**( jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3. )
+    log_rs =  jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
 
-    zeta = jnp.where(rho.sum(axis = 0) > clip_cte, (rho[0] - rho[1]) / (rho.sum(axis = 0)), 0)
-    def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
+    zeta = jnp.where(rho.sum(axis = 0) > clip_cte, (rho[0] - rho[1]) / (rho.sum(axis = 0)), 0.)
+    def fzeta(z): 
+        zm = 2**(4*jnp.log2(1-z)/3)
+        zp = 2**(4*jnp.log2(1+z)/3)
+        return (zm + zp - 2) / (2*(2**(1/3) - 1))
 
     A_ = 0.016887
     alpha1 = 0.11125
@@ -714,10 +718,24 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
     beta2 = 3.6231
     beta3 = 0.88026
     beta4 = 0.49671
-    alphac = 2*A_*(1+alpha1*rs)*jnp.log(1+(1/(2*A_))/(beta1*jnp.sqrt(rs) + beta2*rs + beta3*rs**(3/2) + beta4*rs**2))
+
+    ars = 2**(jnp.log2(alpha1) + log_rs)
+    brs_1_2 = 2**(jnp.log2(beta1) +  log_rs/2)
+    brs = 2**(jnp.log2(beta2)+log_rs)
+    brs_3_2 = 2**(jnp.log2(beta3)+3*log_rs/2)
+    brs2 = 2**(jnp.log2(beta4)+2*log_rs)
+
+    log_ = jnp.log(1+(1/(2*A_))/(brs_1_2 + brs + brs_3_2 + brs2))
+    alphac = jnp.clip(2*A_*(1+ars)*log_, a_min = clip_cte)
     assert not jnp.isnan(alphac).any() and not jnp.isinf(alphac).any()
 
-    e_tilde = e_tilde_PF[0] + alphac*(fzeta(zeta)/(grad(grad(fzeta))(0.)))*(1-zeta**4) + (e_tilde_PF[1] - e_tilde_PF[0])*fzeta(zeta)*zeta**4
+    fz = jnp.round(fzeta(zeta), int(jnp.log10(clip_cte)))
+    z4 = jnp.round(2**(4*jnp.log2(jnp.clip(zeta, a_min = clip_cte))), int(jnp.log10(clip_cte)))
+    term1 = jnp.where( jnp.logical_and(alphac > clip_cte, fz > clip_cte),
+        alphac * (fz/(grad(grad(fzeta))(0.)))* (1-z4), 0.)
+    term2 = jnp.where(jnp.logical_and(jnp.greater(fz, clip_cte), jnp.greater(zeta, clip_cte)),
+        (e_tilde_PF[1] - e_tilde_PF[0]) * fz*z4, 0.)
+    e_tilde = e_tilde_PF[0] + term1 + term2
     assert not jnp.isnan(e_tilde).any() and not jnp.isinf(e_tilde).any()
 
     return e_tilde

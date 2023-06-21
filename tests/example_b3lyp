@@ -68,11 +68,14 @@ assert jnp.allclose(vwndiff, 0, atol = 1e1)
 mf = dft.UKS(mol)
 mf.grids = grids
 mf.xc = 'GGA_C_LYP'
-lyp_ground_truth_energy = mf.kernel()
+ground_truth_energy = mf.kernel()
 
 molecule = molecule_from_pyscf(mf, omegas = [])
 predict_molecule = molecule_predictor(LYP)
+predicted_e, fock = predict_molecule(params, molecule)
 
+lypdiff = (ground_truth_energy-predicted_e)*Hartree2kcalmol
+assert jnp.allclose(lypdiff, 0, atol = 1e1)
 
 #### B3LYP ####
 

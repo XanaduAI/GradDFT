@@ -419,6 +419,7 @@ def eig(h,x):
 
 ######################################################################
 
+@partial(jax.jit, static_argnames=["precision"])
 def nonXC(
     rdm1: Array, h1e: Array, rep_tensor: Array, nuclear_repulsion: Scalar, precision = Precision.HIGHEST
 ) -> Scalar:
@@ -457,16 +458,19 @@ def nonXC(
 
     return nuclear_repulsion + h1e_energy + coulomb2e_energy
 
+@partial(jax.jit)
 def symmetrize_rdm1(rdm1):
     dm = rdm1.sum(axis = 0)
     rdm1 = jnp.stack([dm, dm], axis = 0)/2.
     return rdm1
 
+@partial(jax.jit, static_argnames=["precision"])
 def two_body_energy(rdm1, rep_tensor, precision = Precision.HIGHEST):
     v_coul = 2 * jnp.einsum("pqrt,srt->spq", rep_tensor, rdm1, precision=precision) # The 2 is to compensate for the /2 in the dm definition
     coulomb2e_energy = jnp.einsum('sji,sij->', rdm1, v_coul, precision=precision)/2.
     return coulomb2e_energy
 
+@partial(jax.jit, static_argnames=["precision"])
 def one_body_energy(rdm1, h1e, precision = Precision.HIGHEST):
     h1e_energy = jnp.einsum("sij,ji->", rdm1, h1e, precision=precision)
     return h1e_energy
@@ -496,6 +500,7 @@ def coulomb_potential(rdm1, rep_tensor, precision = Precision.HIGHEST):
     """
     return 2 * jnp.einsum("pqrt,srt->spq", rep_tensor, rdm1, precision=precision)
 
+@partial(jax.jit, static_argnames=["precision"])
 def HF_exact_exchange(
     chi, rdm1, ao, precision = Precision.HIGHEST
 ) -> Array:
