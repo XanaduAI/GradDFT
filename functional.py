@@ -725,17 +725,13 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
     brs_3_2 = 2**(jnp.log2(beta3)+3*log_rs/2)
     brs2 = 2**(jnp.log2(beta4)+2*log_rs)
 
-    log_ = jnp.log(1+(1/(2*A_))/(brs_1_2 + brs + brs_3_2 + brs2))
-    alphac = jnp.clip(2*A_*(1+ars)*log_, a_min = clip_cte)
+    alphac = 2*A_*(1+ars)*jnp.log(1+(1/(2*A_))/(brs_1_2 + brs + brs_3_2 + brs2))
     assert not jnp.isnan(alphac).any() and not jnp.isinf(alphac).any()
 
     fz = jnp.round(fzeta(zeta), int(jnp.log10(clip_cte)))
     z4 = jnp.round(2**(4*jnp.log2(jnp.clip(zeta, a_min = clip_cte))), int(jnp.log10(clip_cte)))
-    term1 = jnp.where( jnp.logical_and(alphac > clip_cte, fz > clip_cte),
-        alphac * (fz/(grad(grad(fzeta))(0.)))* (1-z4), 0.)
-    term2 = jnp.where(jnp.logical_and(jnp.greater(fz, clip_cte), jnp.greater(zeta, clip_cte)),
-        (e_tilde_PF[1] - e_tilde_PF[0]) * fz*z4, 0.)
-    e_tilde = e_tilde_PF[0] + term1 + term2
+
+    e_tilde = e_tilde_PF[0] + alphac * (fz/(grad(grad(fzeta))(0.)))* (1-z4) + (e_tilde_PF[1]-e_tilde_PF[0]) * fz*z4
     assert not jnp.isnan(e_tilde).any() and not jnp.isinf(e_tilde).any()
 
     return e_tilde
