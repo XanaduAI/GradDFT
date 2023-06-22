@@ -20,11 +20,6 @@ from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 from utils import Scalar, Array, PyTree, DType, default_dtype
 from molecule import Molecule
 
-def external_f(instance, x):
-    x = instance.dense(x)
-    x = 0.5*jnp.tanh(x)
-    return x
-
 @dataclass
 class Functional(nn.Module):
     r""" A base class of local functionals.

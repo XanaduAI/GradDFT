@@ -22,7 +22,7 @@ model_path = os.path.normpath(dirpath + "/DM21_model")
 learning_rate = 1e-3
 
 from interface import molecule_from_pyscf, saver, loader
-from evaluate import make_molecule_scf_loop, make_orbital_optimizer
+from evaluate import make_scf_loop, make_orbital_optimizer
 from external.density_functional_approximation_dm21.density_functional_approximation_dm21.compute_hfx_density import get_hf_density
 from openfermion import geometry_from_pubchem
 
@@ -61,7 +61,7 @@ def test_predict(mf, energy):
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     #e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_molecule_scf_loop(functional,
+    iterator = make_scf_loop(functional,
                                     verbose = 2, 
                                     functional_type = 'DM21')
     e_XND = iterator(params, molecule)
@@ -103,7 +103,7 @@ def test_predict(mf, energy):
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     #e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_molecule_scf_loop(functional,
+    iterator = make_scf_loop(functional,
                                     verbose = 2, 
                                     functional_type = 'DM21')
     e_XND = iterator(params, molecule)
@@ -143,7 +143,7 @@ def test_rks():
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     #e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_molecule_scf_loop(functional,
+    iterator = make_scf_loop(functional,
                                     feature_fn=dm21_features,
                                     combine_features_hf=dm21_combine,
                                     omegas = [0., 0.4], 
@@ -176,7 +176,7 @@ def test_uks():
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     #e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_molecule_scf_loop(functional,
+    iterator = make_scf_loop(functional,
                                     verbose = 2, 
                                     functional_type = 'DM21')
     e_XND = iterator(params, molecule)

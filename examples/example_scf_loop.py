@@ -1,6 +1,6 @@
 from jax import numpy as jnp
 from optax import adam
-from evaluate import make_molecule_scf_loop
+from evaluate import make_scf_loop
 
 from interface.pyscf import molecule_from_pyscf
 from functional import NeuralFunctional, canonicalize_inputs, dm21_features
@@ -72,5 +72,5 @@ tx = train_state.tx
 opt_state = tx.init(params)
 
 # Create the scf iterator
-scf_iterator = make_molecule_scf_loop(functional, verbose = 2)
+scf_iterator = make_scf_loop(functional, verbose = 2)
 predicted_e = scf_iterator(params, molecule)

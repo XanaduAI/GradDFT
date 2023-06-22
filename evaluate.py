@@ -23,7 +23,7 @@ from utils.types import Hartree2kcalmol
 
 
 
-def make_molecule_scf_loop(functional: Functional,
+def make_scf_loop(functional: Functional,
                             level_shift_factor: tuple[float, float] = (0.,0.), damp_factor: tuple[float, float] = (0.,0.),
                             chunk_size: int = 1024, max_cycles: int = 50, diis_start_cycle: int = 0,
                             e_conv: float = 1e-5, g_conv: float = 1e-5, diis_method = 'CDIIS',
@@ -79,6 +79,7 @@ def make_molecule_scf_loop(functional: Functional,
         diis_data = (jnp.empty((0, 2, A.shape[0], A.shape[0])), jnp.empty((0, 2, A.shape[0], A.shape[0])), 
                     jnp.empty(0), jnp.empty((0, 2, A.shape[0], A.shape[0])))
 
+        #todo: change to for? use jax.lax.scan, jax.lax.cond
         while (abs(predicted_e - old_e)*Hartree2kcalmol > e_conv or norm_gorb > g_conv) and cycle < max_cycles:
             # Convergence criterion is energy difference (default 1) kcal/mol and norm of gradient of orbitals < g_conv
             start_time = time.time()

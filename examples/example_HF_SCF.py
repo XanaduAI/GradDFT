@@ -1,6 +1,6 @@
 from jax.random import PRNGKey
 from jax.lax import stop_gradient
-from evaluate import make_molecule_scf_loop
+from evaluate import make_scf_loop
 
 from interface.pyscf import molecule_from_pyscf
 from functional import DM21, dm21_features
@@ -45,7 +45,7 @@ predicted_energy = functional.energy(params, molecule, *functional_inputs)
 print('Predicted_energy:',predicted_energy)
 
 # Finally, we create and implement the self-consistent loop.
-scf_iterator = make_molecule_scf_loop(functional, verbose = 2, functional_type = "DM21")
+scf_iterator = make_scf_loop(functional, verbose = 2, functional_type = "DM21")
 predicted_e = scf_iterator(params, molecule)
 
 print(f'The predicted energy is {energy}')
