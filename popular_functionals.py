@@ -18,7 +18,7 @@ def lsda_x_e(rho, clip_cte):
 def b88_x_e(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
     r"""
     B88 exchange functional
-    See eq 8 in https://journals.aps.org/pra/pdf/10.1103/PhysRevA.38.3098
+    See eq 8 in https://journals.aps.org/pra/abstract/10.1103/PhysRevA.38.3098
     See also https://github.com/ElectronicStructureLibrary/libxc/blob/4bd0e1e36347c6d0a4e378a2c8d891ae43f8c951/maple/gga_exc/gga_x_b88.mpl#L22
     """
 
