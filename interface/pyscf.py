@@ -1,5 +1,5 @@
 from random import shuffle
-from typing import List, Optional, Union, Sequence, Tuple, NamedTuple
+from typing import List, Optional, Union, Sequence, Dict
 from itertools import chain, combinations_with_replacement
 import os
 
@@ -44,7 +44,7 @@ def molecule_from_pyscf(
     #mf, grids = _maybe_run_kernel(mf, grids)
     grid = grid_from_pyscf(mf.grids, dtype=dtype)
 
-    ao, grad_ao, grad_grad_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor = to_device_arrays(
+    ao, grad_ao, grad_n_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor = to_device_arrays(
         *_package_outputs(mf, mf.grids, training, scf_iteration), dtype=dtype
     )
 
@@ -68,7 +68,7 @@ def molecule_from_pyscf(
     grid_level = mf.grids.level
 
     return Molecule(
-        grid, atom_index, nuclear_pos, ao, grad_ao, grad_grad_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_occ, mo_energy,
+        grid, atom_index, nuclear_pos, ao, grad_ao, grad_n_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_occ, mo_energy,
         mf_e_tot, s1e, omegas, chi, rep_tensor, energy, basis, name, spin, charge, unit_Angstrom, grid_level, scf_iteration, fock
     )
 
@@ -393,7 +393,16 @@ def to_device_arrays(*arrays, dtype: Optional[DType] = None):
     if dtype is None:
         dtype = default_dtype()
 
-    return [jnp.asarray(array, dtype=dtype) for array in arrays]
+    out = []
+    for array in arrays:
+        if isinstance(array, dict):
+            for k, v in array.items():
+                array[k] = jnp.asarray(v)
+            out.append(array)
+        else:
+            out.append(jnp.asarray(array))
+
+    return out
 
 
 def _maybe_run_kernel(mf: HartreeFock, grids: Optional[Grids] = None):
@@ -419,21 +428,42 @@ def _maybe_run_kernel(mf: HartreeFock, grids: Optional[Grids] = None):
     return mf, grids
 
 
-def spatial_derivative(mf: DensityFunctional, grids: Optional[Grids] = None, order = 0):
-    ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=order)
-    result = 0
-    i = 0
-    for o in range(0, order):
-        for c in combinations_with_replacement('xyz', r = o):
+def ao_grads(mf: DensityFunctional, order = 2) -> Dict:
+    r"""Function to compute nth order atomic orbital grads, for n > 1.
+    
+    ::math::
+            \nabla^n \psi
+
+    Parameters
+    ----------
+    mf: PySCF Density Functional object.
+
+    Outputs
+    ----------
+    Dict
+    For each order n > 1, result[n] is an array of shape
+    (n_grid, n_ao, 3) where the third coordinate indicates 
+    ::math::
+        \frac{\partial^n \psi}{\partial x_i^n}
+    
+    for :math:`x_i` is one of the usual cartesian coordinates x, y or z.
+    """
+
+    ao_ = numint.eval_ao(mf.mol, mf.grids.coords, deriv=order)
+    if order == 0:
+        return ao_[0]
+    result = {}
+    i = 4
+    for n in range(2, order+1):
+        result[n] = jnp.empty((ao_[0].shape[0], ao_[0].shape[1], 0))
+        for c in combinations_with_replacement('xyz', r = n):
+            if len(set(c)) == 1:
+                result[n] = jnp.concatenate((result[n], jnp.expand_dims(ao_[i], axis = 2)), axis = 2)
             i += 1
-    for c in combinations_with_replacement('xyz', r = order):
-        i += 1
-        if len(set(c)) == 1:
-            result += ao_[i]
     return result
 
 
-def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, training: bool = False, scf_iteration: int = 50):
+def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, training: bool = False, scf_iteration: int = 50, grad_order: int = 2):
 
     ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=2)#, non0tab=grids.non0tab)
     if scf_iteration != 0:
@@ -477,7 +507,9 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, train
     grad_ao = ao_[1:4].transpose(1, 2, 0)
 
     #grad_grad_ao = compute_grad2_ao(ao_)
-    grad_grad_ao = reshape_grad2ao(ao_.transpose(1,2,0))
+    #grad_grad_ao = reshape_grad2ao(ao_.transpose(1,2,0))
+
+    grad_n_ao = ao_grads(mf, order = grad_order)
 
     #h1e_energy = np.einsum("sij,ji->", dm, h1e)
     vj = 2 * mf.get_j(mf.mol, rdm1, hermi = 1) # The 2 is to compensate for the /2 in the definition of the density matrix 
@@ -496,7 +528,7 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, train
 
     energy_nuc = mf.energy_nuc()
 
-    return ao, grad_ao, grad_grad_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor
+    return ao, grad_ao, grad_n_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor
 
 ##############################################################################################################
 

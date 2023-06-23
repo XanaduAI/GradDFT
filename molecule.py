@@ -68,7 +68,7 @@ class Molecule:
     nuclear_pos: Array
     ao: Array
     grad_ao: Array
-    grad_grad_ao: Array
+    grad_n_ao: PyTree
     rdm1: Array
     nuclear_repulsion: Scalar
     h1e: Array
@@ -105,7 +105,7 @@ class Molecule:
         return grad_density(self.rdm1, self.ao, self.grad_ao, *args, **kwargs)
 
     def lapl_density(self, *args, **kwargs):
-        return lapl_density(self.rdm1, self.ao, self.grad_ao, self.grad_grad_ao, *args, **kwargs)
+        return lapl_density(self.rdm1, self.ao, self.grad_ao, self.grad_n_ao[2], *args, **kwargs)
 
     def kinetic_density(self, *args, **kwargs):
         return kinetic_density(self.rdm1, self.grad_ao, *args, **kwargs)
@@ -257,10 +257,10 @@ def grad_density(
     return 2 * jnp.einsum("...ab,ra,rbj->...rj", rdm1, ao, grad_ao, precision=precision)
 
 @partial(jax.jit, static_argnames="precision")
-def lapl_density(rdm1: Array, ao: Array, grad_ao: Array, grad_grad_ao: Array, precision: Precision = Precision.HIGHEST):
+def lapl_density(rdm1: Array, ao: Array, grad_ao: Array, grad_2_ao: PyTree, precision: Precision = Precision.HIGHEST):
 
     return 2* jnp.einsum("...ab,raj,rbj->...r", rdm1, grad_ao, grad_ao, precision=precision) + \
-            2 * jnp.einsum("...ab,ra,rbii->...r", rdm1, ao, grad_grad_ao, precision=precision)
+            2 * jnp.einsum("...ab,ra,rbi->...r", rdm1, ao, grad_2_ao, precision=precision)
 
 @partial(jax.jit, static_argnames="precision")
 def kinetic_density(rdm1: Array, grad_ao: Array, precision: Precision = Precision.HIGHEST) -> Array:

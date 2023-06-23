@@ -512,7 +512,7 @@ class DM21(NeuralFunctional):
         
         Returns
         -------
-        params: FrozenDict
+        params: Frozen
             The DM21 weights and biases.
         """
 

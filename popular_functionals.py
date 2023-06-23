@@ -3,7 +3,6 @@ from molecule import Molecule
 from utils import Array
 from typing import Dict, List
 from flax import linen as nn
-from jax.lax import stop_gradient
 
 from functional import Functional, correlation_polarization_correction, exchange_polarization_correction
 
@@ -274,10 +273,6 @@ def b3lyp_nograd_features(molecule, *_, **__):
     ehf = molecule.HF_energy_density([0.])
     assert not jnp.isnan(ehf).any() and not jnp.isinf(ehf).any()
     return ehf
-
-def lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = jnp.array([0.])):
-    # Not implemented
-    return jnp.nan*jnp.zeros((2, molecule.ao.shape[1], molecule.ao.shape[1]))
 
 def b3lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = jnp.array([0.])):
     vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, features)
