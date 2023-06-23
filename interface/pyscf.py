@@ -36,16 +36,17 @@ def grid_from_pyscf(grids: Grids, dtype: Optional[DType] = None) -> Grid:
 
 def molecule_from_pyscf(
     mf: DensityFunctional, dtype: Optional[DType] = None,
-    omegas: Optional[List] = None, energy: Optional[Scalar] = None,
+    omegas: Optional[List] = [], energy: Optional[Scalar] = None,
     name: Optional[str] = None, training: bool = False, scf_iteration: int = 50,
     chunk_size: Optional[int] = 1024,
+    grad_order: Optional[int] = 2
 ) -> Molecule:
 
     #mf, grids = _maybe_run_kernel(mf, grids)
     grid = grid_from_pyscf(mf.grids, dtype=dtype)
 
     ao, grad_ao, grad_n_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor = to_device_arrays(
-        *_package_outputs(mf, mf.grids, training, scf_iteration), dtype=dtype
+        *_package_outputs(mf, mf.grids, training, scf_iteration, grad_order), dtype=dtype
     )
 
     atom_index, nuclear_pos = to_device_arrays(
