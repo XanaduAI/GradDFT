@@ -71,6 +71,11 @@ class Functional(nn.Module):
     is_xc: bool
         Whether the functional models only the exchange-correlation energy
 
+    exchange_mask: Array[bool]
+        A mask to indicate which elements of the Fock matrix are exchange
+        contributions. If defined, must be of shape (n_features).
+        The correlation mask would be 1 - exchange_mask.
+
     """
 
     function: staticmethod
@@ -79,6 +84,7 @@ class Functional(nn.Module):
     featuregrads: staticmethod = None
     combine: staticmethod = None
     is_xc: bool = True
+    exchange_mask: Array = None
 
     @nn.compact
     def __call__(self, *inputs) -> Scalar:

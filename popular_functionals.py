@@ -278,12 +278,15 @@ def b3lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, featu
     vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, features)
     return vxc_hf.sum(axis=0) # Sum over omega
 
-B88 = Functional(b88, b88_features, None, None, b88_combine)
-LSDA = Functional(lsda, lsda_features, None, None, lsda_combine)
-VWN = Functional(vwn, vwn_features, None, None,vwn_combine)
-LYP = Functional(lyp, lyp_features, None, None, lyp_combine)
-B3LYP = Functional(b3lyp, b3lyp_exhf_features, b3lyp_nograd_features, 
-                b3lyp_hfgrads,
-                b3lyp_combine)
+B88 = Functional(function=b88, features=b88_features, combine=b88_combine)
+LSDA = Functional(function=lsda, features=lsda_features, combine=lsda_combine)
+VWN = Functional(function=vwn, features=vwn_features, combine=vwn_combine)
+LYP = Functional(function=lyp, features=lyp_features, combine=lyp_combine)
+B3LYP = Functional(function=b3lyp, 
+                features=b3lyp_exhf_features, 
+                nograd_features=b3lyp_nograd_features, 
+                featuregrads=b3lyp_hfgrads,
+                combine=b3lyp_combine,
+                exchange_mask=jnp.array([1,1,0,0,1]))
 
-PW92 = Functional(pw92, pw92_features, None, None,pw92_combine)
+PW92 = Functional(function=pw92, features=pw92_features,combine=pw92_combine)

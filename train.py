@@ -10,6 +10,23 @@ from utils import Scalar, Array, PyTree
 from functional import Functional
 from molecule import Molecule, coulomb_potential, symmetrize_rdm1
 
+def compute_features(functional, molecule, *args, **kwargs):
+    r"""
+    Computes the features for the functional
+    """
+
+    if functional.nograd_features and functional.features:
+        functional_inputs = functional.features(molecule, *args, **kwargs)
+        nograd_functional_inputs = stop_gradient(functional.nograd_features(molecule, *args, **kwargs))
+        functional_inputs = functional.combine(functional_inputs, nograd_functional_inputs)
+
+    elif functional.features:
+        functional_inputs = functional.features(molecule, *args, **kwargs)
+
+    elif functional.nograd_features:
+        functional_inputs = stop_gradient(functional.nograd_features(molecule, *args, **kwargs))
+    return functional_inputs
+
 def molecule_predictor(
     functional: Functional,
     **kwargs,
@@ -86,16 +103,7 @@ def molecule_predictor(
 
         molecule = molecule.replace(rdm1 = rdm1)
 
-        if functional.nograd_features and functional.features:
-            functional_inputs = functional.features(molecule, *args, **kwargs)
-            nograd_functional_inputs = stop_gradient(functional.nograd_features(molecule, *args, **kwargs))
-            functional_inputs = functional.combine(functional_inputs, nograd_functional_inputs)
-
-        elif functional.features:
-            functional_inputs = functional.features(molecule, *args, **kwargs)
-
-        elif functional.nograd_features:
-            functional_inputs = stop_gradient(functional.nograd_features(molecule, *args, **kwargs))
+        functional_inputs = compute_features(functional, molecule, *args, **kwargs)
 
         return functional.energy(params, molecule, *functional_inputs, **functional_kwargs)
 
