@@ -253,6 +253,26 @@ def b3lyp_combine(features, ehf):
     ehf = jnp.expand_dims(ehf, axis = 1)
     return [jnp.concatenate([features, ehf], axis=1)]
 
+def b3lyp_x(instance, features):
+    r"""
+    The dot product between the features and the weights in B3LYP.
+    """
+    a0=0.2
+    ax=0.72
+    ac=0.81
+    weights = jnp.array([1-a0, ax, 0, 0, a0])
+    return jnp.einsum('rf,f->r',features, weights)
+
+def b3lyp_c(instance, features):
+    r"""
+    The dot product between the features and the weights in B3LYP.
+    """
+    a0=0.2
+    ax=0.72
+    ac=0.81
+    weights = jnp.array([0, 0, 1-ac, ac, 0])
+    return jnp.einsum('rf,f->r',features, weights)
+
 def b3lyp(instance, features):
     r"""
     The dot product between the features and the weights in B3LYP.
@@ -262,6 +282,7 @@ def b3lyp(instance, features):
     ac=0.81
     weights = jnp.array([1-a0, ax, 1-ac, ac, a0])
     return jnp.einsum('rf,f->r',features, weights)
+
 def b88(instance, x): return jnp.einsum('ri->r',x)
 def lsda(instance, x): return jnp.einsum('ri->r',x)
 def lyp(instance, x): return jnp.einsum('ri->r',x)
@@ -278,12 +299,13 @@ def b3lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, featu
     vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, features)
     return vxc_hf.sum(axis=0) # Sum over omega
 
-B88 = Functional(b88, b88_features, None, None, b88_combine)
-LSDA = Functional(lsda, lsda_features, None, None, lsda_combine)
-VWN = Functional(vwn, vwn_features, None, None,vwn_combine)
-LYP = Functional(lyp, lyp_features, None, None, lyp_combine)
-B3LYP = Functional(b3lyp, b3lyp_exhf_features, b3lyp_nograd_features, 
-                b3lyp_hfgrads,
-                b3lyp_combine)
+B88 = Functional(function = b88, features = b88_features, combine= b88_combine)
+LSDA = Functional(function = lsda, features = lsda_features, combine= lsda_combine)
+VWN = Functional(function = vwn, features = vwn_features,combine= vwn_combine)
+LYP = Functional(function = lyp, features = lyp_features,combine= lyp_combine)
+B3LYP = Functional(functionx = b3lyp_x, functionc = b3lyp_c, features = b3lyp_exhf_features,
+                nograd_features= b3lyp_nograd_features, 
+                featuregrads=b3lyp_hfgrads,
+                combine= b3lyp_combine)
 
-PW92 = Functional(pw92, pw92_features, None, None,pw92_combine)
+PW92 = Functional(function = pw92, features = pw92_features, combine = pw92_combine)
