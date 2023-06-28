@@ -32,7 +32,7 @@ class Functional(nn.Module):
 
     Parameters
     ----------
-    function: Optional, Callable
+    function: Callable
         Implements the function f above.
         Example:
         ```
@@ -41,13 +41,6 @@ class Functional(nn.Module):
             x = 0.5*jnp.tanh(x)
             return x
         ```
-        The user should define at least function, or functionx and functionc.
-    
-    functionx: Optional, Callable
-        Implements the function f above for the exchange part of the functional.
-
-    functionc: Optional, Callable
-        Implements the function f above for the correlation part of the functional.
 
     features : Callable, optional
         A function that calculates and/or loads the molecule features where gradient is
@@ -80,10 +73,8 @@ class Functional(nn.Module):
 
     """
 
-    function: staticmethod = None
-    features: staticmethod = None
-    functionx: staticmethod = None
-    functionc: staticmethod = None
+    function: staticmethod
+    features: staticmethod
     nograd_features: staticmethod = None
     featuregrads: staticmethod = None
     combine: staticmethod = None
@@ -103,10 +94,8 @@ class Functional(nn.Module):
         -------
         Union[Array, Scalar]
         """
-        if self.function is None:
-            return self.functionx(self, *inputs) + self.functionc(self, *inputs)
-        else:
-            return self.function(self, *inputs)
+
+        return self.function(self, *inputs)
     
     def apply_and_integrate(self, params: PyTree, molecule: Molecule, *inputs):
         r"""
