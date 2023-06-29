@@ -7,8 +7,9 @@ from utils import PyTree, vmap_chunked
 from external.eigh_impl import eigh2d
 
 from jax import numpy as jnp
-from jax.lax import Precision, stop_gradient
+from jax.lax import Precision
 from jax import vmap, grad
+from jax.lax import fori_loop, cond
 from flax import struct
 from flax import linen as nn
 import itertools
@@ -21,8 +22,8 @@ class Grid:
     coords: Array
     weights: Array
 
-    def __repr__(self):
-        return f"{self.__class__.__name__}(size={len(self)})"
+    #def __repr__(self):
+    #    return f"{self.__class__.__name__}(size={len(self)})"
 
     def __len__(self):
         return self.weights.shape[0]
@@ -91,8 +92,8 @@ class Molecule:
     scf_iteration: Optional[int] = 50
     fock: Optional[Array] = None
 
-    def __repr__(self):
-        return f"{self.__class__.__name__}(grid_size={self.grid_size})"
+    #def __repr__(self):
+    #    return f"{self.__class__.__name__}(grid_size={self.grid_size})"
 
     @property
     def grid_size(self):
@@ -157,7 +158,8 @@ class Molecule:
     
     def get_occ(self):
         nelecs = [self.mo_occ[i].sum() for i in range(2)]
-        return get_occ(self.mo_energy, nelecs)
+        naos = self.mo_occ.shape[1]
+        return get_occ(self.mo_energy, nelecs, naos)
 
     def to_dict(self) -> dict:
         grid_dict = self.grid.to_dict()
@@ -566,18 +568,25 @@ def make_rdm1(mo_coeff, mo_occ):
     return jnp.einsum('sij,sj,skj -> sik', mo_coeff, mo_occ, mo_coeff.conj())
 
 
-def get_occ(mo_energies, nelecs):
+def get_occ(mo_energies, nelecs, naos):
 
-    def get_occ_spin(mo_energy, nelec_spin):
-        # get the lowest energy indices
-        unoccupied_idx = jnp.argsort(mo_energy)[nelec_spin:]
-        # get the highest occupied mo_energy value
-        vir_mo_energy_min = jnp.min(mo_energy[unoccupied_idx])
-        # get the mo_occ
-        mo_occ = jnp.where(mo_energy >= vir_mo_energy_min, 0, 1)
+    def get_occ_spin(mo_energy, nelec_spin, naos):
+
+        sorted_indices = jnp.argsort(mo_energy)[::-1]
+
+        mo_occ = jnp.zeros_like(mo_energy)
+
+        def assign_values(i, mo_occ):
+            value = cond(i < nelec_spin, lambda _: 1.0, lambda _: 0.0, operand=None)
+            idx = sorted_indices[i]
+            mo_occ = mo_occ.at[idx].set(value)
+            return mo_occ
+
+        mo_occ = fori_loop(0, naos, assign_values, mo_occ)
+
         return mo_occ
 
-    mo_occ = jnp.stack([get_occ_spin(mo_energies[s], int(nelecs[s])) for s in range(2)], axis=0)
+    mo_occ = jnp.stack([get_occ_spin(mo_energies[s], jnp.int32(nelecs[s]), naos) for s in range(2)], axis=0)
 
     return mo_occ
 

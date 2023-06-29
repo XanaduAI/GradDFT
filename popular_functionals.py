@@ -36,7 +36,7 @@ def b88_x_e(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
     # GGA preprocessing data
     log_x_sigma = log_grad_rho_norm - 4/3.*log_rho
 
-    assert not jnp.isnan(log_x_sigma).any() and not jnp.isinf(log_x_sigma).any()
+    #assert not jnp.isnan(log_x_sigma).any() and not jnp.isinf(log_x_sigma).any()
 
     x_sigma = 2**log_x_sigma
     
@@ -105,7 +105,7 @@ def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
 
     rho = jnp.where(rho > clip_cte, rho, 0.)
     log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
-    assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
+    #assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
     log_rs = jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
     log_x = log_rs / 2
     rs = 2**log_rs
@@ -113,7 +113,7 @@ def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
 
     X = 2**(2*log_x) + 2**(log_x+ jnp.log2(b)) + c
     X0 = x0**2 + b*x0 + c
-    assert not jnp.isnan(X).any() and not jnp.isinf(X0).any()
+    #assert not jnp.isnan(X).any() and not jnp.isinf(X0).any()
 
     Q = jnp.sqrt(4*c-b**2)
 
@@ -145,23 +145,23 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     grad_rho_norm_sq = jnp.sum(grad_rho**2, axis=-1)
 
     t = (jnp.where(rho > clip_cte, grad_rho_norm_sq/rho, 0) - grad2rho)/8.
-    assert not jnp.isnan(t).any() and not jnp.isinf(t).any()
+    #assert not jnp.isnan(t).any() and not jnp.isinf(t).any()
 
     frac = jnp.where(rho.sum(axis=0) > clip_cte, 
                     ((rho**2).sum(axis =0))/(rho.sum(axis =0))**2, 1)
     gamma = 2 * (1-frac)
 
     rhos_ts = rho.sum(axis = 0) * t.sum(axis = 0)
-    assert not jnp.isnan(rhos_ts).any() and not jnp.isinf(rhos_ts).any()
+    #assert not jnp.isnan(rhos_ts).any() and not jnp.isinf(rhos_ts).any()
 
     rho_t = (rho*t).sum(axis = 0)
-    assert not jnp.isnan(rho_t).any() and not jnp.isinf(rho_t).any()
+    #assert not jnp.isnan(rho_t).any() and not jnp.isinf(rho_t).any()
 
     rho_grad2rho = (rho*grad2rho).sum(axis = 0)
-    assert not jnp.isnan(rho_grad2rho).any() and not jnp.isinf(rho_grad2rho).any()
+    #assert not jnp.isnan(rho_grad2rho).any() and not jnp.isinf(rho_grad2rho).any()
 
     exp_factor = jnp.where(rho.sum(axis=0) > 0, jnp.exp(-c*rho.sum(axis=0)**(-1/3)), 0)
-    assert not jnp.isnan(exp_factor).any() and not jnp.isinf(exp_factor).any()
+    #assert not jnp.isnan(exp_factor).any() and not jnp.isinf(exp_factor).any()
 
     rhom1_3 = (rho.sum(axis=0))**(-1/3.)
     rho8_3 = (rho**(8/3.)).sum(axis=0)
@@ -186,7 +186,7 @@ def b88_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     grad_rho = molecule.grad_density()
     b88_e = b88_x_e(rho, grad_rho, clip_cte)
     lda_e = lsda_x_e(rho, clip_cte)
-    assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
+    #assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
     return [jnp.stack((lda_e, b88_e), axis = 1)]
 
 def vwn_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
@@ -222,13 +222,13 @@ def b3lyp_exhf_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     grad2rho = molecule.lapl_density()
 
     lda_e = lsda_x_e(rho, clip_cte)
-    assert not jnp.isnan(lda_e).any() and not jnp.isinf(lda_e).any()
+    #assert not jnp.isnan(lda_e).any() and not jnp.isinf(lda_e).any()
     b88_e = b88_x_e(rho, grad_rho, clip_cte)
-    assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
+    #assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
     vwn_e = vwn_c_e(rho, clip_cte)
-    assert not jnp.isnan(vwn_e).any() and not jnp.isinf(vwn_e).any()
+    #assert not jnp.isnan(vwn_e).any() and not jnp.isinf(vwn_e).any()
     lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
-    assert not jnp.isnan(lyp_e).any() and not jnp.isinf(lyp_e).any()
+    #assert not jnp.isnan(lyp_e).any() and not jnp.isinf(lyp_e).any()
 
     return jnp.stack((lda_e, b88_e, vwn_e, lyp_e), axis = 1)
 
@@ -271,7 +271,7 @@ def pw92(instance, x): return jnp.einsum('ri->r',x)
 def b3lyp_nograd_features(molecule, *_, **__):
 
     ehf = molecule.HF_energy_density([0.])
-    assert not jnp.isnan(ehf).any() and not jnp.isinf(ehf).any()
+    #assert not jnp.isnan(ehf).any() and not jnp.isinf(ehf).any()
     return ehf
 
 def b3lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = jnp.array([0.])):

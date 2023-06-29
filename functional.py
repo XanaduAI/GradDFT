@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import itertools
 from typing import Callable, Optional, List, Dict, Union
 from functools import partial
+import math
 
 from jax import grad, value_and_grad
 from jax import numpy as jnp
@@ -704,7 +705,7 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
     e_tilde_PF = jnp.einsum('sr,r->sr', e_PF, rho.sum(axis = 0))
 
     log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
-    assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
+    #assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
     log_rs =  jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
 
     zeta = jnp.where(rho.sum(axis = 0) > clip_cte, (rho[0] - rho[1]) / (rho.sum(axis = 0)), 0.)
@@ -727,13 +728,13 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
     brs2 = 2**(jnp.log2(beta4)+2*log_rs)
 
     alphac = 2*A_*(1+ars)*jnp.log(1+(1/(2*A_))/(brs_1_2 + brs + brs_3_2 + brs2))
-    assert not jnp.isnan(alphac).any() and not jnp.isinf(alphac).any()
+    #assert not jnp.isnan(alphac).any() and not jnp.isinf(alphac).any()
 
-    fz = jnp.round(fzeta(zeta), int(jnp.log10(clip_cte)))
-    z4 = jnp.round(2**(4*jnp.log2(jnp.clip(zeta, a_min = clip_cte))), int(jnp.log10(clip_cte)))
+    fz = jnp.round(fzeta(zeta), int(math.log10(clip_cte)))
+    z4 = jnp.round(2**(4*jnp.log2(jnp.clip(zeta, a_min = clip_cte))), int(math.log10(clip_cte)))
 
     e_tilde = e_tilde_PF[0] + alphac * (fz/(grad(grad(fzeta))(0.)))* (1-z4) + (e_tilde_PF[1]-e_tilde_PF[0]) * fz*z4
-    assert not jnp.isnan(e_tilde).any() and not jnp.isinf(e_tilde).any()
+    #assert not jnp.isnan(e_tilde).any() and not jnp.isinf(e_tilde).any()
 
     return e_tilde
 

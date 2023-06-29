@@ -53,8 +53,9 @@ def molecule_from_pyscf(
         [elements.ELEMENTS.index(e) for e in mf.mol.elements], mf.mol.atom_coords(unit='angstrom'), dtype=dtype
     )
 
-    basis = mf.mol.basis
+    basis = jnp.array([ord(char) for char in mf.mol.basis]) # jax doesn't support strings
     unit_Angstrom = True
+    if name: name = jnp.array([ord(char) for char in name])
 
     if omegas is not None: 
         chi = generate_chi_tensor(rdm1 = rdm1, ao = ao, grid_coords = grid.coords, mol = mf.mol, 
@@ -84,7 +85,7 @@ def mol_from_Molecule(molecule: Molecule):
     positions = np.asarray(molecule.nuclear_pos)
 
     mol.atom = [[int(charge), pos] for charge, pos in zip(charges, positions)]
-    mol.basis = molecule.basis
+    mol.basis = ''.join(chr(num) for num in molecule.basis) # The basis will generally be encoded as a jax array of ints
     mol.unit = 'angstrom' if molecule.unit_Angstrom else 'bohr'
 
     mol.spin = int(molecule.spin)
