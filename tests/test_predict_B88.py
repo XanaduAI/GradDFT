@@ -18,6 +18,7 @@ model_path = os.path.normpath(dirpath + "/DM21_model")
 learning_rate = 1e-3
 
 from interface import molecule_from_pyscf
+from train import make_scf_training_loop
 from evaluate import make_scf_loop, make_orbital_optimizer
 from external.density_functional_approximation_dm21.density_functional_approximation_dm21.compute_hfx_density import get_hf_density
 from openfermion import geometry_from_pubchem
@@ -68,6 +69,12 @@ def test_predict(mf, energy):
     e_DM = mf.kernel()
 
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol
+    assert np.allclose(kcalmoldiff, 0, atol = 1e1)
+
+    # Testing the training scf loop too.
+    iterator = make_scf_training_loop(functional, max_cycles = 2)
+    e_XND_jit = iterator(params, molecule)
+    kcalmoldiff = (e_XND-e_XND_jit)*Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol = 1e1)
 
 
