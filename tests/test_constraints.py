@@ -29,16 +29,18 @@ molecule = molecule_from_pyscf(mf, omegas = [0.])
 
 params = freeze({'params': {}})
 
-from constraints import constraint_x1, constraint_x2, constraint_x3
+from constraints import constraint_x1, constraint_x2, constraints_x3_c3_c4
 
 #### Constraint x1 ####
-constraint_satisfaction = constraint_x1(B3LYP, params, molecule)
-print('Does the functional satisfy constraint x1?', all(constraint_satisfaction))
+x1 = constraint_x1(B3LYP, params, molecule)
+print('Does the functional satisfy constraint x1?', all(x1))
 
 #### Constraint x2 ####
-constraint_satisfaction = constraint_x2(B3LYP, params, molecule)
-print('Does the functional satisfy constraint x2?', constraint_satisfaction)
+x2 = constraint_x2(B3LYP, params, molecule)
+print('Does the functional satisfy constraint x2?', x2)
 
-#### Constraint x3 ####
-constraint_satisfaction = constraint_x3(B3LYP, params, molecule)
-print('Does the functional satisfy constraint x3?', constraint_satisfaction)
+#### Constraint x3, c3, c4 ####
+x3, (c3, c4) = constraints_x3_c3_c4(B3LYP, params, molecule, gamma = 2.)
+print('Does the functional satisfy constraint x3?', all(x3))
+print('Does the functional satisfy constraint c3?', c3)
+print('Does the functional satisfy constraint c4?', c4)

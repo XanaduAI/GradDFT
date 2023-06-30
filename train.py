@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Sequence, Tuple
+from typing import Callable, Optional, Tuple
 from functools import partial
 
 from jax import numpy as jnp
@@ -10,7 +10,6 @@ from flax import struct
 from utils import Scalar, Array, PyTree
 from functional import Functional
 from molecule import Molecule, coulomb_potential, symmetrize_rdm1, eig, orbital_grad
-from utils.types import Hartree2kcalmol
 
 def compute_features(functional, molecule, *args, **kwargs):
     r"""
