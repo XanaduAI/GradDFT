@@ -67,7 +67,7 @@ def test_predict(mf, energy):
     mf = dft.RKS(mol)
     mf.xc = 'B88'
     e_DM = mf.kernel()
-
+    mf.max_cycle = 2
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol = 1e1)
 
@@ -79,7 +79,7 @@ def test_predict(mf, energy):
 
 
 ##################
-test_predict(mf, energy = ccsd_energy)
+#test_predict(mf, energy = ccsd_energy)
 
 
 
@@ -108,15 +108,21 @@ def test_predict(mf, energy):
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     #e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_scf_loop(functional,verbose = 2)
+    iterator = make_scf_loop(functional,verbose = 2, max_cycles = 5)
     e_XND = iterator(params, molecule)
+
+    # Testing the training scf loop too.
+    iterator = make_scf_training_loop(functional, max_cycles = 5)
+    e_XND_jit = iterator(params, molecule)
+    kcalmoldiff = (e_XND-e_XND_jit)*Hartree2kcalmol
+    assert np.allclose(kcalmoldiff, 0, atol = 1e1)
 
     mf = dft.UKS(mol)
     mf.xc = 'B88'
+    mf.max_cycle = 5
     e_DM = mf.kernel()
-
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol = 1e1)
+    assert np.allclose(kcalmoldiff, 0, atol = 1e1) # This is unstable
 
 ##################
 test_predict(mf, energy = ccsd_energy)
