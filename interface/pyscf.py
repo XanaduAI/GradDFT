@@ -430,7 +430,7 @@ def _maybe_run_kernel(mf: HartreeFock, grids: Optional[Grids] = None):
     return mf, grids
 
 
-def ao_grads(mf: DensityFunctional, order = 2) -> Dict:
+def ao_grads(mol: Mole, coords: Array, order = 2) -> Dict:
     r"""Function to compute nth order atomic orbital grads, for n > 1.
     
     ::math::
@@ -451,7 +451,7 @@ def ao_grads(mf: DensityFunctional, order = 2) -> Dict:
     for :math:`x_i` is one of the usual cartesian coordinates x, y or z.
     """
 
-    ao_ = numint.eval_ao(mf.mol, mf.grids.coords, deriv=order)
+    ao_ = numint.eval_ao(mol, coords, deriv=order)
     if order == 0:
         return ao_[0]
     result = {}
@@ -467,7 +467,7 @@ def ao_grads(mf: DensityFunctional, order = 2) -> Dict:
 
 def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, training: bool = False, scf_iteration: int = 50, grad_order: int = 2):
 
-    ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=2)#, non0tab=grids.non0tab)
+    ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=1)#, non0tab=grids.non0tab)
     if scf_iteration != 0:
         rdm1 = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
     else:
@@ -497,21 +497,13 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, train
     else:
         raise RuntimeError(f"Invalid density matrix shape. Got {rdm1.shape} for AO shape {ao.shape}")
 
-    def reshape_grad2ao(ao):
-        components = ao[..., 4:]
-        matrix = np.zeros(ao.shape[:-1] + (3, 3))
-        indices = np.triu_indices(3)
-        matrix[..., indices[0], indices[1]] = components
-        matrix = matrix + np.transpose(matrix, axes=(0,1,3,2)) - np.einsum('raij,ij->raij', matrix, np.identity(matrix.shape[2]))
-        return matrix
-
     ao = ao_[0]
     grad_ao = ao_[1:4].transpose(1, 2, 0)
 
     #grad_grad_ao = compute_grad2_ao(ao_)
     #grad_grad_ao = reshape_grad2ao(ao_.transpose(1,2,0))
 
-    grad_n_ao = ao_grads(mf, order = grad_order)
+    grad_n_ao = ao_grads(mf.mol, mf.grids.coords, order = grad_order)
 
     #h1e_energy = np.einsum("sij,ji->", dm, h1e)
     vj = 2 * mf.get_j(mf.mol, rdm1, hermi = 1) # The 2 is to compensate for the /2 in the definition of the density matrix 
