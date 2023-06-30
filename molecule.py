@@ -572,12 +572,12 @@ def get_occ(mo_energies, nelecs, naos):
 
     def get_occ_spin(mo_energy, nelec_spin, naos):
 
-        sorted_indices = jnp.argsort(mo_energy)[::-1]
+        sorted_indices = jnp.argsort(mo_energy)
 
         mo_occ = jnp.zeros_like(mo_energy)
 
         def assign_values(i, mo_occ):
-            value = cond(i < nelec_spin, lambda _: 1.0, lambda _: 0.0, operand=None)
+            value = cond(jnp.less(i, nelec_spin), lambda _: 1.0, lambda _: 0.0, operand=None)
             idx = sorted_indices[i]
             mo_occ = mo_occ.at[idx].set(value)
             return mo_occ
