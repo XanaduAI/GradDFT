@@ -23,8 +23,9 @@ config.update('jax_disable_jit', True)
 
 orbax_checkpointer = PyTreeCheckpointer()
 
-# In this example we aim to explain how we can implement the self-consistent loop
-# with a simple functional that does not contain Hartree-Fock components.
+# In this example we aim to train a model on the result of a self-consistent loop.
+
+####### Model definition #######
 
 # First we define a molecule, using pyscf:
 from pyscf import gto, dft
@@ -43,7 +44,7 @@ molecule = molecule_from_pyscf(mf)
 
 # Then we define the Functional, via an function whose output we will integrate.
 squash_offset = 1e-4
-layer_widths = [1024]*10
+layer_widths = [128]*5
 out_features = 16 # 2 spin channels, 2 for exchange/correlation, 4 for MGA
 sigmoid_scale_factor = 2.
 activation = gelu
@@ -82,7 +83,8 @@ def features(molecule, functional_type='MGGA', *_, **__):
 
 functional = NeuralFunctional(function = function, features = features)
 
-####### Initializing the functional #######
+####### Initializing the functional and some parameters #######
+
 key = PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before, to initialize the parameters
@@ -91,7 +93,6 @@ rhoinputs = dm21_molecule_features(molecule)
 key, = split(key, 1)
 params = functional.init(key, rhoinputs, localfeatures)
 
-####### Optimizer and loss function #######
 learning_rate = 1e-5
 momentum = 0.9
 tx = adam(learning_rate = learning_rate, b1=momentum)
@@ -100,9 +101,14 @@ opt_state = tx.init(params)
 num_epochs = 50
 cost_val = jnp.inf
 
-# Here we use one of
+training_data_dirpath = '/Users/pablo.casares/Developer/DiffDFT/data/training/dissociation'
+training_files = '/H2_extrapolation_molecules.hdf5'
+
+####### Loss function and train kernel #######
+
+# Here we use one of the following. We will use the second here.
 molecule_predict = molecule_predictor(functional)
-scf_train_loop = make_scf_training_loop(functional, max_cycles=5)
+scf_train_loop = make_scf_training_loop(functional, max_cycles=0)
 
 @partial(value_and_grad, has_aux = True)
 def loss(params, molecule, ground_truth_energy):
@@ -125,8 +131,7 @@ def loss(params, molecule, ground_truth_energy):
 
     return cost_value, metrics
 
-training_data_dirpath = '/Users/pablo.casares/Developer/DiffDFT/data/training/dissociation'
-training_files = '/H2_extrapolation_molecules.hdf5'
+kernel = jax.jit(make_train_kernel(tx, loss))
 
 ######## Training epoch ########
 
@@ -155,11 +160,10 @@ def train_epoch(state, training_files, training_data_dirpath):
     state = (params, opt_state, cost_val)
     return state, metrics, epoch_metrics
 
-kernel = jax.jit(make_train_kernel(tx, loss))
-
 
 
 ######## Training loop ########
+
 writer = SummaryWriter()
 for epoch in range(1, num_epochs + 1):
 
