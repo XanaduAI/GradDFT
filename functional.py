@@ -857,12 +857,15 @@ def local_features(molecule: Molecule, functional_type: Optional[Union[str, Dict
     
     log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
     log_rs = jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
-    rs = 2**log_rs
+    brs_1_2 = 2**(log_rs/2 + jnp.log2(beta1))
+    ars = 2**(log_rs + jnp.log2(alpha1))
+    brs = 2**(log_rs + jnp.log2(beta2))
+    brs_3_2 = 2**(3*log_rs/2+ jnp.log2(beta3))
+    brs2 = 2**(2*log_rs+ jnp.log2(beta4))
 
-    e_PW92 = -2*A_*(1+alpha1*rs)*jnp.log(1+(1/(2*A_))/(beta1*jnp.sqrt(rs) + beta2*rs + beta3*rs**(3/2) + beta4*rs**2))
+    e_PW92 = jnp.round(-2*A_*(1+ars)*jnp.log(1+(1/(2*A_))/(brs_1_2 + brs + brs_3_2 + brs2)), int(math.log10(clip_cte)))
 
     # Compute the local features
-    localfeatures = jnp.empty((0, log_rho.shape[-1]))
     for i, j in itertools.product(u_range, w_range):
         mgga_term = jnp.where(jnp.greater(e_PW92, clip_cte),
             2**(jnp.log2(e_PW92) + i * log_u_c + j * log_w_c), 0)

@@ -289,4 +289,4 @@ B3LYP = Functional(function=b3lyp,
                 combine=b3lyp_combine,
                 exchange_mask=jnp.array([1,1,0,0,1]))
 
-PW92 = Functional(function=pw92, features=pw92_features,combine=pw92_combine)
+PW92 = Functional(function=pw92, features=pw92_features, combine=pw92_combine)

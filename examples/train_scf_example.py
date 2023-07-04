@@ -44,7 +44,7 @@ molecule = molecule_from_pyscf(mf)
 # Then we define the Functional, via an function whose output we will integrate.
 squash_offset = 1e-4
 layer_widths = [1024]*10
-out_features = 8
+out_features = 16 # 2 spin channels, 2 for exchange/correlation, 4 for MGA
 sigmoid_scale_factor = 2.
 activation = gelu
 
