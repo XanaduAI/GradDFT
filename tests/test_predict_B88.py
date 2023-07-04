@@ -73,13 +73,13 @@ def test_predict(mf, energy):
 
     # Testing the training scf loop too.
     iterator = make_scf_training_loop(functional, max_cycles = 2)
-    e_XND_jit = iterator(params, molecule)
+    e_XND_jit, _ = iterator(params, molecule)
     kcalmoldiff = (e_XND-e_XND_jit)*Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol = 1e1)
 
 
 ##################
-#test_predict(mf, energy = ccsd_energy)
+test_predict(mf, energy = ccsd_energy)
 
 
 
@@ -113,7 +113,7 @@ def test_predict(mf, energy):
 
     # Testing the training scf loop too.
     iterator = make_scf_training_loop(functional, max_cycles = 5)
-    e_XND_jit = iterator(params, molecule)
+    e_XND_jit, _ = iterator(params, molecule)
     kcalmoldiff = (e_XND-e_XND_jit)*Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol = 1e1)
 

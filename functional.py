@@ -828,18 +828,18 @@ def local_features(molecule: Molecule, functional_type: Optional[Union[str, Dict
     log_u_ab = jnp.where(jnp.greater(log_rho_ss,jnp.log2(clip_cte)), 
                             log_x_ss - 1 - jnp.log2(1 + beta*(2**(log_x_ss-1))) + jnp.log2(beta), 0)
 
-    log_u_c = jnp.concat((log_u_ss, log_u_ab), axis = 0)
+    log_u_c = jnp.stack((log_u_ss, log_u_ab), axis = 0)
 
 
     log_tau_ss = jnp.log2(jnp.clip(tau.sum(axis = 0), a_min = clip_cte))
     log_1t_ss = log_tau_ss - 5/3.*log_rho_ss
-    log_w_ss = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), 
-                            log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
+    log_w_ss = jnp.where(jnp.greater(log_rho.sum(axis = 0), jnp.log2(clip_cte)), 
+                            log_1t_ss - jnp.log2(1 + beta*(2**log_1t_ss)) + jnp.log2(beta), 0)
     
-    log_w_ab = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), 
-                            log_1t_sigma - 1 - jnp.log2(1 + beta*(2**(log_1t_sigma-1))) + jnp.log2(beta), 0)
+    log_w_ab = jnp.where(jnp.greater(log_rho.sum(axis = 0), jnp.log2(clip_cte)), 
+                            log_1t_ss - 1 - jnp.log2(1 + beta*(2**(log_1t_ss-1))) + jnp.log2(beta), 0)
     
-    log_w_c = jnp.concat((log_w_ss, log_w_ab), axis = 0)
+    log_w_c = jnp.stack((log_w_ss, log_w_ab), axis = 0)
 
 
     A_ = jnp.array([[0.031091],
@@ -864,7 +864,8 @@ def local_features(molecule: Molecule, functional_type: Optional[Union[str, Dict
     # Compute the local features
     localfeatures = jnp.empty((0, log_rho.shape[-1]))
     for i, j in itertools.product(u_range, w_range):
-        mgga_term = 2**(jnp.log2(e_PW92) + i * log_u_c + j * log_w_c)
+        mgga_term = jnp.where(jnp.greater(e_PW92, clip_cte),
+            2**(jnp.log2(e_PW92) + i * log_u_c + j * log_w_c), 0)
 
         # First we concatenate the exchange terms
         localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)

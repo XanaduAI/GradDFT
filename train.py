@@ -1,15 +1,16 @@
 from typing import Callable, Optional, Tuple
 from functools import partial
 
-from jax import numpy as jnp
+from jax import numpy as jnp, vmap
 from jax import value_and_grad
 from jax.profiler import annotate_function
 from jax.lax import stop_gradient, cond, fori_loop
 from flax import struct
+from optax import OptState, GradientTransformation, apply_updates
 
 from utils import Scalar, Array, PyTree
 from functional import Functional
-from molecule import Molecule, coulomb_potential, symmetrize_rdm1, eig, orbital_grad
+from molecule import Molecule, Reaction, coulomb_potential, symmetrize_rdm1, eig, orbital_grad
 
 def compute_features(functional, molecule, *args, **kwargs):
     r"""
@@ -160,6 +161,127 @@ def molecule_predictor(
 
 
 
+def make_train_kernel(tx: GradientTransformation, loss: Callable) -> Callable:
+
+    def kernel(
+        params: PyTree,
+        opt_state: OptState,
+        system: Molecule,
+        ground_truth_energy: float,
+        *args
+    ) -> Tuple[PyTree, OptState, Scalar, Scalar]:
+
+        (cost_value, predictedenergy), grads = loss(params, system, ground_truth_energy)
+
+        updates, opt_state = tx.update(grads, opt_state, params)
+        params = apply_updates(params, updates)
+
+        return params, opt_state, cost_value, predictedenergy
+
+    return kernel
+
+
+##################### Regularization #####################
+
+def fock_grad_regularization(molecule: Molecule, F: Array) -> Scalar:
+    """Calculates the Fock alternative regularization term for a `Molecule` given a Fock matrix.
+    
+    Parameters
+    ----------
+    molecule : Molecule
+        A `Molecule` object.
+    F : Array
+        The Fock matrix array. Has to be of the same shape as `molecule.density_matrix`
+
+    Returns
+    -------
+    Scalar
+        The Fock gradient regularization term alternative.
+    """
+    return jnp.sqrt(jnp.einsum('sij->', (F - molecule.fock)**2 )) / jnp.sqrt(jnp.einsum('sij->', molecule.fock**2))
+
+def dm21_grad_regularization(molecule: Molecule, F: Array) -> Scalar:
+
+    """Calculates the default gradient regularization term for a `Molecule` given a Fock matrix.
+
+    Parameters
+    ----------
+    molecule : Molecule
+        A `Molecule` object.
+    F : Array
+        The Fock matrix array. Has to be of the same shape as `molecule.density_matrix`
+
+    Returns
+    -------
+    Scalar
+        The gradient regularization term of the DM21 variety.
+    """
+
+    n = molecule.mo_occ
+    e = molecule.mo_energy
+    C = molecule.mo_coeff
+
+    #factors = jnp.einsum("sba,sac,scd->sbd", C.transpose(0,2,1), F, C) ** 2
+    #factors = jnp.einsum("sab,sac,scd->sbd", C, F, C) ** 2
+    #factors = jnp.einsum("sac,sab,scd->sbd", F, C, C) ** 2
+    factors = jnp.einsum("sac,sab,scd->sbd", F, C, C) ** 2 # F is symmetric
+
+    numerator = n[:, :, None] - n[:, None, :]
+    denominator = e[:, :, None] - e[:, None, :]
+
+    mask = jnp.logical_and(jnp.abs(factors) > 0, jnp.abs(numerator) > 0)
+
+    safe_denominator = jnp.where(mask, denominator, 1.0)
+
+    second_mask = jnp.abs(safe_denominator) > 0
+    safe_denominator = jnp.where(second_mask, safe_denominator, 1.e-20)
+
+    prefactors = numerator / safe_denominator
+
+    dE = jnp.clip(0.5 * jnp.sum(prefactors * factors), a_min = -10, a_max = 10)
+
+    return dE**2
+
+def orbital_grad_regularization(molecule: Molecule, F: Array) -> Scalar:
+    """Deprecated"""
+
+    #  Calculate the gradient regularization term
+    new_grad = get_grad(molecule.mo_coeff, molecule.mo_occ, F)
+
+    dE = jnp.linalg.norm(new_grad - molecule.training_gorb_grad, ord = 'fro')
+
+    return dE**2
+
+def get_grad(mo_coeff, mo_occ, F):
+    '''RHF orbital gradients
+
+    Args:
+        mo_coeff: 2D ndarray
+            Orbital coefficients
+        mo_occ: 1D ndarray
+            Orbital occupancy
+        F: 2D ndarray
+            Fock matrix in AO representation
+
+    Returns:
+        Gradients in MO representation.  It's a num_occ*num_vir vector.
+
+    # Similar to pyscf/scf/hf.py:
+    occidx = mo_occ > 0
+    viridx = ~occidx
+    g = reduce(jnp.dot, (mo_coeff[:,viridx].conj().T, fock_ao,
+                           mo_coeff[:,occidx])) * 2
+    return g.ravel()
+    '''
+
+    C_occ = vmap(jnp.where, in_axes = (None, 1, None), out_axes=1)(mo_occ > 0, mo_coeff, 0)
+    C_vir = vmap(jnp.where, in_axes = (None, 1, None), out_axes=1)(mo_occ == 0, mo_coeff, 0)
+
+    return jnp.einsum("sab,sac,scd->bd", C_vir.conj(), F, C_occ)
+
+
+
+
 ##################### SCF training loop #####################
 
 
@@ -262,11 +384,11 @@ def make_scf_training_loop(functional: Functional, max_cycles: int = 25,
                     jnp.zeros((diis.max_diis, 2, A.shape[0], A.shape[0])))
         state = (molecule, fock, predicted_e, old_e, norm_gorb, diis_data)
         state = loop_body(0, state)
+        _, fock, predicted_e, _, _, _ = final_state
 
-        return predicted_e
+        return predicted_e, fock
 
     return scf_training_iterator
-
 
 
 @struct.dataclass
@@ -400,14 +522,8 @@ class TrainingDiis:
         C = jnp.zeros((2, len(error_vector) + 1))
         C = C.at[:, 0].set(1)
 
-        w, v = jnp.linalg.eig(B[0])
-        w, v = w.real, v.real
-        x0 = jnp.einsum('ij,jk,km,m-> i', v, jnp.diag(1.0 / w), v.T.conj(), C[0])
-
-        w, v = jnp.linalg.eig(B[1])
-        w, v = w.real, v.real
-        x1 = jnp.einsum('ij,jk,km,m-> i', v, jnp.diag(1.0 / w), v.T.conj(), C[1])
-
+        x0 = jnp.linalg.inv(B[0]) @ C[0]
+        x1 = jnp.linalg.inv(B[1]) @ C[1]
         x = jnp.stack([x0, x1], axis=0)
 
         return x[:,1:]

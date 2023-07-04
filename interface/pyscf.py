@@ -37,7 +37,7 @@ def grid_from_pyscf(grids: Grids, dtype: Optional[DType] = None) -> Grid:
 def molecule_from_pyscf(
     mf: DensityFunctional, dtype: Optional[DType] = None,
     omegas: Optional[List] = [], energy: Optional[Scalar] = None,
-    name: Optional[str] = None, training: bool = False, scf_iteration: int = 50,
+    name: Optional[str] = None, scf_iteration: int = 50,
     chunk_size: Optional[int] = 1024,
     grad_order: Optional[int] = 2
 ) -> Molecule:
@@ -46,7 +46,7 @@ def molecule_from_pyscf(
     grid = grid_from_pyscf(mf.grids, dtype=dtype)
 
     ao, grad_ao, grad_n_ao, rdm1, energy_nuc, h1e, vj, mo_coeff, mo_energy, mo_occ, mf_e_tot, s1e, fock, rep_tensor = to_device_arrays(
-        *_package_outputs(mf, mf.grids, training, scf_iteration, grad_order), dtype=dtype
+        *_package_outputs(mf, mf.grids, scf_iteration, grad_order), dtype=dtype
     )
 
     atom_index, nuclear_pos = to_device_arrays(
@@ -186,7 +186,7 @@ def saver(
 
             for j, molecule in enumerate(list(chain(reaction.reactants, reaction.products))):
 
-                if molecule.name: mol_group = react.create_group(f"molecule_{molecule.name}_{j}")
+                if molecule.name: mol_group = react.create_group([j] + list(molecule.name))
                 else: mol_group = react.create_group(f"molecule_{j}")
                 if len(omegas) > 1:
                     save_molecule_chi(molecule, omegas, chunk_size, mol_group)
@@ -204,7 +204,7 @@ def saver(
         # Then we save the molecules
         for j, molecule in enumerate(molecules):
 
-            if molecule.name: mol_group = file.create_group(f"molecule_{molecule.name}_{j}")
+            if molecule.name is None: mol_group = file.create_group([j] + list(molecule.name))
             else: mol_group = file.create_group(f"molecule_{j}")
             if len(omegas) > 1:
                 save_molecule_chi(molecule, omegas, chunk_size, mol_group)
@@ -259,10 +259,10 @@ def loader(fpath: str, randomize: Optional[bool] = False, training: Optional[boo
                         args[key] = list(value)
                     elif key in ["energy"]:
                         args[key] = jnp.float32(value) if training else jnp.float64(value)
-                    elif key in ["s1e", "mf_energy", "rep_tensor"]:  
-                        if not training: args[key] = jnp.asarray(value)
                     elif key in ["scf_iteration", "spin", "charge"]:
                         args[key] = jnp.int32(value)
+                    elif key in ["grad_n_ao"]:
+                        args[key] = {int(k): jnp.asarray(v) for k, v in value.items()}
                     elif key == 'chi':
                         # select the indices from the omegas array and load the corresponding chi matrix
                         if config_omegas is None: args[key] = jnp.asarray(value)
@@ -315,8 +315,6 @@ def loader(fpath: str, randomize: Optional[bool] = False, training: Optional[boo
                             args[key] = list(value)
                         elif key in ["energy"]:
                             args[key] = jnp.float32(value) if training else jnp.float64(value)
-                        elif key in ["s1e", "mf_energy"]:  
-                            if not training: args[key] = jnp.asarray(value)
                         elif key == 'chi':
                             # select the indices from the omegas array and load the corresponding chi matrix
                             if config_omegas is None: args[key] = jnp.asarray(value)
@@ -326,6 +324,8 @@ def loader(fpath: str, randomize: Optional[bool] = False, training: Optional[boo
                                 assert all([omega in omegas for omega in config_omegas]), f"chi tensors for omega list {config_omegas} were not all precomputed in the molecule"
                                 indices = [omegas.index(omega) for omega in config_omegas]
                                 args[key] = jnp.stack([jnp.asarray(value)[:, i] for i in indices], axis=1)
+                        elif key in ["grad_n_ao"]:
+                            args[key] = {int(k): jnp.asarray(v) for k, v in value.items()}
                         else: 
                             args[key] = jnp.asarray(value)
 
@@ -357,16 +357,12 @@ def save_molecule_data(mol_group: h5py.Group, molecule: Molecule, training: bool
 
     for name, data in d.items():
 
-        if name in ("chi", "omegas", "basis", "name") or data is None: continue
-        elif training and name in ("s1e", "mf_energy"): continue
-        elif not training and name in ("training_gorb_grad"): continue
-        #elif name in ("nuclear_pos"): mol_group.create_dataset(name, data=data/2, dtype='float32')
-        else: mol_group.create_dataset(name, data=data, dtype='float64')
-
-    if not training: 
-        mol_group.attrs["basis"] = d["basis"]
-        if d["name"] is not None:
-            mol_group.attrs["name"] = d["name"]
+        if name in ["chi", "omegas"] or data is None: continue
+        elif name == "grad_n_ao":
+            d = mol_group.create_group(name)
+            for k, v in data.items():
+                d.create_dataset(f"{k}", data=v)
+        else: mol_group.create_dataset(name, data=data)
 
 def save_molecule_chi(molecule: Molecule, omegas: Union[Sequence[Scalar], Scalar], chunk_size: int,
                     mol_group: h5py.Group, precision: Precision = Precision.HIGHEST):
@@ -465,7 +461,7 @@ def ao_grads(mol: Mole, coords: Array, order = 2) -> Dict:
     return result
 
 
-def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, training: bool = False, scf_iteration: int = 50, grad_order: int = 2):
+def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, scf_iteration: int = 50, grad_order: int = 2):
 
     ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=1)#, non0tab=grids.non0tab)
     if scf_iteration != 0:
@@ -508,10 +504,7 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, train
     #h1e_energy = np.einsum("sij,ji->", dm, h1e)
     vj = 2 * mf.get_j(mf.mol, rdm1, hermi = 1) # The 2 is to compensate for the /2 in the definition of the density matrix 
 
-    if not training:
-        rep_tensor = mf.mol.intor('int2e')
-    else:
-        rep_tensor = None
+    rep_tensor = mf.mol.intor('int2e')
     # v_j = jnp.einsum("pqrt,srt->spq", rep_tensor, dm)
     # v_k = jnp.einsum("ptqr,srt->spq", rep_tensor, dm)
 
