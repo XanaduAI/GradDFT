@@ -281,7 +281,7 @@ def b3lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, featu
 B88 = Functional(function=b88, features=b88_features, combine=b88_combine)
 LSDA = Functional(function=lsda, features=lsda_features, combine=lsda_combine)
 VWN = Functional(function=vwn, features=vwn_features, combine=vwn_combine)
-LYP = Functional(function=lyp, features=lyp_features, combine=lyp_combine)
+LYP = Functional(function=lyp, features=lyp_features, combine=lyp_combine, exchange_mask=jnp.array([1]))
 B3LYP = Functional(function=b3lyp, 
                 features=b3lyp_exhf_features, 
                 nograd_features=b3lyp_nograd_features, 

@@ -2,10 +2,12 @@ from jax.lax import cond
 import jax.numpy as jnp
 from jax.lax import Precision
 from functional import Functional
-from molecule import Molecule, kinetic_density
+from interface.pyscf import generate_chi_tensor
+from molecule import Molecule
+from popular_functionals import LSDA
 
-from train import compute_features
-from utils.types import PyTree, Scalar
+from train import compute_features, molecule_predictor
+from utils.types import Array, PyTree, Scalar
 
 r"""
 In this document we implement some of the constraints listed in the review paper
@@ -14,22 +16,49 @@ https://doi.org/10.1146/annurev-physchem-062422-013259 that the exact functional
 
 ###################### Constraints ############################
 
-def constraint_x1(functional: Functional, params: PyTree, molecule: Molecule, precision = Precision.HIGHEST):
+def constraints_x1_c1(functional: Functional, params: PyTree, molecule: Molecule, precision = Precision.HIGHEST):
     r"""
     ::math::
-        \epsilon_x[n] < 0
+        \epsilon_x[n] < 0 (x1)
+        \epsilon_c[n] < 0 (c1)
     """
 
     # Compute the input features
     features = compute_features(functional, molecule)[0]
 
     # Mask the correlation features
-    features = jnp.einsum('rf,f->rf', features, functional.exchange_mask, precision=precision)
+    featuresx = jnp.einsum('rf,f->rf', features, functional.exchange_mask, precision=precision)
 
     # Compute the exchange-correlation energy at each point
-    ex = functional.apply(params, features)
+    ex = functional.apply(params, featuresx)
 
-    return jnp.less_equal(ex, 0.)
+    # Mask the exchange features
+    featuresc = jnp.einsum('rf,f->rf', features, 1 - functional.exchange_mask, precision=precision)
+
+    # Compute the exchange-correlation energy at each point
+    ec = functional.apply(params, featuresc)
+
+    return jnp.less_equal(ex, 0.), jnp.less_equal(ec, 0.)
+
+def constraint_c2(functional: Functional, params: PyTree, molecule: Molecule, precision = Precision.HIGHEST):
+    r"""
+    Assumin there is a single electron in the molecule,
+    ::math::
+        \epsilon_c[n] = 0.
+
+    Assumes molecule has a single electron.
+    """
+
+    # Compute the input features
+    features = compute_features(functional, molecule)[0]
+
+    # Mask the exchange features
+    featuresc = jnp.einsum('rf,f->rf', features, 1 - functional.exchange_mask, precision=precision)
+
+    # Compute the exchange-correlation energy at each point
+    Ec = functional.apply_and_integrate(params, molecule, featuresc)
+
+    return jnp.isclose(Ec, 0.)
 
 def constraint_x2(functional: Functional, params: PyTree, molecule: Molecule, precision = Precision.HIGHEST):
     r"""
@@ -185,3 +214,298 @@ def constraints_x3_c3_c4(functional: Functional, params: PyTree, molecule: Molec
     molecule = molecule.replace(grid = grid)
     return exchange_constraints, correlation_constraints
 
+def constraint_x4(functional: Functional, params: PyTree, molecule: Molecule,
+                s2_mask: Array, q2_mask: Array, qs2_mask: Array, s4_mask: Array,
+                precision = Precision.HIGHEST, lower_bound = 1e-15, upper_bound = 1e-5):
+    r"""
+    ::math::
+        E_x[n] \approx \frac{-3}{2}(\frac{3}{4\pi})^{1/3}\int dr [1 + \frac{10}{81}s^2 + \frac{146}{2025}q^2 - \frac{146}{2025}\frac{2}{5}qs^2 + 0 s^4 + O(|\nabla^6 \rho|)] \rho(r)^{4/3}\\
+        
+    where
+    ::math::
+        s = |\nabla \rho| / (2k_f \rho^{4/3})
+        q = \nabla^2 \rho / (2k_f^2 \rho^{5/3})
+    """
+
+    density = molecule.density()
+    grad_density = molecule.grad_density().sum(axis=-1)
+    lapl_density = molecule.lapl_density().sum(axis=-1)
+
+    s = jnp.where(jnp.greater_equal(density, 1e-20), grad_density / density**(4/3), 0)
+    q = jnp.where(jnp.greater_equal(density, 1e-20), lapl_density / density**(5/3), 0)
+
+    s2_cond = jnp.logical_and(jnp.logical_and(
+                                    jnp.less_equal(jnp.abs(grad_density), upper_bound),
+                                    jnp.greater_equal(jnp.abs(grad_density), lower_bound)),
+                                    jnp.greater_equal(jnp.abs(density), lower_bound))
+    
+    q2_cond = jnp.logical_and(jnp.logical_and(
+                                    jnp.less_equal(jnp.abs(lapl_density), upper_bound),
+                                    jnp.greater_equal(jnp.abs(lapl_density), lower_bound)),
+                                    jnp.greater_equal(jnp.abs(density), lower_bound))
+
+    qs2_cond = jnp.logical_and(s2_cond, q2_cond)
+
+    # Compute the input features
+    features = compute_features(functional, molecule)[0]
+
+    # Mask the correlation features
+    featuresx = jnp.einsum('rf,f->rf', features, functional.exchange_mask, precision=precision)
+    
+    lda_functional = LSDA
+
+    # Compute the exchange-correlation energy at each point
+    lsda_e = lda_functional.apply(params, featuresx)
+
+    if s2_mask:
+        featuresxs2 = jnp.einsum('rf,f->rf', features, s2_mask, precision=precision)
+        exs2 = functional.apply(params, featuresxs2)
+        s2 = jnp.where(s2_cond,
+                        jnp.isclose(exs2/(lsda_e*s**2), 10/81),
+                        True)
+    else: s2 = True
+    
+    if q2_mask:
+        featuresxq2 = jnp.einsum('rf,f->rf', features, q2_mask, precision=precision)
+        exq2 = functional.apply(params, featuresxq2)
+        q2 = jnp.where(q2_cond,
+                        jnp.isclose(exq2/(lsda_e*q**2), 146/2025),
+                        True)
+    else: q2 = True
+    
+    if qs2_mask:
+        featuresxqs2 = jnp.einsum('rf,f->rf', features, qs2_mask, precision=precision)
+        exqs2 = functional.apply(params, featuresxqs2)
+        qs2 = jnp.where(qs2_cond,
+                        jnp.isclose(exqs2/(lsda_e * s**2 * q), -146/2025 * 5/2),
+                        True)
+    else: qs2 = True
+
+    if s4_mask:
+        featuresxs4 = jnp.einsum('rf,f->rf', features, s4_mask, precision=precision)
+        exs4 = functional.apply(params, featuresxs4)
+        s4 = jnp.where(s2_cond,
+                        jnp.isclose(exs4/(lsda_e * s**4), 0),
+                        True)
+    else: s4 = True
+
+    return s2, q2, qs2, s4
+
+
+def constraint_x5(functional: Functional, params: PyTree, molecule: Molecule,
+                precision = Precision.HIGHEST, multiplier1 = 1e10, multiplier2 = 1e12):
+    r"""
+    ::math::
+        lim_{s\rightarrow \infty}F_x(s, ...) \propto s^{-1/2}
+    """
+
+    # Compute the lda energy
+    lda_functional = LSDA
+    features_lda = compute_features(lda_functional, molecule)[0]
+    lsda_e = lda_functional.apply(params, features_lda)
+
+    grad_ao_ = molecule.grad_ao
+
+    # Multiplying s by multiplier 1
+    molecule = molecule.replace(grad_ao = grad_ao_ * multiplier1)
+    density1 = molecule.density()
+    grad_density1 = molecule.grad_density().sum(axis=-1)
+
+    s1 = jnp.where(jnp.greater_equal(density1, 1e-27),
+                    grad_density1 / density1**(4/3), 0)
+
+    features1 = compute_features(functional, molecule)[0]
+    featuresx1 = jnp.einsum('rf,f->rf', features1, functional.exchange_mask, precision=precision)
+    ex1 = functional.apply(params, featuresx1)
+    fx1 = jnp.where(jnp.less_equal(jnp.abs(lsda_e*jnp.sqrt(s1)), 1e-30), 0, ex1/(lsda_e*jnp.sqrt(s1)))
+
+    # Multiplying s by multiplier 2
+    molecule = molecule.replace(grad_ao = grad_ao_ * multiplier2)
+    density2 = molecule.density()
+    grad_density2 = molecule.grad_density().sum(axis=-1)
+
+    s2 = jnp.where(jnp.greater_equal(density2, 1e-27),
+                    grad_density2 / density2**(4/3), 0)
+
+    features2 = compute_features(functional, molecule)[0]
+    featuresx2 = jnp.einsum('rf,f->rf', features2, functional.exchange_mask, precision=precision)
+    ex2 = functional.apply(params, featuresx2)
+    fx2 = jnp.where(jnp.less_equal(jnp.abs(lsda_e*jnp.sqrt(s2)), 1e-30), 0, ex2/(lsda_e*jnp.sqrt(s2)))
+
+    # Dividing s by multiplier 1
+    molecule = molecule.replace(grad_ao = grad_ao_ / multiplier1)
+    density_1 = molecule.density()
+    grad_density_1 = molecule.grad_density().sum(axis=-1)
+
+    s_1 = jnp.where(jnp.greater_equal(density_1, 1e-27),
+                    grad_density_1 / density_1**(4/3), 0)
+
+    features_1 = compute_features(functional, molecule)[0]
+    featuresx_1 = jnp.einsum('rf,f->rf', features_1, functional.exchange_mask, precision=precision)
+    ex_1 = functional.apply(params, featuresx_1)
+    fx_1 = jnp.where(jnp.less_equal(jnp.abs(lsda_e*jnp.sqrt(s_1)), 1e-30), 0, ex_1/(lsda_e*jnp.sqrt(s_1)))
+
+    # Putting the molecule back to how it was
+    molecule = molecule.replace(grad_ao = grad_ao_)
+
+    # Dividing s by multiplier 2
+    molecule = molecule.replace(grad_ao = grad_ao_ / multiplier2)
+    density_2 = molecule.density()
+    grad_density_2 = molecule.grad_density().sum(axis=-1)
+
+    s_2 = jnp.where(jnp.greater_equal(density_2, 1e-27),
+                    grad_density_2 / density_2**(4/3), 0)
+
+    features_2 = compute_features(functional, molecule)[0]
+    featuresx_2 = jnp.einsum('rf,f->rf', features_2, functional.exchange_mask, precision=precision)
+    ex_2 = functional.apply(params, featuresx_2)
+    fx_2 = jnp.where(jnp.less_equal(jnp.abs(lsda_e*jnp.sqrt(s_2)), 1e-30), 0, ex_2/(lsda_e*jnp.sqrt(s_2)))
+
+    # Putting the molecule back to how it was
+    molecule = molecule.replace(grad_ao = grad_ao_)
+
+    # Checking the condition
+    return jnp.isclose(fx1, fx2).all(), jnp.isclose(fx_1, fx_2).all()
+
+
+def constraint_x6(functional: Functional, params: PyTree, molecule: Molecule):
+    r"""
+    ::math::
+        E_x[\rho/2, \rho/2] \geq E_{xc}[\rho/2, \rho/2] \geq 1.804 E_x^{LSDA}[\rho]
+    """
+
+    # Compute the lda energy
+    features = compute_features(functional, molecule)[0]
+    featuresx = jnp.einsum('rf,f->rf', features, functional.exchange_mask)
+    lda_functional = LSDA
+    features_lda = compute_features(lda_functional, molecule)[0]
+    lsda_e = lda_functional.apply(params, features_lda)
+
+    # Symmetrize the reduced density matrix
+    rdm1 = molecule.rdm1
+    molecule = molecule.replace(rdm1 = (rdm1 + rdm1[::-1])/2)
+
+    # Compute the exchange energy
+    features = compute_features(functional, molecule)[0]
+    featuresx = jnp.einsum('rf,f->rf', features, functional.exchange_mask)
+    ex = functional.apply(params, featuresx)
+
+    # Compute the exchange-correlation energy
+    exc = functional.apply(params, features)
+
+    # Put rdm1 back in place
+    molecule = molecule.replace(rdm1 = rdm1)
+
+    return jnp.greater_equal(ex, exc).all(), jnp.greater_equal(ex, 1.804*lsda_e).all()
+
+
+def constraint_x7(functional: Functional, params: PyTree, molecule: Molecule):
+    r"""
+    ::math::
+        F_x[s, \alpha = 0] \geq 1.174
+    """
+    
+    class modMolecule(Molecule):
+        def kinetic_density(self: Molecule, *args, **kwargs) -> Array:
+            r"""Weizsacker kinetic energy"""
+            drho = self.grad_density(*args, **kwargs)
+            rho = self.density(*args, **kwargs)
+            return jnp.where(jnp.greater_equal(rho, 1e-27), drho**2 / (8*rho), 0)
+
+    modmolecule = modMolecule(
+        molecule.grid, molecule.atom_index, molecule.nuclear_pos, molecule.ao, molecule.grad_ao, 
+        molecule.grad_n_ao, molecule.rdm1, molecule.nuclear_repulsion, molecule.h1e, molecule.vj, 
+        molecule.mo_coeff, molecule.mo_occ, molecule.mo_energy,
+        molecule.mf_energy, molecule.s1e, molecule.omegas, molecule.chi, molecule.rep_tensor, 
+        molecule.energy, molecule.basis, molecule.name, molecule.spin, molecule.charge, 
+        molecule.unit_Angstrom, molecule.grid_level, molecule.scf_iteration, molecule.fock
+    )
+
+    features = compute_features(functional, modmolecule)[0]
+    featuresx = jnp.einsum('rf,f->rf', features, functional.exchange_mask)
+    functional_e = functional.apply(params, featuresx)
+
+    lda_functional = LSDA
+    features_lda = compute_features(lda_functional, molecule)[0]
+    lsda_e = lda_functional.apply(params, features_lda)
+
+    return jnp.where(jnp.greater_equal(lsda_e, 1e-27), jnp.less_equal(functional_e / lsda_e, 1.174), True).all()
+
+
+def constraints_fractional_charge_spin(functional: Functional, params: PyTree, molecule1: Molecule, molecule2: Molecule, gamma: Scalar = 0.5, mol = None):
+    r"""
+    ::math::
+        E_U[\gamma \rho_1 + (1-\gamma) \rho_2]  = \gamma E_U[\rho_1] + (1-\gamma) E_U[\rho_2]
+
+    Assumes gamma is between 0 and 1.
+    Assumes molecule1 and molecule2 have the same nuclear positions and grid, and differ in that
+    molecule2 has one (or 0) more electrons than molecule1.
+    """
+
+    predict = molecule_predictor(functional)
+    E1, _ = predict(params, molecule1)
+    E2, _ = predict(params, molecule2)
+
+    grid = molecule1.grid
+    atom_index = molecule1.atom_index
+    if not jnp.isclose(molecule1.atom_index, molecule2.atom_index).all():
+        raise ValueError("The two molecules must have the same atom_index")
+    nuclear_pos = molecule1.nuclear_pos
+    if not jnp.isclose(molecule1.nuclear_pos, molecule2.nuclear_pos).all():
+        raise ValueError("The two molecules must have the same nuclear_pos")
+    ao = molecule1.ao
+    if not jnp.isclose(molecule1.ao, molecule2.ao).all():
+        raise ValueError("The two molecules must have the same ao")
+    grad_ao = molecule1.grad_ao
+    if not jnp.isclose(molecule1.grad_ao, molecule2.grad_ao).all():
+        raise ValueError("The two molecules must have the same grad_ao")
+    grad_n_ao = molecule1.grad_n_ao
+    if not all([jnp.isclose(molecule1.grad_n_ao[k], molecule2.grad_n_ao[k]).all() for k in molecule1.grad_n_ao.keys()]) and jnp.isclose(jnp.array(molecule1.grad_n_ao.keys()), jnp.array(molecule2.grad_n_ao.keys())).all():
+        raise ValueError("The two molecules must have the same grad_n_ao")
+    nuclear_repulsion = molecule1.nuclear_repulsion
+    if not jnp.isclose(molecule1.nuclear_repulsion, molecule2.nuclear_repulsion):
+        raise ValueError("The two molecules must have the same nuclear_repulsion")
+    h1e = molecule1.h1e
+    if not jnp.isclose(molecule1.h1e, molecule2.h1e).all():
+        raise ValueError("The two molecules must have the same h1e")
+    vj = jnp.empty((0))
+    mo_coeff = jnp.empty((0))
+    mo_occ = jnp.empty((0))
+    mo_energy = jnp.empty((0))
+    mf_energy = jnp.empty((0))
+    s1e = molecule1.s1e
+    if not jnp.isclose(molecule1.s1e, molecule2.s1e).all():
+        raise ValueError("The two molecules must have the same s1e")
+    omegas = molecule1.omegas
+    if not jnp.isclose(jnp.array(molecule1.omegas), jnp.array(molecule2.omegas)).all():
+        raise ValueError("The two molecules must have the same omegas")
+
+    rep_tensor = molecule1.rep_tensor
+    if not jnp.isclose(molecule1.rep_tensor, molecule2.rep_tensor).all():
+        raise ValueError("The two molecules must have the same rep_tensor")
+    energy = jnp.empty((0))
+    basis = molecule1.basis
+    if not jnp.isclose(molecule1.basis, molecule2.basis).all():
+        raise ValueError("The two molecules must have the same basis")
+    name = jnp.empty((0))
+    unit_Angstrom = molecule1.unit_Angstrom
+    if not jnp.equal(molecule1.unit_Angstrom, molecule2.unit_Angstrom):
+        raise ValueError("The two molecules must have the same unit_Angstrom")
+    grid_level = molecule1.grid_level
+    if not jnp.isclose(molecule1.grid_level, molecule2.grid_level).all():
+        raise ValueError("The two molecules must have the same grid_level")
+    scf_iteration = jnp.empty((0))
+    fock = jnp.empty((0))
+
+    rdm1 = gamma*molecule1.rdm1 + (1-gamma)*molecule2.rdm1
+    spin = gamma * molecule1.spin + (1-gamma) * molecule2.spin
+    charge = gamma * molecule1.charge + (1-gamma) * molecule2.charge
+    chi = generate_chi_tensor(rdm1, ao, grid.coords, mol, omegas)
+
+    molecule = Molecule(grid, atom_index, nuclear_pos, ao, grad_ao, grad_n_ao, rdm1, nuclear_repulsion,
+                        h1e, vj, mo_coeff, mo_occ, mo_energy, mf_energy, s1e, omegas, chi, rep_tensor, 
+                        energy, basis, name, spin, charge, unit_Angstrom, grid_level, scf_iteration, fock)
+    
+    E, _ = predict(params, molecule)
+
+    return jnp.isclose(E, gamma*E1 + (1-gamma)*E2)
