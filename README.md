@@ -6,34 +6,34 @@ Differentiable DFT is a Jax-based library for researchers to be able to quickly 
 
 The core of the library is the class [Functional](https://github.com/XanaduAI/DiffDFT/blob/main/functional.py#L25), whose design and use is central to Density Functional Theory. In order to implement this functional, two components are key: 
 
-First, we need to define the Jax-based function $f_{\bm{\theta}}$ that will implements the functional
+First, we need to define the Jax-based function $f_{\mathbf{\theta}}$ that will implements the functional
 
 $$
-E_{xc}[\rho] = \int d{\bm{r}} f_{\bm{\theta}}(\rho(\bm{r}), |\nabla \rho(\bm{r})|, |\nabla^2 \rho(\bm{r})|, \ldots).
+E_{xc}[\rho] = \int d{\mathbf{r}} f_{\mathbf{\theta}}(\rho(\mathbf{r}), |\nabla \rho(\mathbf{r})|, |\nabla^2 \rho(\mathbf{r})|, \ldots).
 $$
 
-And second we need to a function that generates the features - inputs to $f_{\bm{\theta}}$ - from an instance of the auxiliary class [Molecule](https://github.com/XanaduAI/DiffDFT/blob/main/molecule.py#L61). These are divided according to whether autodifferentiation is intented to be used to compute their derivatives. Since `Molecule` can store arbitrary order derivatives of the atomic orbitals, the `Functional` may depend on arbitrary order derivatives of the electronic density. `Molecule` class contains not only many properties defining the electronic system, but also several auxiliary functions to compute properties such as the electronic density and its derivatives.
+And second we need to a function that generates the features - inputs to $f_{\mathbf{\theta}}$ - from an instance of the auxiliary class [Molecule](https://github.com/XanaduAI/DiffDFT/blob/main/molecule.py#L61). These are divided according to whether autodifferentiation is intented to be used to compute their derivatives. Since `Molecule` can store arbitrary order derivatives of the atomic orbitals, the `Functional` may depend on arbitrary order derivatives of the electronic density. `Molecule` class contains not only many properties defining the electronic system, but also several auxiliary functions to compute properties such as the electronic density and its derivatives.
 
 Once provided with these two defining elements, the energy of a system might be computed via method `functional.energy(params, molecule)`, where `molecule` is an instance of `Molecule`, `functional` is an instance of `Functional`, and `params` represent any parameters the functional may need.
 
 The `Functional` class is also the parent class of [NeuralFunctional](https://github.com/XanaduAI/DiffDFT/blob/main/functional.py#L181), which additionally allows to save and load chechpoints, and allows for a straightforward of the usual multi-layer perceptron such as the one used to construct DM21 [1] (also available as an off-the-shelf class and and which allows to load the original parameters),
 
 $$
-E_{xc}^{\text{DM21}}[\rho] = \int  f_{\bm{\theta}}^{\text{DM21}}(\bm{x}(\bm{r}))\cdot
+E_{xc}^{\text{DM21}}[\rho] = \int  f_{\mathbf{\theta}}^{\text{DM21}}(\mathbf{x}(\mathbf{r}))\cdot
     \begin{bmatrix}
-    e_x^{\text{LDA}}(\bm{r})\\
-    e^{\text{HF}}(\bm{r})\\
-    e^{\omega \text{HF}}(\bm{r})\\
+    e_x^{\text{LDA}}(\mathbf{r})\\
+    e^{\text{HF}}(\mathbf{r})\\
+    e^{\omega \text{HF}}(\mathbf{r})\\
     \end{bmatrix}
-    d\bm{r},
+    d\mathbf{r},
 $$
 
-where $\bm{x}$ represent 11 features computed from $\rho$. In general, any functional of the form
+where $\mathbf{x}$ represent 11 features computed from $\rho$. In general, any functional of the form
 
 $$
 E_{xc}[\rho] = E_x[\rho] +E_c[\rho] \\
-    = \sum_\sigma\int d\bm{r} \rho_\sigma(\bm{r}) F_{x,\sigma}[\rho(\bm{r})]  \epsilon_{x,\sigma}^{UEG}([\rho], \bm{r})
-    +\sum_\sigma\int d\bm{r} \rho_\sigma(\bm{r}) F_{c,\sigma}[\rho(\bm{r})]  \epsilon_{c,\sigma}^{UEG}([\rho], \bm{r}),
+    = \sum_\sigma\int d\mathbf{r} \rho_\sigma(\mathbf{r}) F_{x,\sigma}[\rho(\mathbf{r})]  \epsilon_{x,\sigma}^{UEG}([\rho], \mathbf{r})
+    +\sum_\sigma\int d\mathbf{r} \rho_\sigma(\mathbf{r}) F_{c,\sigma}[\rho(\mathbf{r})]  \epsilon_{c,\sigma}^{UEG}([\rho], \mathbf{r}),
 $$
 
 where $F_{x/c, \sigma}$ are the so-called inhomogeneous correction factors, composed of polynomials of a-dimensional derivatives of the electronic density, and $\epsilon_{x/c,\sigma}^{UEG}[\rho_\sigma]$ makes reference to the Homogeneous Electron Gass exchange/correlation electronic energy. (Range-separated) exact-exchange and dispersion components may also be introduced in the functional.
