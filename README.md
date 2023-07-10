@@ -36,7 +36,7 @@ E_{xc}[\rho] = E_x[\rho] +E_c[\rho] \\
     +\sum_\sigma\int d\mathbf{r} \rho_\sigma(\mathbf{r}) F_{c,\sigma}[\rho(\mathbf{r})]  \epsilon_{c,\sigma}^{UEG}([\rho], \mathbf{r}),
 $$
 
-where $F_{x/c, \sigma}$ are the so-called inhomogeneous correction factors, composed of polynomials of a-dimensional derivatives of the electronic density, and $\epsilon_{x/c,\sigma}^{UEG}[\rho_\sigma]$ makes reference to the Homogeneous Electron Gass exchange/correlation electronic energy. (Range-separated) exact-exchange and dispersion components may also be introduced in the functional.
+where $F_{x/c, \sigma}$ are the so-called inhomogeneous correction factors, composed of polynomials of a-dimensional derivatives of the electronic density, and $\epsilon_{x/c,\sigma}^{UEG}[\rho_\sigma]$ makes reference to the Uniform Electron Gass exchange/correlation electronic energy. (Range-separated) exact-exchange and dispersion components may also be introduced in the functional.
 
 ### Functionality, examples and tests
 
