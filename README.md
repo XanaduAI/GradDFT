@@ -4,7 +4,7 @@ Differentiable DFT is a Jax-based library for researchers to be able to quickly 
 
 ## The Functional
 
-The core of the library is the class [Functional](https://github.com/XanaduAI/DiffDFT/blob/main/functional.py#L25), whose design and use is central to Density Functional Theory. In order to implement this functional, two components are key: 
+The core of the library is the class [Functional](https://github.com/XanaduAI/DiffDFT/blob/main/functional.py#L25), whose design and use is central to Density Functional Theory. In order to implement this functional, two components are key:
 
 First, we need to define the Jax-based function $f_{\mathbf{\theta}}$ that will implements the functional
 
@@ -44,7 +44,7 @@ Our software library comes with auxiliary function [make_scf_loop](https://githu
 
 We also provide a number of regularization loss functions in [train.py](https://github.com/XanaduAI/DiffDFT/blob/main/train.py#L184), as well as an implementation of quite a few of the known constraints of the exact functional in [constraints.py](https://github.com/XanaduAI/DiffDFT/blob/main/constraints.py) [3]. The library also provides a number of [examples](https://github.com/XanaduAI/DiffDFT/tree/main/examples) of usage, as well as [tests](https://github.com/XanaduAI/DiffDFT/tree/main/tests) checking the implementation of the self-consistent loop, a our clone of DM21, and classical functionals such as B3LYP.
 
-## Bibliography {Bibliography}
+## Bibliography
 
 1. J. Kirkpatrick, B. McMorrow, D. H. Turban, A. L. Gaunt, J. S. Spencer, A. G. Matthews, A. Obika,
    L. Thiry, M. Fortunato, D. Pfau, et al. [Pushing the frontiers of density functionals by solving the fractional electron problem](https://www.science.org/doi/abs/10.1126/science.abj6511). Science, 374(6573):1385–1389, 2021
