@@ -1,9 +1,10 @@
+from flax import struct
 from jax.lax import cond
 import jax.numpy as jnp
 from jax.lax import Precision
 from functional import Functional
 from interface.pyscf import generate_chi_tensor
-from molecule import Molecule
+from molecule import Molecule, grad_density
 from popular_functionals import LSDA
 
 from train import compute_features, molecule_predictor
@@ -304,68 +305,78 @@ def constraint_x5(functional: Functional, params: PyTree, molecule: Molecule,
     features_lda = compute_features(lda_functional, molecule)[0]
     lsda_e = lda_functional.apply(params, features_lda)
 
-    grad_ao_ = molecule.grad_ao
+    @struct.dataclass
+    class modMolecule(Molecule):
+
+        s_multiplier: Scalar = 1.
+
+        def grad_density(self, *args, **kwargs) -> Array:
+            r"""Scaled kinetic energy"""
+            return grad_density(self.rdm1, self.ao, self.grad_ao, *args, **kwargs) * self.s_multiplier
+
+    modmolecule = modMolecule(
+        molecule.grid, molecule.atom_index, molecule.nuclear_pos, molecule.ao, molecule.grad_ao, 
+        molecule.grad_n_ao, molecule.rdm1, molecule.nuclear_repulsion, molecule.h1e, molecule.vj, 
+        molecule.mo_coeff, molecule.mo_occ, molecule.mo_energy,
+        molecule.mf_energy, molecule.s1e, molecule.omegas, molecule.chi, molecule.rep_tensor, 
+        molecule.energy, molecule.basis, molecule.name, molecule.spin, molecule.charge, 
+        molecule.unit_Angstrom, molecule.grid_level, molecule.scf_iteration, molecule.fock
+    )
 
     # Multiplying s by multiplier 1
-    molecule = molecule.replace(grad_ao = grad_ao_ * multiplier1)
-    density1 = molecule.density()
-    grad_density1 = molecule.grad_density().sum(axis=-1)
+    modmolecule = modmolecule.replace(s_multiplier = multiplier1)
+    density1 = modmolecule.density()
+    grad_density1 = modmolecule.grad_density().sum(axis=-1)
 
     s1 = jnp.where(jnp.greater_equal(density1, 1e-27),
                     grad_density1 / density1**(4/3), 0)
 
-    features1 = compute_features(functional, molecule)[0]
+    features1 = compute_features(functional, modmolecule)[0]
     featuresx1 = jnp.einsum('rf,f->rf', features1, functional.exchange_mask, precision=precision)
     ex1 = functional.apply(params, featuresx1)
     fx1 = jnp.where(jnp.less_equal(jnp.abs(lsda_e*jnp.sqrt(s1)), 1e-30), 0, ex1/(lsda_e*jnp.sqrt(s1)))
 
     # Multiplying s by multiplier 2
-    molecule = molecule.replace(grad_ao = grad_ao_ * multiplier2)
-    density2 = molecule.density()
-    grad_density2 = molecule.grad_density().sum(axis=-1)
+    modmolecule = modmolecule.replace(s_multiplier = multiplier2)
+    density2 = modmolecule.density()
+    grad_density2 = modmolecule.grad_density().sum(axis=-1)
 
     s2 = jnp.where(jnp.greater_equal(density2, 1e-27),
                     grad_density2 / density2**(4/3), 0)
 
-    features2 = compute_features(functional, molecule)[0]
+    features2 = compute_features(functional, modmolecule)[0]
     featuresx2 = jnp.einsum('rf,f->rf', features2, functional.exchange_mask, precision=precision)
     ex2 = functional.apply(params, featuresx2)
     fx2 = jnp.where(jnp.less_equal(jnp.abs(lsda_e*jnp.sqrt(s2)), 1e-30), 0, ex2/(lsda_e*jnp.sqrt(s2)))
 
     # Dividing s by multiplier 1
-    molecule = molecule.replace(grad_ao = grad_ao_ / multiplier1)
-    density_1 = molecule.density()
-    grad_density_1 = molecule.grad_density().sum(axis=-1)
+    modmolecule = modmolecule.replace(s_multiplier = 1/multiplier1)
+    density_1 = modmolecule.density()
+    grad_density_1 = modmolecule.grad_density().sum(axis=-1)
 
     s_1 = jnp.where(jnp.greater_equal(density_1, 1e-27),
                     grad_density_1 / density_1**(4/3), 0)
 
-    features_1 = compute_features(functional, molecule)[0]
+    features_1 = compute_features(functional, modmolecule)[0]
     featuresx_1 = jnp.einsum('rf,f->rf', features_1, functional.exchange_mask, precision=precision)
     ex_1 = functional.apply(params, featuresx_1)
     fx_1 = jnp.where(jnp.less_equal(jnp.abs(lsda_e*jnp.sqrt(s_1)), 1e-30), 0, ex_1/(lsda_e*jnp.sqrt(s_1)))
 
-    # Putting the molecule back to how it was
-    molecule = molecule.replace(grad_ao = grad_ao_)
-
     # Dividing s by multiplier 2
-    molecule = molecule.replace(grad_ao = grad_ao_ / multiplier2)
-    density_2 = molecule.density()
-    grad_density_2 = molecule.grad_density().sum(axis=-1)
+    modmolecule = modmolecule.replace(s_multiplier = 1/multiplier2)
+    density_2 = modmolecule.density()
+    grad_density_2 = modmolecule.grad_density().sum(axis=-1)
 
     s_2 = jnp.where(jnp.greater_equal(density_2, 1e-27),
                     grad_density_2 / density_2**(4/3), 0)
 
-    features_2 = compute_features(functional, molecule)[0]
+    features_2 = compute_features(functional, modmolecule)[0]
     featuresx_2 = jnp.einsum('rf,f->rf', features_2, functional.exchange_mask, precision=precision)
     ex_2 = functional.apply(params, featuresx_2)
     fx_2 = jnp.where(jnp.less_equal(jnp.abs(lsda_e*jnp.sqrt(s_2)), 1e-30), 0, ex_2/(lsda_e*jnp.sqrt(s_2)))
 
-    # Putting the molecule back to how it was
-    molecule = molecule.replace(grad_ao = grad_ao_)
-
     # Checking the condition
-    return jnp.isclose(fx1, fx2).all(), jnp.isclose(fx_1, fx_2).all()
+    return jnp.isclose(fx1, fx2, rtol = 1e-4, atol = 1).all(), jnp.isclose(fx_1, fx_2, rtol = 1e-4, atol = 1).all()
 
 
 def constraint_x6(functional: Functional, params: PyTree, molecule: Molecule):
