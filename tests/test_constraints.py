@@ -1,15 +1,11 @@
 from flax.core import freeze
-from jax import numpy as jnp
-from popular_functionals import B3LYP, B88, LSDA, LYP, VWN, PW92
+from popular_functionals import B3LYP, LYP
 
 from interface.pyscf import molecule_from_pyscf
 
-# This file aims to test, given some electronic density, whether our
-# implementation of classical functionals closely matches libxc (pyscf default).
+# This file aims to test some of the constraints implemented in constraints.py.
 
-# again, this only works on startup!
 from jax import config
-
 config.update("jax_enable_x64", True)
 
 # First we define a molecule:
@@ -38,6 +34,7 @@ mf.xc = 'b3lyp'
 ground_truth_energy = mf.kernel()
 molecule1e = molecule_from_pyscf(mf, omegas = [0.])
 
+# Negatively charged H atom
 molHp = gto.M(atom = 'H 0 0 0', charge = -1, spin = 0, basis = 'cc-pvqz')
 grids = dft.gen_grid.Grids(molHp)
 grids.level = 3
@@ -71,7 +68,7 @@ print(f'Quadratic loss of the functional B3LYP from constraint x3?', x3)
 print(f'Quadratic loss of the functional B3LYP from constraint c3?', c3)
 print(f'Quadratic loss of the functional B3LYP from constraint c4?', c4)
 
-#### Constraint x4 #### This requires masks
+#### Constraint x4 #### This requires masks for the appropriate functional
 #x4s2, x4q2, x4qs2, x4s4  = constraint_x4(B3LYP, params, molecule, s2_mask, q2_mask, qs2_mask, s4_mask)
 #print(f'Quadratic loss of the functional B3LYP from constraints x4?', x4s2, x4q2, x4qs2, x4s4)
 

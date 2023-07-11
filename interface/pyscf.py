@@ -213,7 +213,7 @@ def saver(
                 mol_group.create_dataset(f"omegas", data = omegas)
             save_molecule_data(mol_group, molecule, training)
 
-def loader(fpath: str, randomize: Optional[bool] = False, training: Optional[bool] = True, config_omegas: Optional[Union[Scalar, Sequence[Scalar]]] = None):
+def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool] = True, config_omegas: Optional[Union[Scalar, Sequence[Scalar]]] = None):
     r"""
     Reads the molecule, energy and precomputed chi matrix from a file.
 

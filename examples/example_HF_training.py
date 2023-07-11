@@ -3,7 +3,7 @@ from optax import adam, apply_updates
 from jax.lax import stop_gradient
 
 from interface.pyscf import molecule_from_pyscf
-from functional import DM21, default_loss, dm21_features
+from functional import DM21, default_loss
 
 # In this example we aim to explain how we can train the DM21 functional.
 

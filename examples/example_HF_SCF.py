@@ -3,7 +3,7 @@ from jax.lax import stop_gradient
 from evaluate import make_scf_loop
 
 from interface.pyscf import molecule_from_pyscf
-from functional import DM21, dm21_features
+from functional import DM21
 
 # In this example we aim to explain how we can implement the self-consistent loop
 # with the DM21 functional.

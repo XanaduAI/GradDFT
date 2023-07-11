@@ -13,7 +13,8 @@ from utils.types import Array, PyTree, Scalar
 
 r"""
 In this document we implement some of the constraints listed in the review paper
-https://doi.org/10.1146/annurev-physchem-062422-013259 that the exact functional should satisfy.
+https://doi.org/10.1146/annurev-physchem-062422-013259 that the exact functional should satisfy,
+as quadratic loss functions.
 """
 
 ###################### Constraints ############################

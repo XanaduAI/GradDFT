@@ -1,4 +1,3 @@
-from cmath import nan
 import os
 from warnings import warn
 import warnings
@@ -7,7 +6,7 @@ from tqdm import tqdm
 import pandas as pd
 import json
 import random
-np.random.seed(4) #Para la ronda 5 (usando numeración python)
+np.random.seed(0) 
 
 from openfermion.chem import geometry_from_pubchem
 from pyscf.data.elements import ELEMENTS, CONFIGURATION

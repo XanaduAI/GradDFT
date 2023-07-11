@@ -1,6 +1,5 @@
 from functools import partial
 import os
-import random
 import jax
 from jax.random import split, PRNGKey
 from jax import numpy as jnp, value_and_grad
@@ -101,20 +100,21 @@ opt_state = tx.init(params)
 num_epochs = 50
 cost_val = jnp.inf
 
-training_data_dirpath = '/Users/pablo.casares/Developer/DiffDFT/data/training/dissociation'
-training_files = '/H2_extrapolation_molecules.hdf5'
+dirpath = os.path.dirname(os.path.dirname(__file__))
+training_data_dirpath = os.path.normpath(dirpath + "/data/training/")
+training_files = '/dissociation/H2_extrapolation_molecules.hdf5'
 
 ####### Loss function and train kernel #######
 
 # Here we use one of the following. We will use the second here.
 molecule_predict = molecule_predictor(functional)
-scf_train_loop = make_scf_training_loop(functional, max_cycles=0)
+scf_train_loop = make_scf_training_loop(functional, max_cycles=1)
 
 @partial(value_and_grad, has_aux = True)
 def loss(params, molecule, ground_truth_energy):
 
     #predicted_energy, fock = molecule_predict(params, molecule)
-    predicted_energy, fock = scf_train_loop(params, molecule)
+    predicted_energy, fock, rdm1 = scf_train_loop(params, molecule)
     cost_value = (predicted_energy - ground_truth_energy) ** 2
 
     # We may want to add a regularization term to the cost, be it one of the
@@ -136,16 +136,14 @@ kernel = jax.jit(make_train_kernel(tx, loss))
 ######## Training epoch ########
 
 def train_epoch(state, training_files, training_data_dirpath):
-    """Train for a single epoch."""
+    r"""Train for a single epoch."""
+
     batch_metrics = []
-
     params, opt_state, cost_val = state
-
     fpath = os.path.join(training_data_dirpath + training_files)
-    
     print('Training on file: ', fpath, '\n')
+
     load = loader(fpath = fpath, randomize=True, training = True, config_omegas = [])
-    print('Loader generated')
     for _, system in tqdm.tqdm(load):
         params, opt_state, cost_val, metrics = kernel(params, opt_state, system, system.energy)
         del system

@@ -1,5 +1,5 @@
 from utils import Scalar, Array
-from typing import Optional, Union, Callable, Dict, Sequence, Tuple, NamedTuple, List
+from typing import Optional, Union, Sequence, Tuple, NamedTuple
 from dataclasses import fields
 from utils import Array, Scalar
 from functools import partial
@@ -12,7 +12,6 @@ from jax import vmap, grad
 from jax.lax import fori_loop, cond
 from flax import struct
 from flax import linen as nn
-import itertools
 import jax
 
 

@@ -3,7 +3,7 @@ import warnings
 
 from interface import molecule_from_pyscf
 
-# again, this only works on startup!
+# This only works on startup!
 from jax.config import config
 config.update("jax_enable_x64", True)
 

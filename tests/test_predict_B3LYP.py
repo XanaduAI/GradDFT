@@ -3,9 +3,8 @@ import warnings
 
 from interface import molecule_from_pyscf
 
-# again, this only works on startup!
+# This only works on startup!
 from jax.config import config
-
 config.update("jax_enable_x64", True)
 
 dirpath = os.path.dirname(os.path.dirname(__file__))
@@ -20,7 +19,6 @@ learning_rate = 1e-3
 
 from interface import molecule_from_pyscf
 from evaluate import make_scf_loop, make_orbital_optimizer
-from external.density_functional_approximation_dm21.density_functional_approximation_dm21.compute_hfx_density import get_hf_density
 from openfermion import geometry_from_pubchem
 
 from pyscf import gto, dft, cc, scf

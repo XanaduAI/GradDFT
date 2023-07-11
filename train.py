@@ -10,7 +10,7 @@ from optax import OptState, GradientTransformation, apply_updates
 
 from utils import Scalar, Array, PyTree
 from functional import Functional
-from molecule import Molecule, Reaction, coulomb_potential, symmetrize_rdm1, eig, orbital_grad
+from molecule import Molecule, coulomb_potential, symmetrize_rdm1, eig, orbital_grad
 
 def compute_features(functional, molecule, *args, **kwargs):
     r"""
@@ -384,9 +384,9 @@ def make_scf_training_loop(functional: Functional, max_cycles: int = 25,
                     jnp.zeros((diis.max_diis, 2, A.shape[0], A.shape[0])))
         state = (molecule, fock, predicted_e, old_e, norm_gorb, diis_data)
         state = loop_body(0, state)
-        _, fock, predicted_e, _, _, _ = final_state
+        molecule, fock, predicted_e, _, _, _ = final_state
 
-        return predicted_e, fock
+        return predicted_e, fock, molecule.rdm1
 
     return scf_training_iterator
 
