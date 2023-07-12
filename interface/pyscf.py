@@ -1,5 +1,5 @@
 from random import shuffle
-from typing import List, Optional, Union, Sequence, Dict
+from typing import List, Optional, Tuple, Union, Sequence, Dict
 from itertools import chain, combinations_with_replacement
 import os
 
@@ -53,7 +53,7 @@ def molecule_from_pyscf(
         [elements.ELEMENTS.index(e) for e in mf.mol.elements], mf.mol.atom_coords(unit='angstrom'), dtype=dtype
     )
 
-    basis = jnp.array([ord(char) for char in mf.mol.basis]) # jax doesn't support strings
+    basis = jnp.array([ord(char) for char in mf.mol.basis]) # jax doesn't support strings, so we convert it to integers
     unit_Angstrom = True
     if name: name = jnp.array([ord(char) for char in name])
 
@@ -98,7 +98,6 @@ def mol_from_Molecule(molecule: Molecule):
 #@partial(jax.jit, static_argnames=["kernel_fn", "chunk_size", "precision"])
 def saver(
     fname: str,
-    omegas: Union[Scalar, Sequence[Scalar]],
     reactions: Optional[Union[Reaction, Sequence[Reaction]]] = (),
     molecules: Optional[Union[Molecule, Sequence[Molecule]]] = (),
     training: bool = True,
@@ -172,8 +171,6 @@ def saver(
         molecules = (molecules,)
     if isinstance(reactions, Reaction):
         reactions = (reactions,)
-    if isinstance(omegas, (int, float)):
-        omegas = (omegas,)
 
     with h5py.File(f"{fname}.hdf5", "a") as file:
 
@@ -188,11 +185,6 @@ def saver(
 
                 if molecule.name: mol_group = react.create_group([j] + list(molecule.name))
                 else: mol_group = react.create_group(f"molecule_{j}")
-                if len(omegas) > 1:
-                    save_molecule_chi(molecule, omegas, chunk_size, mol_group)
-                else:
-                    mol_group.create_dataset(f"chi", data = jnp.empty((1)))
-                    mol_group.create_dataset(f"omegas", data = omegas)
                 save_molecule_data(mol_group, molecule, training)
                 if j<len(reaction.reactants):
                     mol_group.attrs["type"] = "reactant"
@@ -204,13 +196,8 @@ def saver(
         # Then we save the molecules
         for j, molecule in enumerate(molecules):
 
-            if molecule.name is None: mol_group = file.create_group([j] + list(molecule.name))
+            if molecule.name is not None: mol_group = file.create_group(f''.join(chr(num) for num in molecule.name)+f'_{j}')
             else: mol_group = file.create_group(f"molecule_{j}")
-            if len(omegas) > 1:
-                save_molecule_chi(molecule, omegas, chunk_size, mol_group)
-            else:
-                mol_group.create_dataset(f"chi", data = jnp.empty((1)))
-                mol_group.create_dataset(f"omegas", data = omegas)
             save_molecule_data(mol_group, molecule, training)
 
 def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool] = True, config_omegas: Optional[Union[Scalar, Sequence[Scalar]]] = None):
@@ -252,11 +239,9 @@ def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool
             if "molecule" in grp_name:
 
                 args = {}
-                if not training: args["name"] = grp_name.split("_")[1]
-                omegas = list(group["omegas"])
                 for key, value in group.items():
-                    if key in ["omegas"]:
-                        args[key] = list(value)
+                    if key in ["name", "basis"]:
+                        args[key] = jnp.array([ord(char) for char in key])
                     elif key in ["energy"]:
                         args[key] = jnp.float32(value) if training else jnp.float64(value)
                     elif key in ["scf_iteration", "spin", "charge"]:
@@ -307,14 +292,15 @@ def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool
 
                     args = {}
                     if not training: args["name"] = molecule_name.split("_")[1]
-                    molecule_omegas = list(molecule["omegas"])
                     for key, value in molecule.items():
-                        if key in ["energy", "reactant_numbers", "product_numbers"]:
+                        if key in ["reactant_numbers", "product_numbers"]:
                             continue
-                        if key in ["omegas"]:
-                            args[key] = list(value)
+                        elif key in ["name", "basis"]:
+                            args[key] = jnp.array([ord(char) for char in key])
                         elif key in ["energy"]:
                             args[key] = jnp.float32(value) if training else jnp.float64(value)
+                        elif key in ["grad_n_ao"]:
+                            args[key] = {int(k): jnp.asarray(v) for k, v in value.items()}
                         elif key == 'chi':
                             # select the indices from the omegas array and load the corresponding chi matrix
                             if config_omegas is None: args[key] = jnp.asarray(value)
@@ -324,8 +310,6 @@ def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool
                                 assert all([omega in omegas for omega in config_omegas]), f"chi tensors for omega list {config_omegas} were not all precomputed in the molecule"
                                 indices = [omegas.index(omega) for omega in config_omegas]
                                 args[key] = jnp.stack([jnp.asarray(value)[:, i] for i in indices], axis=1)
-                        elif key in ["grad_n_ao"]:
-                            args[key] = {int(k): jnp.asarray(v) for k, v in value.items()}
                         else: 
                             args[key] = jnp.asarray(value)
 
@@ -357,7 +341,9 @@ def save_molecule_data(mol_group: h5py.Group, molecule: Molecule, training: bool
 
     for name, data in d.items():
 
-        if name in ["chi", "omegas"] or data is None: continue
+        if data is None: data = jnp.empty([1])
+        elif name in ['name', 'basis']:
+            mol_group.create_dataset(name, data=''.join(chr(num) for num in data))
         elif name == "grad_n_ao":
             d = mol_group.create_group(name)
             for k, v in data.items():
@@ -519,7 +505,7 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, scf_i
 
 ##############################################################################################################
 
-def process_mol(mol, compute_energy=True, grid_level: int = 2, training: bool = False, max_cycle: Optional[int] = None, xc_functional = 'b3lyp'):
+def process_mol(mol, compute_energy=False, grid_level: int = 2, training: bool = False, max_cycle: Optional[int] = None, xc_functional = 'b3lyp') -> Tuple[float, Union[dft.RKS, dft.UKS]]:
     if compute_energy:
         if mol.multiplicity == 1: mf2 = scf.RHF(mol)
         else: mf2 = scf.UHF(mol)
