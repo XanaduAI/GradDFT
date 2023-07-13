@@ -8,7 +8,6 @@ import random
 from pyscf import gto
 from pyscf.data.elements import ELEMENTS, CONFIGURATION
 
-from interface import loader as load 
 from interface import saver as save
 from interface import molecule_from_pyscf
 from molecule import make_reaction
@@ -25,6 +24,8 @@ grid_level = 2
 omegas = [0.] # This indicates the values of omega in the range-separted exact-exchange.
             # It is relatively memory intensive. omega = 0 is the usual Coulomb kernel.
             # Leave empty if no Coulomb kernel is expected.
+
+max_electrons = 20 # Select the largest number of electrons we allow for W4-17
 
 
 def process_dimers(training = True, combine = False, max_cycle = None):
@@ -45,7 +46,6 @@ def process_dimers(training = True, combine = False, max_cycle = None):
     for i in tqdm(range(len(dimers_df.index)), desc = 'Processing dimers'):
 
         # Extract the molecule information
-
         atom1 = dimers_df['Atom1'][i]
         atom2 = dimers_df['Atom2'][i]
 
@@ -66,7 +66,7 @@ def process_dimers(training = True, combine = False, max_cycle = None):
 
         geometry = [[atom1, [0,0,0]], [atom2, [bond_length,0,0]]]
 
-        # Create a mol and a molecule
+        # Create a mol and molecule
         mol = gto.M(atom = geometry,
             basis=basis, charge = charge, spin = spin)
         _, mf = process_mol(mol, compute_energy=False, grid_level = grid_level,
@@ -108,6 +108,8 @@ def process_atoms(training = True, combine = False, max_cycle = None, charge = 0
     molecules = []
 
     for i in tqdm(range(1,37), desc = 'Processing atoms'):
+
+        # Extract the molecule information
         atom = ELEMENTS[i]
         energy = float(atoms_df['ccsd(t)/cbs energy 3-point'][atom]) + np.random.normal(0, noise)
 
@@ -148,6 +150,8 @@ def process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 
     else: distances = training_distances
 
     for i in tqdm(distances):
+
+        # Extract the molecule information
         d = [dis for dis in dissociation_df.index if np.isclose(i, dis)][0]
         try:
             energy = dissociation_df.loc[d,'energy (Ha)'] + np.random.normal(loc = 0, scale = noise)
@@ -156,6 +160,7 @@ def process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 
         geometry = [[atom1,[0,0,0]],[atom2,[0,0,d]]]
         mol = gto.M(atom = geometry, basis = basis, charge = charge, spin = spin)
         
+        # Create a mol and molecule
         _, mf = process_mol(mol, compute_energy=False, grid_level = grid_level,
                 training=training, max_cycle=max_cycle)
         if max_cycle: energy = mf.e_tot
@@ -172,6 +177,100 @@ def process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 
     else:
         return molecules
 
+
+def process_w4x17(training = True, combine = False, max_cycle = None):
+    """
+    Processes the W4-17 dataset.
+    A diverse and high-confidence dataset of atomization energies for benchmarking high-level electronic structure methods
+    CCSD(T)/cc-pV(Q+d)Z optimized geometries
+    """
+
+    raw_dir = os.path.join(dirpath, data_dir, 'raw/W4-17/')
+    reactions = []
+
+    for file in tqdm([f for f in os.listdir(raw_dir) if 'W4-17' not in f]):
+
+        print('Processing file', file)
+
+        product_numbers = []
+        products = []
+        reactant_numbers = []
+        reactants = []
+
+        # Read information from raw data files
+        with open(os.path.normpath(raw_dir +'/'+ file), 'r') as xyz:
+            N = int(xyz.readline())
+            #if N > config_variables["max_atoms"]: continue
+            header = xyz.readline()
+            charge = int(header.split()[0][-1])
+            if charge != 0:
+                warnings.warn("Charge is not 0 in file {}".format(file))
+                continue
+            multiplicity = int(header.split()[1][-1])
+            geometry = []
+            total_electrons = 0
+            for line in xyz:
+                atom,x,y,z = line.split()
+                total_electrons += ELEMENTS.index(atom)
+                geometry.append([atom, float(x),float(y),float(z)])
+            if total_electrons > max_electrons:
+                print(f"reaction {file[:-4]} has too many electrons, {total_electrons}")
+                continue
+
+        # Product: processing and creating associated molecule
+        reactname = file[:-4]
+        mol = gto.M(atom = geometry, unit = 'Angstrom',
+                basis=basis, charge = charge, spin = multiplicity-1)
+        product_numbers.append(1)
+        _, mf = process_mol(mol, compute_energy=False, grid_level = grid_level, training=training, max_cycle=max_cycle)
+        product = molecule_from_pyscf(mf, name = reactname, omegas = omegas)
+        products.append(product)
+
+        # Reading out the energy
+        reaction_energy = 0
+        with open(os.path.normpath(raw_dir +'/W4-17_Ref_TAE0.txt'), 'r') as txt:
+            lines = txt.readlines()
+            for line in lines[5:206]:
+                molecule_name = file.replace('.xyz','').replace('mr_','')
+                if molecule_name in line:
+                    reaction_energy = -float(line.split()[1])
+                    reaction_energy /= Hartree2kcalmol
+                    break
+        assert reaction_energy != 0
+
+        # Reactants: processing and creating associated molecules
+        atom_symbols = {}
+        for atom in mol.atom:
+            if atom[0] in atom_symbols.keys():
+                atom_symbols[atom[0]] += 1
+            else:
+                atom_symbols[atom[0]] = 1
+
+        n_electrons = 0
+        for atom in atom_symbols.keys():
+            geometry = [[atom, 0.,0.,0.]]
+            mol = gto.M(atom = geometry, basis=basis,
+                symmetry = 1, spin = compute_spin_element(atom))
+            _, mf = process_mol(mol, compute_energy=False, grid_level = grid_level, training=training, max_cycle = max_cycle)
+            reactant = molecule_from_pyscf(mf, name = atom, omegas = omegas)
+            reactants.append(reactant)
+            reactant_numbers.append(atom_symbols[atom])
+
+            n_electrons += mf.mol.nelectron * atom_symbols[atom]
+
+        # Make reaction
+        reaction = make_reaction(reactants, products, reactant_numbers, product_numbers, reaction_energy, name = reactname)
+        reactname = reactname + '_'+str(n_electrons)
+        reactions.append(reaction)
+    
+    # Saving the reaction
+    if not combine:
+        if training: data_folder = os.path.join(data_path, 'training/')
+        else: data_folder = os.path.join(data_path, 'evaluation/')
+        data_file = os.path.join(data_folder, 'W4-17/', 'W4-17.h5') 
+        save(reactions = reactions, fname = data_file, training = training)
+    else:
+        return reactions
 
 ########### Auxiliary functions #############
 def compute_spin_element(atom):
@@ -192,3 +291,4 @@ def compute_spin_element(atom):
 process_dimers()
 process_atoms()
 process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx')
+process_w4x17()
