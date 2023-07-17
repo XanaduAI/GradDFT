@@ -280,7 +280,6 @@ class NeuralFunctional(Functional):
                                 opt_state = tx.init(freeze(state_dict['params'])), apply_fn=self.apply)
 
         return state
-    
 
 
 ######################## DM21 ########################

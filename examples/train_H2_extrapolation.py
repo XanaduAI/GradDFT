@@ -1,52 +1,44 @@
 from functools import partial
-import os
-import jax
 from jax.random import split, PRNGKey
 from jax import numpy as jnp, value_and_grad
+from jax.nn import gelu
 import numpy as np
 from optax import adam
-import tqdm
-
-from interface.pyscf import molecule_from_pyscf
-from interface.pyscf import loader
-from functional import NeuralFunctional, canonicalize_inputs, dm21_molecule_features, local_features
-from jax.nn import gelu
+from tqdm import tqdm
+import os
 from orbax.checkpoint import PyTreeCheckpointer
+
+from train import make_train_kernel, molecule_predictor
+from functional import NeuralFunctional, canonicalize_inputs, dm21_features
+from interface.pyscf import loader
+
 from torch.utils.tensorboard import SummaryWriter
+import jax
 
-from train import make_scf_training_loop, make_train_kernel, molecule_predictor
+# In this example we explain how to replicate the experiments that train
+# the functional in some points of the dissociation curve of H2 or H2^+.
 
-from jax.config import config
-config.update('jax_disable_jit', True)
+dirpath = os.path.dirname(os.path.dirname(__file__))
+training_data_dirpath = os.path.normpath(dirpath + "/data/training/dissociation/")
+training_files = ["H2_extrapolation.h5"] 
+# alternatively, use "H2plus_extrapolation.h5". You will have needed to execute in data_processing.py
+#distances = [0.5, 0.75, 1, 1.25, 1.5]
+#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_extrapolation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
+#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_extrapolation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
 
 
-orbax_checkpointer = PyTreeCheckpointer()
-
-# In this example we aim to train a model on the result of a self-consistent loop.
 
 ####### Model definition #######
 
-# First we define a molecule, using pyscf:
-from pyscf import gto, dft
-mol = gto.M(atom = 'H 0 0 0; F 0 0 1.1')
-
-grids = dft.gen_grid.Grids(mol)
-grids.level = 2
-grids.build()
-
-mf = dft.UKS(mol)
-mf.grids = grids
-ground_truth_energy = mf.kernel()
-
-# Then we compute quite a few properties which we pack into a class called Molecule
-molecule = molecule_from_pyscf(mf)
-
 # Then we define the Functional, via an function whose output we will integrate.
+n_layers = 10
+width_layers = 512
 squash_offset = 1e-4
-layer_widths = [128]*5
-out_features = 16 # 2 spin channels, 2 for exchange/correlation, 4 for MGGA
+layer_widths = [width_layers]*n_layers
+out_features = 4
 sigmoid_scale_factor = 2.
 activation = gelu
+loadcheckpoint = False
 
 def function(instance, rhoinputs, localfeatures, *_, **__):
     x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
@@ -75,11 +67,7 @@ def function(instance, rhoinputs, localfeatures, *_, **__):
 
     return jnp.einsum('ri,ri->r', x, localfeatures)
 
-def features(molecule, functional_type='MGGA', *_, **__):
-    localfeatures = local_features(molecule, functional_type)
-    rhoinputs = dm21_molecule_features(molecule)
-    return [rhoinputs, localfeatures]
-
+features = partial(dm21_features, functional_type = 'MGGA')
 functional = NeuralFunctional(function = function, features = features)
 
 ####### Initializing the functional and some parameters #######
@@ -87,44 +75,50 @@ functional = NeuralFunctional(function = function, features = features)
 key = PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before, to initialize the parameters
-localfeatures = local_features(molecule, functional_type='MGGA')
-rhoinputs = dm21_molecule_features(molecule)
 key, = split(key, 1)
+rhoinputs = jax.random.normal(key, shape = [2, 7])
+localfeatures = jax.random.normal(key, shape = [2, out_features])
 params = functional.init(key, rhoinputs, localfeatures)
 
-learning_rate = 1e-5
+checkpoint_step = 0
+learning_rate = 1e-4
 momentum = 0.9
 tx = adam(learning_rate = learning_rate, b1=momentum)
 opt_state = tx.init(params)
-
-num_epochs = 50
+epoch = 0
+num_epochs = 101
 cost_val = jnp.inf
 
-dirpath = os.path.dirname(os.path.dirname(__file__))
-training_data_dirpath = os.path.normpath(dirpath + "/data/training/")
-training_files = '/dissociation/H2_extrapolation_molecules.hdf5'
+orbax_checkpointer = PyTreeCheckpointer()
 
-####### Loss function and train kernel #######
+ckpt_dir = os.path.join(dirpath, 'ckpts/',  'checkpoint_' + str(checkpoint_step) +'/')
+if loadcheckpoint:
+    train_state = functional.load_checkpoint(tx = tx, ckpt_dir = ckpt_dir, step = checkpoint_step, orbax_checkpointer=orbax_checkpointer)
+    params = train_state.params
+    tx = train_state.tx
+    opt_state = tx.init(params)
+    epoch = train_state.step
+
+########### Definition of the loss function ##################### 
 
 # Here we use one of the following. We will use the second here.
 molecule_predict = molecule_predictor(functional)
-scf_train_loop = make_scf_training_loop(functional, max_cycles=1)
 
 @partial(value_and_grad, has_aux = True)
-def loss(params, molecule, ground_truth_energy):
+def loss(params, molecule, true_energy): 
+    #In general the loss function should be able to accept [params, system (eg, molecule or reaction), true_energy]
 
-    #predicted_energy, fock = molecule_predict(params, molecule)
-    predicted_energy, fock, rdm1 = scf_train_loop(params, molecule)
-    cost_value = (predicted_energy - ground_truth_energy) ** 2
+    predicted_energy, fock = molecule_predict(params, molecule)
+    cost_value = (predicted_energy - true_energy) ** 2
 
     # We may want to add a regularization term to the cost, be it one of the
     # fock_grad_regularization, dm21_grad_regularization, or orbital_grad_regularization in train.py;
     # or even the satisfaction of the constraints in constraints.py.
 
     metrics = {'predicted_energy': predicted_energy,
-                'ground_truth_energy': ground_truth_energy,
-                'mean_abs_error': jnp.mean(jnp.abs(predicted_energy - ground_truth_energy)),
-                'mean_sq_error': jnp.mean((predicted_energy - ground_truth_energy)**2),
+                'ground_truth_energy': true_energy,
+                'mean_abs_error': jnp.mean(jnp.abs(predicted_energy - true_energy)),
+                'mean_sq_error': jnp.mean((predicted_energy - true_energy)**2),
                 'cost_value': cost_value,
                 #'regularization': regularization_logs
                 }
@@ -140,17 +134,19 @@ def train_epoch(state, training_files, training_data_dirpath):
 
     batch_metrics = []
     params, opt_state, cost_val = state
-    fpath = os.path.join(training_data_dirpath + training_files)
-    print('Training on file: ', fpath, '\n')
+    for file in tqdm(training_files, 'Files'):
+        fpath = os.path.join(training_data_dirpath, file)
+        print('Training on file: ', fpath, '\n')
 
-    load = loader(fpath = fpath, randomize=True, training = True, config_omegas = [])
-    for _, system in tqdm.tqdm(load):
-        params, opt_state, cost_val, metrics = kernel(params, opt_state, system, system.energy)
-        del system
+        load = loader(fpath = fpath, randomize=True, training = True, config_omegas = [])
+        for _, system in tqdm(load, 'Molecules/reactions per file'):
+            params, opt_state, cost_val, metrics = kernel(params, opt_state, system, system.energy)
+            del system
 
-        for k in metrics.keys():
-            print(k, metrics[k])
-        batch_metrics.append(metrics)
+            # Logging the resulting metrics
+            for k in metrics.keys():
+                print(k, metrics[k])
+            batch_metrics.append(metrics)
 
     epoch_metrics = {
         k: np.mean([jax.device_get(metrics[k]) for metrics in batch_metrics])
@@ -163,7 +159,7 @@ def train_epoch(state, training_files, training_data_dirpath):
 ######## Training loop ########
 
 writer = SummaryWriter()
-for epoch in range(1, num_epochs + 1):
+for epoch in range(epoch, num_epochs + epoch):
 
     # Use a separate PRNG key to permute input data during shuffling
     #rng, input_rng = jax.random.split(rng)
@@ -183,9 +179,3 @@ for epoch in range(1, num_epochs + 1):
     functional.save_checkpoints(params, tx, step = epoch, orbax_checkpointer = orbax_checkpointer)
     print(f"-------------\n")
     print(f"\n")
-
-writer.flush()
-
-functional.save_checkpoints(params, tx, step = num_epochs)
-
-

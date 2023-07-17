@@ -183,7 +183,7 @@ def saver(
 
             for j, molecule in enumerate(list(chain(reaction.reactants, reaction.products))):
 
-                if molecule.name is not None: mol_group = react.create_group(f''.join(chr(num) for num in molecule.name)+f'_{j}')
+                if molecule.name is not None: mol_group = react.create_group('molecule_'+f''.join(chr(num) for num in molecule.name)+f'_{j}')
                 else: mol_group = react.create_group(f"molecule_{j}")
                 save_molecule_data(mol_group, molecule, training)
                 if j<len(reaction.reactants):
@@ -196,7 +196,7 @@ def saver(
         # Then we save the molecules
         for j, molecule in enumerate(molecules):
 
-            if molecule.name is not None: mol_group = file.create_group(f''.join(chr(num) for num in molecule.name)+f'_{j}')
+            if molecule.name is not None: mol_group = file.create_group('molecule_'+f''.join(chr(num) for num in molecule.name)+f'_{j}')
             else: mol_group = file.create_group(f"molecule_{j}")
             save_molecule_data(mol_group, molecule, training)
 

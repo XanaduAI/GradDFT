@@ -1,10 +1,8 @@
 import os
-from warnings import warn
 import warnings
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
-import random
 from pyscf import gto
 from pyscf.data.elements import ELEMENTS, CONFIGURATION
 
@@ -21,7 +19,7 @@ data_path = os.path.join(dirpath, data_dir)
 # Select the configuration here
 basis = 'def2-tzvp' # This basis is available for all elements up to atomic number 86
 grid_level = 2
-omegas = [0.] # This indicates the values of omega in the range-separted exact-exchange.
+omegas = [0., 0.4] # This indicates the values of omega in the range-separted exact-exchange.
             # It is relatively memory intensive. omega = 0 is the usual Coulomb kernel.
             # Leave empty if no Coulomb kernel is expected.
 
@@ -139,7 +137,8 @@ def process_atoms(training = True, combine = False, max_cycle = None, charge = 0
     else:
         return molecules
 
-def process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', training = True, combine = False, max_cycle = None, training_distances = None, noise = 0):
+def process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', training = True, 
+                        combine = False, max_cycle = None, training_distances = None, noise = 0, energy_column_name = 'energy (Ha)'):
     
     # read file data/raw/dissociation/H2_dissociation.xlsx
     dissociation_file = os.path.join(dirpath, data_dir, 'raw/dissociation/', file)
@@ -154,7 +153,7 @@ def process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 
         # Extract the molecule information
         d = [dis for dis in dissociation_df.index if np.isclose(i, dis)][0]
         try:
-            energy = dissociation_df.loc[d,'energy (Ha)'] + np.random.normal(loc = 0, scale = noise)
+            energy = dissociation_df.loc[d,energy_column_name] + np.random.normal(loc = 0, scale = noise)
         except:
             warnings.warn(f"No dissociation energy data for distance {d}")
         geometry = [[atom1,[0,0,0]],[atom2,[0,0,d]]]
@@ -288,7 +287,9 @@ def compute_spin_element(atom):
 
 
 ########### Execute them #############
-process_dimers()
-process_atoms()
-process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx')
-process_w4x17()
+#process_w4x17()
+#process_dimers()
+#process_atoms()
+distances = [0.5, 0.75, 1, 1.25, 1.5]
+process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_extrapolation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
+process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_extrapolation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
