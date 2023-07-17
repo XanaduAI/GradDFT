@@ -31,6 +31,7 @@ def compute_features(functional, molecule, *args, **kwargs):
 
 def molecule_predictor(
     functional: Functional,
+    nlc_functional: None,
     **kwargs,
 ) -> Callable:
     
@@ -107,7 +108,10 @@ def molecule_predictor(
 
         functional_inputs = compute_features(functional, molecule, *args, **kwargs)
 
-        return functional.energy(params, molecule, *functional_inputs, **functional_kwargs)
+        e = functional.energy(params, molecule, *functional_inputs, **functional_kwargs)
+        if nlc_functional:
+            e = e + nlc_functional.energy({'params': params['dispersion']}, molecule, **functional_kwargs)
+        return e
 
     @partial(annotate_function, name="predict")
     def predict(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Array]:

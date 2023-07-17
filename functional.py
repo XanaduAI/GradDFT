@@ -93,7 +93,7 @@ class Functional(nn.Module):
         Expected to be overwritten by the inheriting class.
         Should use the _integrate() helper function to perform the integration.
 
-        Paramters
+        Parameters
         ---------
         inputs: inputs to the function f
 
@@ -103,7 +103,7 @@ class Functional(nn.Module):
         """
 
         return self.function(self, *inputs)
-    
+
     def apply_and_integrate(self, params: PyTree, molecule: Molecule, *inputs):
         r"""
         Total energy of local functional
@@ -738,8 +738,6 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
     return e_tilde
 
 
-
-
 def local_features(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
     r"""
     Generates and concatenates different functional levels
@@ -873,3 +871,84 @@ def local_features(molecule: Molecule, functional_type: Optional[Union[str, Dict
         localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
 
     return localfeatures.T
+
+
+############# Dispersion functional #############
+
+@dataclass
+class Dispersion(nn.Module):
+    r"""
+    Dispersion functional
+    """
+
+    dispersion: staticmethod
+    kernel_init: Callable = he_normal()
+    bias_init: Callable = zeros
+    activation: Callable = gelu
+    param_dtype: DType = default_dtype()
+
+    def setup(self):
+
+        self.dense = partial(
+            nn.Dense,
+            param_dtype=self.param_dtype,
+            kernel_init=self.kernel_init,
+            bias_init=self.bias_init,
+        )
+
+        self.layer_norm = partial(
+            nn.LayerNorm,
+            param_dtype=self.param_dtype
+        )
+
+    @nn.compact
+    def __call__(self, *inputs) -> Scalar:
+        r"""Where the functional is called, mapping the density to the energy.
+        Expected to be overwritten by the inheriting class.
+        Should use the _integrate() helper function to perform the integration.
+
+        Parameters
+        ---------
+        inputs: inputs to the function f
+
+        Returns
+        -------
+        Union[Array, Scalar]
+        """
+
+        return self.dispersion(self, *inputs)
+    
+    def head(self, x: Array, local_features, sigmoid_scale_factor):
+
+        # Final layer: dense -> sigmoid -> scale (x2)
+        x = self.dense(features=local_features)(x)
+        self.sow('intermediates', 'head_dense', x)
+        x = sigmoid(x / sigmoid_scale_factor)
+        self.sow('intermediates', 'sigmoid', x)
+        out = sigmoid_scale_factor * x
+        self.sow('intermediates', 'sigmoid_product', out)
+
+        return jnp.squeeze(out) # Eliminating unnecessary dimensions
+    
+    def energy(self, params: PyTree, molecule: Molecule):
+
+        R_AB, ai = calculate_distances(molecule.nuclear_pos, molecule.atom_index)
+
+        result = 0
+        for n in range(3,6):
+            x = jnp.concatenate((R_AB, ai, n*jnp.ones(R_AB.shape)), axis = -1)
+            y = self.apply(params, x) / jnp.squeeze(R_AB)**(2*n) 
+            result = result + jnp.sum(y)
+        return -result/2
+
+
+def calculate_distances(positions, atoms):
+    pairwise_distances = jnp.linalg.norm(positions[:, None] - positions, axis=-1)
+    atom_pairs = jnp.array([(atoms[i], atoms[j]) for i in range(len(atoms)) for j in range(len(atoms))])
+
+    pairwise_distances = jnp.reshape(pairwise_distances, newshape = (-1))
+
+    non_zero_mask = jnp.greater(pairwise_distances, 0.)
+    pairwise_distances = pairwise_distances[non_zero_mask]
+    atom_pairs = atom_pairs[non_zero_mask]
+    return pairwise_distances[:, None], atom_pairs
