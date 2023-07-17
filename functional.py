@@ -454,7 +454,7 @@ def dm21_combine(features, ehf):
     local_features = jnp.concatenate([local_features] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
     return features,local_features
 
-def dm21_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = jnp.array([0., 0.4])):
+def dm21_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = Array):
     vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, features)
     return vxc_hf.sum(axis=0) # Sum over omega
     
@@ -469,7 +469,7 @@ class DM21(NeuralFunctional):
     function: Callable = lambda self, *inputs: self.default_nn(*inputs)
     features: Callable = dm21_features
     nograd_features: Callable = lambda molecule, *_, **__: molecule.HF_energy_density([0., 0.4])
-    featuregrads: Callable = lambda self, params, molecule, features, nograd_features, *_, **__: dm21_hfgrads(self, params, molecule, features, nograd_features)
+    featuregrads: Callable = lambda self, params, molecule, features, nograd_features, *_, **__: dm21_hfgrads(self, params, molecule, features, nograd_features, [0., 0.4])
     combine: Callable = dm21_combine
     activation: Callable = elu
     squash_offset: float = 1e-4

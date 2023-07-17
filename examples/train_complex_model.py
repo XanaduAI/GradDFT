@@ -13,7 +13,7 @@ from orbax.checkpoint import PyTreeCheckpointer
 from molecule import Molecule
 
 from train import make_train_kernel, molecule_predictor
-from functional import Dispersion, Functional, NeuralFunctional, canonicalize_inputs, dm21_molecule_features, local_features
+from functional import Dispersion, Functional, NeuralFunctional, canonicalize_inputs, dm21_combine, dm21_hfgrads, dm21_molecule_features, local_features
 from interface.pyscf import loader
 
 from torch.utils.tensorboard import SummaryWriter
@@ -43,7 +43,7 @@ width_layers = 512
 squash_offset = 1e-4
 layer_widths = [width_layers]*n_layers
 nlc_layer_widths = [width_layers//4]*(n_layers//2)
-out_features = 16 # 2 for each spin, 2 for exchange/correlation, 4 for MGGA
+out_features = 20 # 2 for each spin, 2 for exchange/correlation, 4 for MGGA + 4 for HF
 sigmoid_scale_factor = 2.
 activation = gelu
 loadcheckpoint = False
@@ -158,7 +158,27 @@ def features(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = '
     return features, localfeatures
 
 features = partial(features, functional_type = 'MGGA')
-functional = NeuralFunctional(function = function, features = features)
+
+def combine(features, ehf):
+
+    features, local_features = features
+
+    # Remember that DM concatenates the hf density in the x features by spin...
+    features = jnp.concatenate([features, ehf[:,0].T, ehf[:,1].T], axis=1)
+
+    # ... and in the y features by omega.
+    local_features = jnp.concatenate([local_features, ehf[:,0].T, ehf[:,1].T], axis=1)
+    return features,local_features
+
+omegas = [0., 0.4]
+functional = NeuralFunctional(function = function, 
+                            features = features,
+                            nograd_features = lambda molecule, *_, **__: molecule.HF_energy_density(omegas),
+                            featuregrads=lambda self, params, molecule, features, nograd_features, *_, **__: dm21_hfgrads(self, params, 
+                                                                                                            molecule, features, nograd_features,
+                                                                                                            omegas = omegas),
+                            combine = combine)
+
 DispersionNN = Dispersion(dispersion = nn_dispersion)
 
 ####### Initializing the functional and some parameters #######
@@ -167,7 +187,7 @@ key = PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before, to initialize the parameters
 key, = split(key, 1)
-rhoinputs = jax.random.normal(key, shape = [2, 7])
+rhoinputs = jax.random.normal(key, shape = [2, 11])
 localfeatures = jax.random.normal(key, shape = [2, out_features])
 params = functional.init(key, rhoinputs, localfeatures)
 
@@ -236,7 +256,7 @@ def train_epoch(state, training_files, training_data_dirpath):
         fpath = os.path.join(training_data_dirpath, file)
         print('Training on file: ', fpath, '\n')
 
-        load = loader(fpath = fpath, randomize=True, training = True, config_omegas = [])
+        load = loader(fpath = fpath, randomize=True, training = True, config_omegas = omegas)
         for _, system in tqdm(load, 'Molecules/reactions per file'):
             params, opt_state, cost_val, metrics = kernel(params, opt_state, system, system.energy)
             del system

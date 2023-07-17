@@ -253,6 +253,7 @@ def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool
                         if config_omegas is None: args[key] = jnp.asarray(value)
                         elif config_omegas == []: args[key] = None
                         else:
+                            omegas = list(group['omegas'])
                             if isinstance(omegas, (int, float)): omegas = (omegas,)
                             assert all([omega in omegas for omega in config_omegas]), f"chi tensors for omega list {config_omegas} were not all precomputed in the molecule"
                             indices = [omegas.index(omega) for omega in config_omegas]
@@ -306,6 +307,7 @@ def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool
                             if config_omegas is None: args[key] = jnp.asarray(value)
                             elif config_omegas == []: args[key] = None
                             else:
+                                omegas = list(group['omegas'])
                                 if isinstance(omegas, (int, float)): omegas = (omegas,)
                                 assert all([omega in omegas for omega in config_omegas]), f"chi tensors for omega list {config_omegas} were not all precomputed in the molecule"
                                 indices = [omegas.index(omega) for omega in config_omegas]
