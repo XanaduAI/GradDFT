@@ -290,6 +290,8 @@ def compute_spin_element(atom):
 #process_w4x17()
 #process_dimers()
 #process_atoms()
-distances = [0.5, 0.75, 1, 1.25, 1.5]
-process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_extrapolation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
-process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_extrapolation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
+#distances = [0.5, 0.75, 1, 1.25, 1.5]
+process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z')
+process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_dissociation.xlsx', energy_column_name='cc-pV5Z')
+#distances = [0.9, 1.1, 1.3, 1.5, 1.7]
+process_dissociation(atom1 = 'N', atom2 = 'N', charge = 0, spin = 0, file = 'N2_dissociation.xlsx', energy_column_name='energy (Ha)')

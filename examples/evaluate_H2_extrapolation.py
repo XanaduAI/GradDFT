@@ -1,12 +1,18 @@
+import collections
 from functools import partial
+from typing import Dict, OrderedDict
 from jax.random import split, PRNGKey
 from jax import numpy as jnp, value_and_grad
 from jax.nn import gelu
+from matplotlib import pyplot as plt
 import numpy as np
 from optax import adam
+import pandas as pd
 from tqdm import tqdm
 import os
 from orbax.checkpoint import PyTreeCheckpointer
+from evaluate import make_test_kernel
+import h5py
 
 from train import make_train_kernel, molecule_predictor
 from functional import NeuralFunctional, canonicalize_inputs, dm21_features
@@ -20,11 +26,10 @@ import jax
 
 dirpath = os.path.dirname(os.path.dirname(__file__))
 training_data_dirpath = os.path.normpath(dirpath + "/data/training/dissociation/")
-training_files = ["H2plus_extrapolation_train.h5"] 
+training_files = ["H2_extrapolation.h5"] 
 # alternatively, use "H2plus_extrapolation.h5". You will have needed to execute in data_processing.py
-#distances = [0.5, 0.75, 1, 1.25, 1.5]
-#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
-#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_dissociation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
+#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z')
+#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_dissociation.xlsx', energy_column_name='cc-pV5Z')
 
 
 
@@ -38,7 +43,7 @@ layer_widths = [width_layers]*n_layers
 out_features = 4
 sigmoid_scale_factor = 2.
 activation = gelu
-loadcheckpoint = False
+loadcheckpoint = True
 
 def function(instance, rhoinputs, localfeatures, *_, **__):
     x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
@@ -80,11 +85,13 @@ rhoinputs = jax.random.normal(key, shape = [2, 7])
 localfeatures = jax.random.normal(key, shape = [2, out_features])
 params = functional.init(key, rhoinputs, localfeatures)
 
-checkpoint_step = 0
+checkpoint_step = 401
 learning_rate = 1e-4
 momentum = 0.9
 tx = adam(learning_rate = learning_rate, b1=momentum)
 opt_state = tx.init(params)
+epoch = 0
+num_epochs = 101
 cost_val = jnp.inf
 
 orbax_checkpointer = PyTreeCheckpointer()
@@ -123,112 +130,107 @@ def loss(params, molecule, true_energy):
 
     return cost_value, metrics
 
-kernel = jax.jit(make_train_kernel(tx, loss))
+kernel = jax.jit(make_test_kernel(tx, loss))
 
-######## Training epoch ########
 
-def train_epoch(state, training_files, training_data_dirpath):
-    r"""Train for a single epoch."""
+######## Test epoch ########
 
-    batch_metrics = []
-    params, opt_state, cost_val = state
+
+def predict(state, training_files, training_data_dirpath):
+    """Predict molecules in file."""
+    energies = {}
+    params, _, _ = state
     for file in tqdm(training_files, 'Files'):
         fpath = os.path.join(training_data_dirpath, file)
         print('Training on file: ', fpath, '\n')
-
         load = loader(fpath = fpath, randomize=True, training = True, config_omegas = [])
-        for _, system in tqdm(load, 'Molecules/reactions per file'):
-            params, opt_state, cost_val, metrics = kernel(params, opt_state, system, system.energy)
+        for _, system in tqdm(load, 'Molecules/reactions per file'):        
+            energy, _ = kernel(params,system)
+            energies[system.name] = energy
             del system
+    return energies
 
-            # Logging the resulting metrics
-            #for k in metrics.keys():
-            #    print(k, metrics[k])
-            batch_metrics.append(metrics)
+######## Plotting the evaluation results ########
 
-    epoch_metrics = {
-        k: np.mean([jax.device_get(metrics[k]) for metrics in batch_metrics])
-        for k in batch_metrics[0]}
-    state = (params, opt_state, cost_val)
-    return state, metrics, epoch_metrics
+# Predictions
+state = params, opt_state, cost_val
+predictions_dict = predict(state, training_files, training_data_dirpath)
 
+main_folder = os.path.dirname(os.path.dirname(__file__))
 
+# Reading the dissociation curves from files
+raw_data_folder = os.path.join(main_folder, 'data/raw/dissociation/')
 
-######## Training loop ########
+dissociation_H2_file = os.path.join(raw_data_folder, 'H2_dissociation.xlsx')
+dissociation_H2_df = pd.read_excel(dissociation_H2_file, header=0, index_col=0)
 
-writer = SummaryWriter()
-initepoch = 0
-num_epochs = 101
-lr = 1e-4
-for epoch in range(initepoch, num_epochs + initepoch):
+dissociation_H2plus_file = os.path.join(raw_data_folder, 'H2plus_dissociation.xlsx')
+dissociation_H2plus_df = pd.read_excel(dissociation_H2plus_file, header=0, index_col=0)
 
-    # Use a separate PRNG key to permute input data during shuffling
-    #rng, input_rng = jax.random.split(rng)
-
-    # Run an optimization step over a training batch
-    state = params, opt_state, cost_val
-    state, metrics, epoch_metrics = train_epoch(state, training_files, training_data_dirpath)
-    params, opt_state, cost_val = state
-
-    # Save metrics and checkpoint
-    #print(f"Epoch {epoch} metrics:")
-    #for k in epoch_metrics:
-        #print(f"-> {k}: {epoch_metrics[k]:.5f}")
-    for metric in epoch_metrics.keys():
-        writer.add_scalar(f'/{metric}/train', epoch_metrics[metric], epoch)
-    writer.flush()
-    functional.save_checkpoints(params, tx, step = epoch, orbax_checkpointer = orbax_checkpointer)
-    #print(f"-------------\n")
-    print(f"\n")
+dissociation_N2_file = dissociation_H2_file = os.path.join(raw_data_folder, 'N2_dissociation.xlsx')
+dissociation_N2_df = pd.read_excel(dissociation_N2_file, header=0, index_col=0)
 
 
-initepoch = num_epochs + initepoch
-num_epochs = 100
-lr = 1e-5
-tx = adam(learning_rate = lr, b1=momentum)
-for epoch in range(initepoch, num_epochs + initepoch):
-
-    # Use a separate PRNG key to permute input data during shuffling
-    #rng, input_rng = jax.random.split(rng)
-
-    # Run an optimization step over a training batch
-    state = params, opt_state, cost_val
-    state, metrics, epoch_metrics = train_epoch(state, training_files, training_data_dirpath)
-    params, opt_state, cost_val = state
-
-    # Save metrics and checkpoint
-    print(f"Epoch {epoch} metrics:")
-    for k in epoch_metrics:
-        print(f"-> {k}: {epoch_metrics[k]:.5f}")
-    for metric in epoch_metrics.keys():
-        writer.add_scalar(f'/{metric}/train', epoch_metrics[metric], epoch)
-    writer.flush()
-    functional.save_checkpoints(params, tx, step = epoch, orbax_checkpointer = orbax_checkpointer)
-    print(f"-------------\n")
-    print(f"\n")
+def MAE(predictions: Dict, dissociation_df: pd.DataFrame):
+    dissociation = dissociation_df['energy (Ha)'].to_dict()
+    MAE = 0
+    for k in predictions.keys():
+        MAE += abs(predictions[k] - dissociation[k])
+    MAE /= len(predictions.keys())
+    return MAE
 
 
-initepoch = num_epochs + initepoch
-num_epochs = 100
-lr = 1e-6
-tx = adam(learning_rate = lr, b1=momentum)
-for epoch in range(initepoch, num_epochs + initepoch):
+predictions = OrderedDict()
+for k in predictions_dict.keys():
+    if k.split('_')[0] == 'H2':
+        d = float(k.split('_')[1])
+    else: continue
+    predictions[d] = predictions_dict[k]
 
-    # Use a separate PRNG key to permute input data during shuffling
-    #rng, input_rng = jax.random.split(rng)
 
-    # Run an optimization step over a training batch
-    state = params, opt_state, cost_val
-    state, metrics, epoch_metrics = train_epoch(state, training_files, training_data_dirpath)
-    params, opt_state, cost_val = state
+train_data_folder = os.path.join(main_folder, 'data/train/dissociation/')
 
-    # Save metrics and checkpoint
-    print(f"Epoch {epoch} metrics:")
-    for k in epoch_metrics:
-        print(f"-> {k}: {epoch_metrics[k]:.5f}")
-    for metric in epoch_metrics.keys():
-        writer.add_scalar(f'/{metric}/train', epoch_metrics[metric], epoch)
-    writer.flush()
-    functional.save_checkpoints(params, tx, step = epoch, orbax_checkpointer = orbax_checkpointer)
-    print(f"-------------\n")
-    print(f"\n")
+data_file = os.path.join(train_data_folder, 'H2_extrapolation_train.hdf5')
+with h5py.File(data_file, 'r') as f:
+    molecules = list(f.keys())
+
+trained_dict = {}
+for m in molecules:
+    d = float(m.split('_')[-2])
+    d = [dis for dis in dissociation_H2_df.index if np.isclose(d, dis)][0]
+    trained_dict[d] = dissociation_H2_df.loc[d,'energy (Ha)']
+
+fig = plt.figure(figsize=(10, 10))
+ax = fig.add_subplot(111)
+
+predictions = collections.OrderedDict(sorted(predictions.items()))
+x, y = [], []
+for k, v in predictions.items():
+    x.append(k)
+    y.append(v)
+ax.plot(x, y, '-', label='Model predictions', color='red')
+#if system is 'H2' or 'H2plus':
+column = 'cc-pV5Z'
+#else:
+#    column = 'energy (Ha)'
+ax.plot(dissociation_H2_df.index, dissociation_H2_df[column], 'b-', label='Ground Truth')
+ax.plot(trained_dict.keys(), trained_dict.values(), 'o', label='Trained points', color='black')
+
+ax.set_ylabel('Energy (Ha)')
+ax.set_xlabel('Distance (A)')
+finaly = list(dissociation_H2_df[column])[-1]
+miny = min(dissociation_H2_df[column])
+maxy = finaly + (finaly - miny)/5
+miny -= (finaly - miny)/10
+ax.set_ybound(miny, maxy)
+ax.text(0.9, 0.5, 'Evaluation MAE: '+  str(np.round(MAE(predictions, dissociation_H2_df), 5))+ ' Ha', ha='right', va='bottom', transform=ax.transAxes, fontsize=12)
+ax.legend(loc='lower right')
+
+
+file = os.path.join(train_data_folder, 'ckpts_H_extra/dissociation_H2_extra.pdf')
+fig.savefig(file, dpi = 300)
+plt.close()
+
+print('The MAE over all predictions in H2 dissociation extrapolation is '+  str(MAE(predictions, dissociation_H2_df)))
+
+

@@ -30,8 +30,8 @@ training_data_dirpath = os.path.normpath(dirpath + "/data/training/dissociation/
 training_files = ["H2_extrapolation.h5"] 
 # alternatively, use "H2plus_extrapolation.h5". You will have needed to execute in data_processing.py
 #distances = [0.5, 0.75, 1, 1.25, 1.5]
-#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_extrapolation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
-#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_extrapolation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
+#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
+#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_dissociation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
 
 
 
@@ -203,7 +203,7 @@ learning_rate = 1e-4
 momentum = 0.9
 tx = adam(learning_rate = learning_rate, b1=momentum)
 opt_state = tx.init(params)
-epoch = 0
+initepoch = 0
 num_epochs = 101
 cost_val = jnp.inf
 
@@ -215,7 +215,7 @@ if loadcheckpoint:
     params = train_state.params
     tx = train_state.tx
     opt_state = tx.init(params)
-    epoch = train_state.step
+    initepoch = train_state.step
 
 ########### Definition of the loss function ##################### 
 
@@ -277,7 +277,7 @@ def train_epoch(state, training_files, training_data_dirpath):
 ######## Training loop ########
 
 writer = SummaryWriter()
-for epoch in range(epoch, num_epochs + epoch):
+for epoch in range(initepoch, num_epochs + initepoch):
 
     # Use a separate PRNG key to permute input data during shuffling
     #rng, input_rng = jax.random.split(rng)

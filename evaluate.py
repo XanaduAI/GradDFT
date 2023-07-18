@@ -22,6 +22,24 @@ from interface.pyscf import generate_chi_tensor, mol_from_Molecule, process_mol,
 from utils.types import Hartree2kcalmol
 
 
+######## Test kernel ########
+
+def make_test_kernel(tx: optax.GradientTransformation, loss: Callable) -> Callable:
+
+    def kernel(
+        params: PyTree,
+        system: Molecule,
+        ground_truth_energy: float,
+        *args
+    ) -> Tuple[PyTree, optax.OptState, Scalar, Scalar]:
+
+        (cost_value, predictedenergy), _ = loss(params, system, ground_truth_energy)
+
+        return predictedenergy, cost_value
+
+    return kernel
+
+######## Test scf loop ########
 
 def make_scf_loop(functional: Functional,
                             level_shift_factor: tuple[float, float] = (0.,0.), damp_factor: tuple[float, float] = (0.,0.),
