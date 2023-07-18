@@ -13,7 +13,7 @@ from orbax.checkpoint import PyTreeCheckpointer
 from molecule import Molecule
 
 from train import make_train_kernel, molecule_predictor
-from functional import Dispersion, Functional, NeuralFunctional, canonicalize_inputs, dm21_combine, dm21_hfgrads, dm21_molecule_features, local_features
+from functional import DispersionFunctional, Functional, NeuralFunctional, canonicalize_inputs, dm21_combine, dm21_hfgrads, dm21_molecule_features, local_features
 from interface.pyscf import loader
 
 from torch.utils.tensorboard import SummaryWriter
@@ -43,7 +43,7 @@ width_layers = 512
 squash_offset = 1e-4
 layer_widths = [width_layers]*n_layers
 nlc_layer_widths = [width_layers//4]*(n_layers//2)
-out_features = 20 # 2 for each spin, 2 for exchange/correlation, 4 for MGGA + 4 for HF
+out_features = 20 # 2 for each spin x 2 for exchange/correlation x 4 for MGGA + 4 for HF
 sigmoid_scale_factor = 2.
 activation = gelu
 loadcheckpoint = False
@@ -179,7 +179,7 @@ functional = NeuralFunctional(function = function,
                                                                                                             omegas = omegas),
                             combine = combine)
 
-DispersionNN = Dispersion(dispersion = nn_dispersion)
+DispersionNN = DispersionFunctional(dispersion = nn_dispersion)
 
 ####### Initializing the functional and some parameters #######
 

@@ -45,6 +45,7 @@ mycc = cc.CCSD(mf2).run()
 ccsd_energy = mycc.e_tot
 mf = dft.RKS(mol)
 mf.xc = 'B88'
+mf.max_cycle = 0
 mf.kernel()
 
 functional = B88
@@ -73,7 +74,7 @@ def test_predict(mf, energy):
 
     # Testing the training scf loop too.
     iterator = make_scf_training_loop(functional, max_cycles = 2)
-    e_XND_jit, _ = iterator(params, molecule)
+    e_XND_jit, _, _ = iterator(params, molecule)
     kcalmoldiff = (e_XND-e_XND_jit)*Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol = 1e1)
 
@@ -86,13 +87,14 @@ test_predict(mf, energy = ccsd_energy)
 ###################### Open shell ############################
 
 
-molecule_name = 'Co'
+molecule_name = 'Li'
 mol = gto.Mole()
-mol.atom = 'Co 0 0 0'
+mol.atom = 'Li 0 0 0'
 mol.basis = "def2-tzvp" # alternatively basis_set_exchange.api.get_basis(name='cc-pvdz', fmt='nwchem', elements='Co')
-mol.spin = 3
+mol.spin = 1
 mol.build()
 mf = dft.UKS(mol)
+mf.max_cycle = 0
 energy = mf.kernel()
 
 grid = mf.grids
@@ -108,18 +110,18 @@ def test_predict(mf, energy):
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     #e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_scf_loop(functional,verbose = 2, max_cycles = 5)
+    iterator = make_scf_loop(functional,verbose = 2, max_cycles = 50)
     e_XND = iterator(params, molecule)
 
     # Testing the training scf loop too.
-    iterator = make_scf_training_loop(functional, max_cycles = 5)
-    e_XND_jit, _ = iterator(params, molecule)
+    iterator = make_scf_training_loop(functional, max_cycles = 50)
+    e_XND_jit, _, _ = iterator(params, molecule)
     kcalmoldiff = (e_XND-e_XND_jit)*Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol = 1e1)
 
     mf = dft.UKS(mol)
     mf.xc = 'B88'
-    mf.max_cycle = 5
+    mf.max_cycle = 50
     e_DM = mf.kernel()
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol = 1e1) # This is unstable

@@ -9,7 +9,7 @@ from flax import struct
 from optax import OptState, GradientTransformation, apply_updates
 
 from utils import Scalar, Array, PyTree
-from functional import Functional
+from functional import DispersionFunctional, Functional
 from molecule import Molecule, coulomb_potential, symmetrize_rdm1, eig, orbital_grad
 
 def compute_features(functional, molecule, *args, **kwargs):
@@ -31,7 +31,7 @@ def compute_features(functional, molecule, *args, **kwargs):
 
 def molecule_predictor(
     functional: Functional,
-    nlc_functional: None,
+    nlc_functional: DispersionFunctional = None,
     **kwargs,
 ) -> Callable:
     

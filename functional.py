@@ -454,7 +454,7 @@ def dm21_combine(features, ehf):
     local_features = jnp.concatenate([local_features] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
     return features,local_features
 
-def dm21_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = Array):
+def dm21_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas: Array = jnp.array([0., 0.4])):
     vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, features)
     return vxc_hf.sum(axis=0) # Sum over omega
     
@@ -876,7 +876,7 @@ def local_features(molecule: Molecule, functional_type: Optional[Union[str, Dict
 ############# Dispersion functional #############
 
 @dataclass
-class Dispersion(nn.Module):
+class DispersionFunctional(nn.Module):
     r"""
     Dispersion functional
     """
