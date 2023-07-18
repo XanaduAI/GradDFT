@@ -241,7 +241,7 @@ def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool
                 args = {}
                 for key, value in group.items():
                     if key in ["name", "basis"]:
-                        args[key] = jnp.array([ord(char) for char in key])
+                        args[key] = jnp.array([ord(char) for char in str(value[()])])
                     elif key in ["energy"]:
                         args[key] = jnp.float32(value) if training else jnp.float64(value)
                     elif key in ["scf_iteration", "spin", "charge"]:
@@ -297,7 +297,7 @@ def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool
                         if key in ["reactant_numbers", "product_numbers"]:
                             continue
                         elif key in ["name", "basis"]:
-                            args[key] = jnp.array([ord(char) for char in key])
+                            args[key] = jnp.array([ord(char) for char in str(value[()])])
                         elif key in ["energy"]:
                             args[key] = jnp.float32(value) if training else jnp.float64(value)
                         elif key in ["grad_n_ao"]:

@@ -26,7 +26,7 @@ import jax
 
 dirpath = os.path.dirname(os.path.dirname(__file__))
 training_data_dirpath = os.path.normpath(dirpath + "/data/training/dissociation/")
-training_files = ["H2_extrapolation.h5"] 
+training_files = ["H2plus_extrapolation.h5"] 
 # alternatively, use "H2plus_extrapolation.h5". You will have needed to execute in data_processing.py
 #process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z')
 #process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_dissociation.xlsx', energy_column_name='cc-pV5Z')
@@ -85,7 +85,7 @@ rhoinputs = jax.random.normal(key, shape = [2, 7])
 localfeatures = jax.random.normal(key, shape = [2, out_features])
 params = functional.init(key, rhoinputs, localfeatures)
 
-checkpoint_step = 401
+checkpoint_step = 301
 learning_rate = 1e-4
 momentum = 0.9
 tx = adam(learning_rate = learning_rate, b1=momentum)
@@ -96,7 +96,7 @@ cost_val = jnp.inf
 
 orbax_checkpointer = PyTreeCheckpointer()
 
-ckpt_dir = os.path.join(dirpath, 'ckpts/',  'checkpoint_' + str(checkpoint_step) +'/')
+ckpt_dir = os.path.join(dirpath, 'ckpts_H2plus_extrapolation/',  'checkpoint_' + str(checkpoint_step) +'/')
 if loadcheckpoint:
     train_state = functional.load_checkpoint(tx = tx, ckpt_dir = ckpt_dir, step = checkpoint_step, orbax_checkpointer=orbax_checkpointer)
     params = train_state.params
@@ -145,8 +145,8 @@ def predict(state, training_files, training_data_dirpath):
         print('Training on file: ', fpath, '\n')
         load = loader(fpath = fpath, randomize=True, training = True, config_omegas = [])
         for _, system in tqdm(load, 'Molecules/reactions per file'):        
-            energy, _ = kernel(params,system)
-            energies[system.name] = energy
+            metrics, _ = kernel(params,system, system.energy)
+            energies[''.join(chr(num) for num in list(system.name))] = float(metrics['ground_truth_energy'])
             del system
     return energies
 
@@ -172,7 +172,7 @@ dissociation_N2_df = pd.read_excel(dissociation_N2_file, header=0, index_col=0)
 
 
 def MAE(predictions: Dict, dissociation_df: pd.DataFrame):
-    dissociation = dissociation_df['energy (Ha)'].to_dict()
+    dissociation = dissociation_df[column].to_dict()
     MAE = 0
     for k in predictions.keys():
         MAE += abs(predictions[k] - dissociation[k])
@@ -182,23 +182,22 @@ def MAE(predictions: Dict, dissociation_df: pd.DataFrame):
 
 predictions = OrderedDict()
 for k in predictions_dict.keys():
-    if k.split('_')[0] == 'H2':
-        d = float(k.split('_')[1])
-    else: continue
+    d = float(k.split('_')[-1][:-1])
     predictions[d] = predictions_dict[k]
 
 
-train_data_folder = os.path.join(main_folder, 'data/train/dissociation/')
+train_data_folder = os.path.join(main_folder, 'data/training/dissociation/')
 
 data_file = os.path.join(train_data_folder, 'H2_extrapolation_train.hdf5')
 with h5py.File(data_file, 'r') as f:
     molecules = list(f.keys())
 
+column = 'cc-pV5Z'
 trained_dict = {}
 for m in molecules:
     d = float(m.split('_')[-2])
-    d = [dis for dis in dissociation_H2_df.index if np.isclose(d, dis)][0]
-    trained_dict[d] = dissociation_H2_df.loc[d,'energy (Ha)']
+    d = [dis for dis in dissociation_H2plus_df.index if np.isclose(d, dis)][0]
+    trained_dict[d] = dissociation_H2plus_df.loc[d,column]
 
 fig = plt.figure(figsize=(10, 10))
 ax = fig.add_subplot(111)
@@ -210,27 +209,33 @@ for k, v in predictions.items():
     y.append(v)
 ax.plot(x, y, '-', label='Model predictions', color='red')
 #if system is 'H2' or 'H2plus':
-column = 'cc-pV5Z'
+
 #else:
 #    column = 'energy (Ha)'
-ax.plot(dissociation_H2_df.index, dissociation_H2_df[column], 'b-', label='Ground Truth')
+true_energies = {k: v for (k, v) in zip(dissociation_H2plus_df.index, dissociation_H2plus_df[column])}
+ax.plot(dissociation_H2plus_df.index, dissociation_H2plus_df[column], 'b-', label='Ground Truth')
 ax.plot(trained_dict.keys(), trained_dict.values(), 'o', label='Trained points', color='black')
 
 ax.set_ylabel('Energy (Ha)')
 ax.set_xlabel('Distance (A)')
-finaly = list(dissociation_H2_df[column])[-1]
-miny = min(dissociation_H2_df[column])
+finaly = list(dissociation_H2plus_df[column])[-1]
+miny = min(dissociation_H2plus_df[column])
 maxy = finaly + (finaly - miny)/5
 miny -= (finaly - miny)/10
-ax.set_ybound(miny, maxy)
-ax.text(0.9, 0.5, 'Evaluation MAE: '+  str(np.round(MAE(predictions, dissociation_H2_df), 5))+ ' Ha', ha='right', va='bottom', transform=ax.transAxes, fontsize=12)
+ax.set_ybound(-0.65, -0.4)
+mae = MAE(predictions, dissociation_H2plus_df)
+ax.text(0.9, 0.5, 'Evaluation MAE: '+  f"{mae:.4e}"+ ' Ha', ha='right', va='bottom', transform=ax.transAxes, fontsize=12)
 ax.legend(loc='lower right')
 
 
-file = os.path.join(train_data_folder, 'ckpts_H_extra/dissociation_H2_extra.pdf')
+file = os.path.join(train_data_folder, 'dissociation_H2plus_extra.pdf')
 fig.savefig(file, dpi = 300)
+plt.show()
 plt.close()
 
-print('The MAE over all predictions in H2 dissociation extrapolation is '+  str(MAE(predictions, dissociation_H2_df)))
+for k in predictions.keys():
+    print(k, predictions[k], dissociation_H2plus_df.loc[k,column])
+
+print('The MAE over all predictions in H2 dissociation extrapolation is '+  str(MAE(predictions, dissociation_H2plus_df)))
 
 

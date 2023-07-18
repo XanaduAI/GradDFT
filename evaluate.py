@@ -33,9 +33,9 @@ def make_test_kernel(tx: optax.GradientTransformation, loss: Callable) -> Callab
         *args
     ) -> Tuple[PyTree, optax.OptState, Scalar, Scalar]:
 
-        (cost_value, predictedenergy), _ = loss(params, system, ground_truth_energy)
+        (cost_value, metrics), _ = loss(params, system, ground_truth_energy)
 
-        return predictedenergy, cost_value
+        return metrics, cost_value
 
     return kernel
 
