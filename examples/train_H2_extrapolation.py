@@ -171,9 +171,9 @@ for epoch in range(initepoch, num_epochs + initepoch):
     params, opt_state, cost_val = state
 
     # Save metrics and checkpoint
-    #print(f"Epoch {epoch} metrics:")
-    #for k in epoch_metrics:
-        #print(f"-> {k}: {epoch_metrics[k]:.5f}")
+    print(f"Epoch {epoch} metrics:")
+    for k in epoch_metrics:
+        print(f"-> {k}: {epoch_metrics[k]:.5f}")
     for metric in epoch_metrics.keys():
         writer.add_scalar(f'/{metric}/train', epoch_metrics[metric], epoch)
     writer.flush()
