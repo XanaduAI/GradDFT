@@ -160,7 +160,7 @@ writer = SummaryWriter()
 initepoch = 0
 num_epochs = 101
 lr = 1e-4
-for epoch in range(initepoch, num_epochs + initepoch):
+for epoch in range(initepoch+1, num_epochs + initepoch+1):
 
     # Use a separate PRNG key to permute input data during shuffling
     #rng, input_rng = jax.random.split(rng)
@@ -182,11 +182,11 @@ for epoch in range(initepoch, num_epochs + initepoch):
     print(f"\n")
 
 
-initepoch = num_epochs + initepoch
+initepoch = 101
 num_epochs = 100
 lr = 1e-5
 tx = adam(learning_rate = lr, b1=momentum)
-for epoch in range(initepoch, num_epochs + initepoch):
+for epoch in range(initepoch+1, num_epochs + initepoch+1):
 
     # Use a separate PRNG key to permute input data during shuffling
     #rng, input_rng = jax.random.split(rng)
@@ -208,11 +208,11 @@ for epoch in range(initepoch, num_epochs + initepoch):
     print(f"\n")
 
 
-initepoch = num_epochs + initepoch
+initepoch = 201
 num_epochs = 100
 lr = 1e-6
 tx = adam(learning_rate = lr, b1=momentum)
-for epoch in range(initepoch, num_epochs + initepoch):
+for epoch in range(initepoch+1, num_epochs + initepoch+1):
 
     # Use a separate PRNG key to permute input data during shuffling
     #rng, input_rng = jax.random.split(rng)
