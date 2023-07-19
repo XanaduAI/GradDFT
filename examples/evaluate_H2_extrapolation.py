@@ -2,7 +2,7 @@ import collections
 from functools import partial
 from typing import Dict, OrderedDict
 from jax.random import split, PRNGKey
-from jax import numpy as jnp, value_and_grad
+from jax import numpy as jnp
 from jax.nn import gelu
 from matplotlib import pyplot as plt
 #plt.rcParams['text.usetex'] = True
@@ -12,27 +12,33 @@ import pandas as pd
 from tqdm import tqdm
 import os
 from orbax.checkpoint import PyTreeCheckpointer
-from evaluate import make_test_kernel
 import h5py
 
-from train import make_train_kernel, molecule_predictor
+from train import   molecule_predictor
 from functional import NeuralFunctional, canonicalize_inputs, dm21_features
 from interface.pyscf import loader
 
 from torch.utils.tensorboard import SummaryWriter
 import jax
 
-# In this example we explain how to replicate the experiments that train
+# In this example we explain how to evaluate the experiments that train
 # the functional in some points of the dissociation curve of H2 or H2^+.
 
 dirpath = os.path.dirname(os.path.dirname(__file__))
 training_data_dirpath = os.path.normpath(dirpath + "/data/training/dissociation/")
-#todo: change here the file to evaluate
-test_files = ["H2_extrapolation.h5"]
-ckpt_folder = "ckpts_H2_extrapolation/"
-train_file = 'H2_extrapolation_train.hdf5'
+
+#todo: Select here the file to evaluate
+
+# Select here the file you would like to evaluate your model on
+test_files = ["H2plus_extrapolation.h5"]
+
+# Select here the folder where the checkpoints are stored
+ckpt_folder = "ckpts/ckpts_H2plus_extrapolation/"
+
+# Just for plotting, indicate the name of the file this model was trained on
+train_file = 'H2plus_extrapolation_train.hdf5'
 control_files = [train_file]
-# alternatively, use "H2plus_extrapolation.h5". You will have needed to execute in data_processing.py
+# alternatively, use "H2_extrapolation.h5". You will have needed to execute in data_processing.py
 #process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z')
 #process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_dissociation.xlsx', energy_column_name='cc-pV5Z')
 
@@ -48,7 +54,6 @@ layer_widths = [width_layers]*n_layers
 out_features = 4
 sigmoid_scale_factor = 2.
 activation = gelu
-loadcheckpoint = True
 
 def function(instance, rhoinputs, localfeatures, *_, **__):
     x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
@@ -90,6 +95,8 @@ rhoinputs = jax.random.normal(key, shape = [2, 7])
 localfeatures = jax.random.normal(key, shape = [2, out_features])
 params = functional.init(key, rhoinputs, localfeatures)
 
+# Select the checkpoint to load and more parameters
+loadcheckpoint = True
 checkpoint_step = 301
 learning_rate = 1e-4
 momentum = 0.9
@@ -107,13 +114,12 @@ if loadcheckpoint:
     opt_state = tx.init(params)
     epoch = train_state.step
 
-########### Definition of the loss function ##################### 
+########### Definition of the molecule energy prediction function ##################### 
 
 # Here we use one of the following. We will use the second here.
 molecule_predict = jax.jit(molecule_predictor(functional))
 
-######## Test epoch ########
-
+######## Predict function ########
 
 def predict(state, training_files, training_data_dirpath):
     """Predict molecules in file."""
@@ -152,10 +158,11 @@ dissociation_H2plus_df = pd.read_excel(dissociation_H2plus_file, header=0, index
 dissociation_N2_file = os.path.join(raw_data_folder, 'N2_dissociation.xlsx')
 dissociation_N2_df = pd.read_excel(dissociation_N2_file, header=0, index_col=0)
 
-#todo: change here too the file
-df = dissociation_H2_df
+#todo: Select here the file where original data is stored
+df = dissociation_H2plus_df
 column = 'cc-pV5Z'
-image_file_name = 'dissociation_H2_extra.pdf'
+# and the name of the image file
+image_file_name = 'dissociation_H2plus_extra.pdf'
 
 def MAE(predictions: Dict, dissociation_df: pd.DataFrame):
     dissociation = dissociation_df[column].to_dict()
@@ -167,10 +174,9 @@ def MAE(predictions: Dict, dissociation_df: pd.DataFrame):
 
 
 predictions = OrderedDict()
-for k in predictions_dict.keys():
+for key in predictions_dict.keys():
     d = float(k.split('_')[-1][:-1])
     predictions[d] = predictions_dict[k]
-
 
 train_data_folder = os.path.join(main_folder, 'data/training/dissociation/')
 
@@ -194,10 +200,7 @@ for k, v in predictions.items():
     x.append(k)
     y.append(v)
 ax.plot(x, y, '-', label='Model predictions', color='red')
-#if system is 'H2' or 'H2plus':
 
-#else:
-#    column = 'energy (Ha)'
 true_energies = {k: v for (k, v) in zip(df.index, df[column])}
 ax.plot(df.index, df[column], 'b-', label='Ground Truth')
 ax.plot(trained_dict.keys(), trained_dict.values(), 'o', label='Trained points', color='black')
@@ -208,10 +211,10 @@ finaly = list(df[column])[-1]
 miny = min(df[column])
 maxy = finaly + (finaly - miny)/5
 miny -= (finaly - miny)/10
-ax.set_ybound(-0.65, -0.4)
+ax.set_ybound(-0.65, -0.4) #todo: change range as appropriate
+#ax.set_ybound(-1.2, -0.85)
 mae = MAE(predictions, df)
-# Write title inside the figure
-#todo: change title
+
 #ax.set_title('H2 dissociation', loc='center')
 #ax.text(0.5, 0.9, r'$H_2$ dissociation', ha='center', va='center', transform=ax.transAxes, fontsize=16)
 ax.text(0.9, 0.5, 'Evaluation MAE: '+  f"{mae:.4e}"+ ' Ha', ha='right', va='bottom', transform=ax.transAxes, fontsize=12)
