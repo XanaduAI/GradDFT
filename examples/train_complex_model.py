@@ -198,13 +198,14 @@ params = unfreeze(params)
 params['dispersion'] = dparams['params']
 params = freeze(params)
 
+loadcheckpoint = False
 checkpoint_step = 0
-learning_rate = 1e-4
 momentum = 0.9
-tx = adam(learning_rate = learning_rate, b1=momentum)
-opt_state = tx.init(params)
-initepoch = 0
+initepoch = checkpoint_step
 num_epochs = 101
+lr = 1e-4
+tx = adam(learning_rate = lr, b1=momentum)
+opt_state = tx.init(params)
 cost_val = jnp.inf
 
 orbax_checkpointer = PyTreeCheckpointer()

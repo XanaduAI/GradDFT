@@ -163,6 +163,24 @@ def molecule_predictor(
 
     return predict
 
+def make_train_kernel(tx: GradientTransformation, loss: Callable) -> Callable:
+
+    def kernel(
+        params: PyTree,
+        opt_state: OptState,
+        system: Molecule,
+        ground_truth_energy: float,
+        *args
+    ) -> Tuple[PyTree, OptState, Scalar, Scalar]:
+
+        (cost_value, predictedenergy), grads = loss(params, system, ground_truth_energy)
+
+        updates, opt_state = tx.update(grads, opt_state, params)
+        params = apply_updates(params, updates)
+
+        return params, opt_state, cost_value, predictedenergy
+
+    return kernel
 
 ##################### Regularization #####################
 
