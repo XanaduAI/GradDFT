@@ -70,9 +70,9 @@ key, = split(key, 1)
 params = functional.init(key, rhoinputs, localfeatures)
 
 # If we want to compute the local weights that come out of the functional we can do
-localfeatureweights = functional.apply(params, rhoinputs, localfeatures)
+xc_energy_density = functional.apply(params, rhoinputs, localfeatures)
 # and then integrate them
-predicted_energy = functional._integrate(localfeatureweights, grids.weights)
+predicted_energy = functional._integrate(xc_energy_density, grids.weights)
 # and add the non-exchange-correlation energy component
 predicted_energy += molecule.nonXC()
 

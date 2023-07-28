@@ -120,8 +120,8 @@ class Functional(nn.Module):
         Union[Array, Scalar]
         """
 
-        localfeatures = self.apply(params, *inputs)
-        return self._integrate(localfeatures, molecule.grid.weights)
+        xc_energy_density = self.apply(params, *inputs)
+        return self._integrate(xc_energy_density, molecule.grid.weights)
     
     def energy(self, params: PyTree, molecule: Molecule, *args):
         r"""
