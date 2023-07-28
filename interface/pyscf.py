@@ -100,9 +100,7 @@ def saver(
     fname: str,
     reactions: Optional[Union[Reaction, Sequence[Reaction]]] = (),
     molecules: Optional[Union[Molecule, Sequence[Molecule]]] = (),
-    training: bool = True,
     *,
-    chunk_size: Optional[int] = None,
 ):
 
     r"""
@@ -122,16 +120,6 @@ def saver(
         Reaction object(s) to calculate the chi object for.
     molecules : Union[Molecule, Sequence[Molecule]]
         Molecule object(s) to calculate the chi object for.
-    training : bool, optional
-        If True, we avoid saving a few objects
-    chunk_size : int, optional
-        The batch size for the number of lattice points the integral
-        evaluation is looped over. For a grid of N points, the solution
-        formally requires the construction of a N x N matrix in an intermediate
-        step. If `chunk_size` is given, the calculation is broken down into
-        smaller subproblems requiring construction of only chunk_size x N matrices.
-        Practically, higher `chunk_size`s mean faster calculations with larger
-        memory requirements and vice-versa.
 
     Notes
     -----
@@ -185,7 +173,7 @@ def saver(
 
                 if molecule.name is not None: mol_group = react.create_group('molecule_'+f''.join(chr(num) for num in molecule.name)+f'_{j}')
                 else: mol_group = react.create_group(f"molecule_{j}")
-                save_molecule_data(mol_group, molecule, training)
+                save_molecule_data(mol_group, molecule)
                 if j<len(reaction.reactants):
                     mol_group.attrs["type"] = "reactant"
                     mol_group["reactant_numbers"] = reaction.reactant_numbers[j]
@@ -198,9 +186,9 @@ def saver(
 
             if molecule.name is not None: mol_group = file.create_group('molecule_'+f''.join(chr(num) for num in molecule.name)+f'_{j}')
             else: mol_group = file.create_group(f"molecule_{j}")
-            save_molecule_data(mol_group, molecule, training)
+            save_molecule_data(mol_group, molecule)
 
-def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool] = True, config_omegas: Optional[Union[Scalar, Sequence[Scalar]]] = None):
+def loader(fname: str, randomize: Optional[bool] = True, training: Optional[bool] = True, config_omegas: Optional[Union[Scalar, Sequence[Scalar]]] = None):
     r"""
     Reads the molecule, energy and precomputed chi matrix from a file.
 
@@ -227,9 +215,9 @@ def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool
     todo: randomize input
     """
 
-    fpath = fpath.replace(".hdf5", "").replace(".h5", "")
+    fname = fname.replace(".hdf5", "").replace(".h5", "")
 
-    with h5py.File(os.path.normpath(f"{fpath}.hdf5"), "r") as file:
+    with h5py.File(os.path.normpath(f"{fname}.hdf5"), "r") as file:
 
         items=list(file.items()) # List of tuples
         if randomize and training: shuffle(items)
@@ -335,7 +323,7 @@ def loader(fpath: str, randomize: Optional[bool] = True, training: Optional[bool
 
                 yield 'reaction', reaction
 
-def save_molecule_data(mol_group: h5py.Group, molecule: Molecule, training: bool = True):
+def save_molecule_data(mol_group: h5py.Group, molecule: Molecule):
     r"""Auxiliary function to save all data except for chi"""
 
     to_numpy = lambda arr: arr if (isinstance(arr, str) or isinstance(arr, float)) else np.asarray(arr)
@@ -354,7 +342,9 @@ def save_molecule_data(mol_group: h5py.Group, molecule: Molecule, training: bool
 
 def save_molecule_chi(molecule: Molecule, omegas: Union[Sequence[Scalar], Scalar], chunk_size: int,
                     mol_group: h5py.Group, precision: Precision = Precision.HIGHEST):
-    r"""Auxiliary function to save chi tensor"""
+    r"""Auxiliary function to save chi tensor
+    Deprecated: the chi tensor is now saved as another molecule property in save_molecule_data
+    """
 
     grid_coords = molecule.grid.coords
     mol = mol_from_Molecule(molecule)
@@ -499,7 +489,8 @@ def _package_outputs(mf: DensityFunctional, grids: Optional[Grids] = None, scf_i
     #coulomb2e_energy = np.einsum("sij,sji->", dm, vj)/2
 
     mf_e_tot = mf.e_tot
-    fock = np.stack([h1e,h1e], axis=0) + mf.get_veff(mf.mol, rdm1)
+    dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
+    fock = np.stack([h1e,h1e], axis=0) + mf.get_veff(mol = mf.mol, dm = dm)
 
     energy_nuc = mf.energy_nuc()
 
@@ -521,6 +512,7 @@ def process_mol(mol, compute_energy=False, grid_level: int = 2, training: bool =
     mf.grids.build() # with_non0tab=True
     if training: 
         mf.xc = xc_functional
+        mf.nlc='VV10'
     if max_cycle is not None:
         mf.max_cycle = max_cycle
     elif not training: 
@@ -552,6 +544,16 @@ def generate_chi_tensor(rdm1, ao, grid_coords, mol, omegas, chunk_size = 1024, p
 
     omegas: List
 
+    chunk_size : int, optional
+        The batch size for the number of lattice points the integral
+        evaluation is looped over. For a grid of N points, the solution
+        formally requires the construction of a N x N matrix in an intermediate
+        step. If `chunk_size` is given, the calculation is broken down into
+        smaller subproblems requiring construction of only chunk_size x N matrices.
+        Practically, higher `chunk_size`s mean faster calculations with larger
+        memory requirements and vice-versa.
+
+    precision: Precision, optional
 
 
     Returns

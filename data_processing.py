@@ -19,14 +19,14 @@ data_path = os.path.join(dirpath, data_dir)
 # Select the configuration here
 basis = 'def2-tzvp' # This basis is available for all elements up to atomic number 86
 grid_level = 2
-omegas = [0., 0.4] # This indicates the values of omega in the range-separted exact-exchange.
+omegas = [] # [0., 0.4] # This indicates the values of omega in the range-separted exact-exchange.
             # It is relatively memory intensive. omega = 0 is the usual Coulomb kernel.
             # Leave empty if no Coulomb kernel is expected.
 
 max_electrons = 20 # Select the largest number of electrons we allow for W4-17
 
 
-def process_dimers(training = True, combine = False, max_cycle = None):
+def process_dimers(training = True, combine = False, max_cycle = None, xc_functional = 'b3lyp'):
 
     # We first read the excel file
     dataset_file = os.path.join(dirpath, data_dir, 'raw/XND_dataset.xlsx')
@@ -68,7 +68,7 @@ def process_dimers(training = True, combine = False, max_cycle = None):
         mol = gto.M(atom = geometry,
             basis=basis, charge = charge, spin = spin)
         _, mf = process_mol(mol, compute_energy=False, grid_level = grid_level,
-                            training=training, max_cycle=max_cycle)
+                            training=training, max_cycle=max_cycle, xc_functional=xc_functional)
         if max_cycle: energy = mf.e_tot
         molecule = molecule_from_pyscf(mf, name = atom1+atom2, energy=energy, scf_iteration = max_cycle, omegas = omegas)
 
@@ -85,14 +85,14 @@ def process_dimers(training = True, combine = False, max_cycle = None):
         else: data_folder = os.path.join(data_path, 'evaluation/')
 
         data_file = os.path.join(data_folder, 'dimers/tm_dimers.h5')
-        save(molecules = tm_molecules, fname = data_file, training = training)
+        #save(molecules = tm_molecules, fname = data_file)
         
         data_file = os.path.join(data_folder, 'dimers/non_tm_dimers.h5')
-        save(molecules = non_tm_molecules, fname = data_file, training = training)
+        #save(molecules = non_tm_molecules, fname = data_file)
 
-        data_file = os.path.join(data_folder, 'dimers/dimers.h5')
-        save(molecules = molecules, fname = data_file, training = training)
-    
+        data_file = os.path.join(data_folder, f'dimers/dimers_{xc_functional}.h5')
+        save(molecules = molecules, fname = data_file)
+
     else:
         return molecules, tm_molecules, non_tm_molecules
 
@@ -132,7 +132,7 @@ def process_atoms(training = True, combine = False, max_cycle = None, charge = 0
         else: data_folder = os.path.join(data_path, 'evaluation/')
 
         data_file = os.path.join(data_folder, 'atoms/atoms.h5')
-        save(molecules = molecules, fname = data_file, training = training)
+        save(molecules = molecules, fname = data_file)
 
     else:
         return molecules
@@ -172,7 +172,7 @@ def process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 
         if training: data_folder = os.path.join(data_path, 'training/')
         else: data_folder = os.path.join(data_path, 'evaluation/')
         data_file = os.path.join(data_folder, 'dissociation/', file[:-5]+'.h5') 
-        save(molecules = molecules, fname = data_file, training = training)
+        save(molecules = molecules, fname = data_file)
     else:
         return molecules
 
@@ -267,7 +267,7 @@ def process_w4x17(training = True, combine = False, max_cycle = None):
         if training: data_folder = os.path.join(data_path, 'training/')
         else: data_folder = os.path.join(data_path, 'evaluation/')
         data_file = os.path.join(data_folder, 'W4-17/', 'W4-17.h5') 
-        save(reactions = reactions, fname = data_file, training = training)
+        save(reactions = reactions, fname = data_file)
     else:
         return reactions
 
@@ -288,10 +288,14 @@ def compute_spin_element(atom):
 
 ########### Execute them #############
 #process_w4x17()
-#process_dimers()
+for functional in tqdm(['pbe0', 'revTPSSh', 'MN15', 'M06L', 'M06_2X', 'SCAN', 'wB97X_D', 'wB97X_V', 'TPSS'], desc = '####### XC functionals #######'):
+
+    process_dimers(xc_functional=functional)
+    #except:
+    #    print(f'Error processing dimers with functional {functional}')
 #process_atoms()
-#distances = [0.5, 0.75, 1, 1.25, 1.5]
-process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z')
-process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_dissociation.xlsx', energy_column_name='cc-pV5Z')
+#distances = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5]
+#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
+#process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_dissociation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
 #distances = [0.9, 1.1, 1.3, 1.5, 1.7]
-process_dissociation(atom1 = 'N', atom2 = 'N', charge = 0, spin = 0, file = 'N2_dissociation.xlsx', energy_column_name='energy (Ha)')
+#process_dissociation(atom1 = 'N', atom2 = 'N', charge = 0, spin = 0, file = 'N2_dissociation.xlsx', energy_column_name='energy (Ha)')

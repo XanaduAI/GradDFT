@@ -18,27 +18,29 @@ from train import   molecule_predictor
 from functional import NeuralFunctional, canonicalize_inputs, dm21_features
 from interface.pyscf import loader
 
-from torch.utils.tensorboard import SummaryWriter
 import jax
+from jax import config
+config.update("jax_enable_x64", True)
 
 # In this example we explain how to evaluate the experiments that train
 # the functional in some points of the dissociation curve of H2 or H2^+.
 
 dirpath = os.path.dirname(os.path.dirname(__file__))
-training_data_dirpath = os.path.normpath(dirpath + "/data/training/dissociation/")
 
 #todo: Select here the file to evaluate
 
 # Select here the file you would like to evaluate your model on
-test_files = ["H2plus_extrapolation.h5"]
+test_files = ["H2plus_dissociation.h5"]
 
 # Select here the folder where the checkpoints are stored
-ckpt_folder = "ckpts/ckpts_H2plus_extrapolation/"
+ckpt_folder = "checkpoints/ckpts_H2plus_interpolation/"
+training_data_dirpath = os.path.join(dirpath, ckpt_folder) #os.path.normpath(dirpath + "/data/training/dissociation/")
+
 
 # Just for plotting, indicate the name of the file this model was trained on
-train_file = 'H2plus_extrapolation_train.hdf5'
+train_file = 'H2plus_interpolation_train.hdf5'
 control_files = [train_file]
-# alternatively, use "H2_extrapolation.h5". You will have needed to execute in data_processing.py
+# alternatively, use "H2_interpolation.h5". You will have needed to execute in data_processing.py
 #process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z')
 #process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_dissociation.xlsx', energy_column_name='cc-pV5Z')
 
@@ -128,7 +130,7 @@ def predict(state, training_files, training_data_dirpath):
     for file in tqdm(training_files, 'Files'):
         fpath = os.path.join(training_data_dirpath, file)
         print('Training on file: ', fpath, '\n')
-        load = loader(fpath = fpath, randomize=True, training = True, config_omegas = [])
+        load = loader(fname = fpath, randomize=True, training = True, config_omegas = [])
         for _, system in tqdm(load, 'Molecules/reactions per file'):
             predicted_energy, _ = molecule_predict(params, system)      
             energies[''.join(chr(num) for num in list(system.name))] = float(predicted_energy)
@@ -160,9 +162,8 @@ dissociation_N2_df = pd.read_excel(dissociation_N2_file, header=0, index_col=0)
 
 #todo: Select here the file where original data is stored
 df = dissociation_H2plus_df
+image_file_name = 'dissociation_H2plus_inter.pdf'
 column = 'cc-pV5Z'
-# and the name of the image file
-image_file_name = 'dissociation_H2plus_extra.pdf'
 
 def MAE(predictions: Dict, dissociation_df: pd.DataFrame):
     dissociation = dissociation_df[column].to_dict()
@@ -175,12 +176,10 @@ def MAE(predictions: Dict, dissociation_df: pd.DataFrame):
 
 predictions = OrderedDict()
 for key in predictions_dict.keys():
-    d = float(k.split('_')[-1][:-1])
-    predictions[d] = predictions_dict[k]
+    d = float(key.split('_')[-1][:-1])
+    predictions[d] = predictions_dict[key]
 
-train_data_folder = os.path.join(main_folder, 'data/training/dissociation/')
-
-data_file = os.path.join(train_data_folder, train_file)
+data_file = os.path.join(training_data_dirpath, train_file)
 with h5py.File(data_file, 'r') as f:
     molecules = list(f.keys())
 
@@ -205,20 +204,23 @@ true_energies = {k: v for (k, v) in zip(df.index, df[column])}
 ax.plot(df.index, df[column], 'b-', label='Ground Truth')
 ax.plot(trained_dict.keys(), trained_dict.values(), 'o', label='Trained points', color='black')
 
-ax.set_ylabel('Energy (Ha)')
-ax.set_xlabel('Distance (A)')
+ax.set_ylabel('Energy (Ha)', fontsize=16)
+ax.set_xlabel('Distance (A)', fontsize=16)
 finaly = list(df[column])[-1]
 miny = min(df[column])
 maxy = finaly + (finaly - miny)/5
 miny -= (finaly - miny)/10
 ax.set_ybound(-0.65, -0.4) #todo: change range as appropriate
 #ax.set_ybound(-1.2, -0.85)
+t = ax.text(0.05, 0.9, '(b)', transform=ax.transAxes, fontsize=24)
+t.set_bbox(dict(facecolor='white', alpha=1, linewidth=0))
 mae = MAE(predictions, df)
 
 #ax.set_title('H2 dissociation', loc='center')
 #ax.text(0.5, 0.9, r'$H_2$ dissociation', ha='center', va='center', transform=ax.transAxes, fontsize=16)
-ax.text(0.9, 0.5, 'Evaluation MAE: '+  f"{mae:.4e}"+ ' Ha', ha='right', va='bottom', transform=ax.transAxes, fontsize=12)
-ax.legend()
+ax.text(0.9, 0.1, 'Evaluation MAE: '+  f"{mae:.4e}"+ ' Ha', ha='right', va='bottom', transform=ax.transAxes, fontsize=18)
+ax.legend(fontsize="16")
+ax.tick_params(axis='both', which='major', labelsize=16)
 
 
 file = os.path.join(dirpath, ckpt_folder, image_file_name)
@@ -229,6 +231,6 @@ plt.close()
 for k in predictions.keys():
     print(k, predictions[k], df.loc[k,column])
 
-print('The MAE over all predictions in H2 dissociation extrapolation is '+  str(MAE(predictions, df)))
+print('The MAE over all predictions in H2 dissociation interpolation is '+  str(MAE(predictions, df)))
 
 

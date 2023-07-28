@@ -136,7 +136,7 @@ def train_epoch(state, training_files, training_data_dirpath):
         fpath = os.path.join(training_data_dirpath, file)
         print('Training on file: ', fpath, '\n')
 
-        load = loader(fpath = fpath, randomize=True, training = True, config_omegas = [])
+        load = loader(fname = fpath, randomize=True, training = True, config_omegas = [])
         for _, system in tqdm(load, 'Molecules/reactions per file'):
             params, opt_state, cost_val, metrics = kernel(params, opt_state, system, system.energy)
             del system
