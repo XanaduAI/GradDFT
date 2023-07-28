@@ -67,7 +67,7 @@ save(molecules = [HF_molecule], fname = data_file)
 load = loader(fname = data_file, randomize=True, training = False, config_omegas = [])
 for _, system in tqdm(load, 'Molecules/reactions per file'):
     HF_molecule = system
-    print(HF_molecule.name) # We use training = False so molecule.name is a string
+    print('Molecule name', ''.join(chr(num) for num in HF_molecule.name)) # We use training = False so molecule.name is a string
 
 
 # We can also create reactions, save and load them. For example, let us emulate the formation reaction of HF
@@ -106,4 +106,4 @@ save(molecules = [HF_molecule], reactions = [reaction], fname = data_file)
 # Loading them
 load = loader(fname = data_file, randomize=True, training = False, config_omegas = [])
 for _, system in tqdm(load, 'Molecules/reactions per file'):
-    print(type(system), system.name) # We use training = False so system.name is a string
+    print(type(system), ''.join(chr(num) for num in system.name)) # We use training = False so system.name is a string

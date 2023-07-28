@@ -268,7 +268,7 @@ def loader(fname: str, randomize: Optional[bool] = True, training: Optional[bool
 
                 
                 if not training:
-                    name = grp_name.split("_")[1]
+                    name = jnp.array([ord(char) for char in str(grp_name.split("_")[1:])])
                     energy = jnp.float64(group["energy"])
                 else:
                     name = None
