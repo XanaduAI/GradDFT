@@ -99,8 +99,7 @@ def mol_from_Molecule(molecule: Molecule):
 def saver(
     fname: str,
     reactions: Optional[Union[Reaction, Sequence[Reaction]]] = (),
-    molecules: Optional[Union[Molecule, Sequence[Molecule]]] = (),
-    *,
+    molecules: Optional[Union[Molecule, Sequence[Molecule]]] = ()
 ):
 
     r"""

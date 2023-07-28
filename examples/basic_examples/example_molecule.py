@@ -1,20 +1,19 @@
-from jax.random import split, PRNGKey
+import os
 from jax import numpy as jnp
-from optax import adam, apply_updates
+from tqdm import tqdm
 
-from interface.pyscf import molecule_from_pyscf
-from molecule import Molecule
+from interface import molecule_from_pyscf, loader
 from interface import saver as save
+from molecule import Molecule, make_reaction
 
 # In this basic tutorial we want to introduce the concept of a molecule, which is a class that contains
 # all the information about a molecule that we need to compute its energy and its gradient.
-
 
 # To prepare a molecule, we need to compute many properties of such system. We will use PySCF to do so,
 # though we could use any other software. For example:
 from pyscf import gto, dft
 # Define the geometry of the molecule
-geometry = [[H, (0, 0, 0)], [F, (0, 0, 1.1)]]
+geometry = [['H', (0, 0, 0)], ['F', (0, 0, 1.1)]]
 mol = gto.M(atom = geometry, basis = 'def2-tzvp', charge = 0, spin = 0)
 
 # To perform DFT we also need a grid
@@ -55,6 +54,7 @@ HF_molecule = Molecule(
 # into integers
 name_ints = jnp.array([ord(char) for char in name])
 name = ''.join(chr(num) for num in name_ints)
+print(name, name_ints)
 
 # Now let's talk about how to save and load a molecule (or a list of Molecules).
 dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
