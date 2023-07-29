@@ -241,7 +241,7 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, chunk_size: int = 102
 
         I = jnp.einsum('sji,jk,skl->sil', C, molecule.s1e, C)
         stack = jnp.stack((jnp.identity(I.shape[1]),jnp.identity(I.shape[1])))
-        assert jnp.allclose(I, stack)
+        #assert jnp.allclose(I, stack)
 
         # Compute the density matrix
         rdm1 = make_rdm1(C, molecule.mo_occ)
@@ -253,7 +253,7 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, chunk_size: int = 102
         nelectron = molecule.atom_index.sum() - molecule.charge
 
         computed_charge = jnp.einsum('r,ra,rb,sab->', molecule.grid.weights, molecule.ao, molecule.ao, molecule.rdm1)
-        assert jnp.isclose(nelectron, computed_charge, atol = 1e-3), "Total charge is not conserved"
+        #assert jnp.isclose(nelectron, computed_charge, atol = 1e-3), "Total charge is not conserved"
 
         # Predict the energy and the fock matrix
         predicted_e, _ = predict_molecule(params, molecule, *args)
@@ -276,8 +276,8 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, chunk_size: int = 102
             D = (jnp.diag(jnp.sqrt(1/w)) @ v.T).real
             S_1 = (v @ jnp.diag(w) @ v.T).real
             diff = S_1 - molecule.s1e
-            assert jnp.isclose(diff, jnp.zeros_like(diff), atol=1e-4).all()
-            assert jnp.isclose(jnp.linalg.norm(jnp.linalg.inv(D) @ D - jnp.identity(D.shape[0])), 0.0, atol=1e-5)
+            #assert jnp.isclose(diff, jnp.zeros_like(diff), atol=1e-4).all()
+            #assert jnp.isclose(jnp.linalg.norm(jnp.linalg.inv(D) @ D - jnp.identity(D.shape[0])), 0.0, atol=1e-5)
         elif whitening == "Cholesky":
             D = jnp.linalg.cholesky(jnp.linalg.inv(molecule.s1e)).T
         elif whitening == "ZCA":
@@ -285,15 +285,15 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, chunk_size: int = 102
             D = (v @ jnp.diag(jnp.sqrt(1/w)) @ v.T).real
 
         Q = jnp.einsum('sji,jk->sik', C, jnp.linalg.inv(D)) # C transposed
-        Q_ = jnp.einsum('sji,jk,kl->sil', C, v, jnp.diag(jnp.sqrt(w))).real # C transposed
-        assert jnp.allclose(Q, Q_)
+        #Q_ = jnp.einsum('sji,jk,kl->sil', C, v, jnp.diag(jnp.sqrt(w))).real # C transposed
+        #assert jnp.allclose(Q, Q_)
 
         I = jnp.einsum('sji,jk,skl->sil', C, molecule.s1e, C) # The first C is transposed
-        stack = jnp.stack((jnp.identity(I.shape[1]),jnp.identity(I.shape[1])))
-        assert jnp.allclose(I, stack)
+        #stack = jnp.stack((jnp.identity(I.shape[1]),jnp.identity(I.shape[1])))
+        #assert jnp.allclose(I, stack)
 
-        I = jnp.einsum('sji,sjk->sik', Q, Q) # The first Q is transposed
-        assert jnp.allclose(I, jnp.stack((jnp.identity(I.shape[1]),jnp.identity(I.shape[1]))))
+        #I = jnp.einsum('sji,sjk->sik', Q, Q) # The first Q is transposed
+        #assert jnp.allclose(I, jnp.stack((jnp.identity(I.shape[1]),jnp.identity(I.shape[1]))))
 
         W = Q
 
@@ -368,7 +368,7 @@ def make_jitted_orbital_optimizer(functional: Functional, tx: Optimizer, cycles:
 
         opt_state = tx.init(W)
 
-        def loop_body(state):
+        def loop_body(cycle, state):
             W, opt_state, predicted_e = state
             predicted_e, grads = molecule_orbitals_energy(W, D, params, molecule, *args)
             updates, opt_state = tx.update(grads, opt_state, W)

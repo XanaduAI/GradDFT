@@ -14,7 +14,7 @@ from jax.nn import sigmoid, gelu
 # We we will prepare a molecule, following the previous tutorial:
 from pyscf import gto, dft
 # Define the geometry of the molecule
-mol = gto.M(atom = [['H', (0, 0, 0)], ['F', (0, 0, 1.1)]], basis = 'def2-tzvp', charge = 0, spin = 0)
+mol = gto.M(atom = [['H', (0, 0, 0)], ['H', (0, 0, 1)]], basis = 'def2-tzvp', charge = 0, spin = 0)
 mf = dft.UKS(mol)
 ground_truth_energy = mf.kernel()
 
