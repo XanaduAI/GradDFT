@@ -14,7 +14,8 @@ from jax.nn import gelu
 from orbax.checkpoint import PyTreeCheckpointer
 from torch.utils.tensorboard import SummaryWriter
 
-from train import make_jitted_scf_loop, make_train_kernel, molecule_predictor
+from train import make_train_kernel, molecule_predictor
+from evaluate import make_jitted_scf_loop
 
 from jax.config import config
 config.update('jax_disable_jit', True)

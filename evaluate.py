@@ -1,10 +1,11 @@
 import jax
-from jax import numpy as jnp
+from jax import jit, numpy as jnp
 from jax.lax import Precision
 from jax.scipy.special import erfc
 from jax.scipy.optimize import minimize as scipyminimize
 from flax import struct
 import optax
+from jax.lax import stop_gradient, cond, fori_loop
 
 from typing import Callable, Tuple, Sequence, Optional
 from functools import partial, reduce
@@ -39,7 +40,7 @@ def make_test_kernel(tx: optax.GradientTransformation, loss: Callable) -> Callab
 
     return kernel
 
-######## Test scf loop ########
+######## Test scf loop and orbital optimizers ########
 
 def make_scf_loop(functional: Functional,
                             level_shift_factor: tuple[float, float] = (0.,0.), damp_factor: tuple[float, float] = (0.,0.),
@@ -210,6 +211,7 @@ def make_scf_loop(functional: Functional,
 
     return scf_iterator
 
+
 def make_orbital_optimizer(fxc: Functional, tx: Optimizer, chunk_size: int = 1024, 
                             max_cycles: int = 500, e_conv: float = 1e-7, whitening: str = "PCA",
                             precision = Precision.HIGHEST, verbose: int = 0, **kwargs) -> Callable:
@@ -243,13 +245,14 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, chunk_size: int = 102
 
         # Compute the density matrix
         rdm1 = make_rdm1(C, molecule.mo_occ)
+        molecule = molecule.replace(rdm1 = rdm1, mo_coeff = C)
 
         # todo: differentiably implement the calculation of the chi tensor,
         # which now relies on pyscf's mol.intor("int1e_grids_sph", hermi=hermi, grids=coords)
 
         nelectron = molecule.atom_index.sum() - molecule.charge
 
-        computed_charge = jnp.einsum('r,ra,rb,sab->', molecule.grid.weights, molecule.ao, molecule.ao, rdm1)
+        computed_charge = jnp.einsum('r,ra,rb,sab->', molecule.grid.weights, molecule.ao, molecule.ao, molecule.rdm1)
         assert jnp.isclose(nelectron, computed_charge, atol = 1e-3), "Total charge is not conserved"
 
         # Predict the energy and the fock matrix
@@ -273,8 +276,8 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, chunk_size: int = 102
             D = (jnp.diag(jnp.sqrt(1/w)) @ v.T).real
             S_1 = (v @ jnp.diag(w) @ v.T).real
             diff = S_1 - molecule.s1e
-            #assert jnp.isclose(diff, jnp.zeros_like(diff), atol=1e-4).all()
-            #assert jnp.isclose(jnp.linalg.norm(jnp.linalg.inv(D) @ D - jnp.identity(D.shape[0])), 0.0, atol=1e-5)
+            assert jnp.isclose(diff, jnp.zeros_like(diff), atol=1e-4).all()
+            assert jnp.isclose(jnp.linalg.norm(jnp.linalg.inv(D) @ D - jnp.identity(D.shape[0])), 0.0, atol=1e-5)
         elif whitening == "Cholesky":
             D = jnp.linalg.cholesky(jnp.linalg.inv(molecule.s1e)).T
         elif whitening == "ZCA":
@@ -283,14 +286,14 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, chunk_size: int = 102
 
         Q = jnp.einsum('sji,jk->sik', C, jnp.linalg.inv(D)) # C transposed
         Q_ = jnp.einsum('sji,jk,kl->sil', C, v, jnp.diag(jnp.sqrt(w))).real # C transposed
-        #assert jnp.allclose(Q, Q_)
+        assert jnp.allclose(Q, Q_)
 
         I = jnp.einsum('sji,jk,skl->sil', C, molecule.s1e, C) # The first C is transposed
         stack = jnp.stack((jnp.identity(I.shape[1]),jnp.identity(I.shape[1])))
-        #assert jnp.allclose(I, stack)
+        assert jnp.allclose(I, stack)
 
         I = jnp.einsum('sji,sjk->sik', Q, Q) # The first Q is transposed
-        #assert jnp.allclose(I, jnp.stack((jnp.identity(I.shape[1]),jnp.identity(I.shape[1]))))
+        assert jnp.allclose(I, jnp.stack((jnp.identity(I.shape[1]),jnp.identity(I.shape[1]))))
 
         W = Q
 
@@ -314,6 +317,317 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, chunk_size: int = 102
 
     return neural_iterator
 
+
+######### Jitted versions #########
+
+def make_jitted_orbital_optimizer(functional: Functional, tx: Optimizer, cycles: int = 500, **kwargs) -> Callable:
+    
+    r"""
+    Creates an orbital_optimizer object that can be called to optimize the density matrix and minimize the energy.
+    Follows the description in
+
+    Tianbo Li, Min Lin, Zheyuan Hu, Kunhao Zheng, Giovanni Vignale, Kenji Kawaguchi, A.H. Castro Neto, Kostya S. Novoselov, Shuicheng YAN
+    D4FT: A Deep Learning Approach to Kohn-Sham Density Functional Theory
+    ICLR 2023, https://openreview.net/forum?id=aBWnqqsuot7
+
+    Note: This only optimizes the rdm1, not the orbitals, also discussed in the article above.
+    Note too: The calculation of tensor chi is not implemented self differentiably, so the functional cannot include exact exchange.
+    """
+
+    predict_molecule = molecule_predictor(functional, **kwargs)
+
+    @partial(jax.value_and_grad, argnums=0)
+    def molecule_orbitals_energy(W: Array, D: Array, params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Scalar]:
+        Q0, _ = jnp.linalg.qr(W[0])
+        Q1, _ = jnp.linalg.qr(W[1])
+        Q = jnp.stack([Q0, Q1])
+
+        # Compute the molecular orbitals
+        C = jnp.einsum('sij,jk->ski', Q, D)
+
+        # Compute the density matrix
+        rdm1 = make_rdm1(C, molecule.mo_occ)
+        molecule = molecule.replace(rdm1 = rdm1, mo_coeff = C)
+
+        # Predict the energy and the fock matrix
+        predicted_e, _ = predict_molecule(params, molecule, *args)
+        return predicted_e
+
+    @jit
+    def neural_iterator(
+        params: PyTree, molecule: Molecule, *args
+    ) -> Tuple[Scalar, Scalar]:
+
+        # Predict the energy and the fock matrix
+        predicted_e, _ = predict_molecule(params, molecule, *args)
+
+        w, v = jnp.linalg.eig(molecule.s1e)
+        D = (jnp.diag(jnp.sqrt(1/w)) @ v.T).real
+        Q = jnp.einsum('sji,jk->sik', molecule.mo_coeff, jnp.linalg.inv(D)) # C transposed
+        W = Q
+
+        opt_state = tx.init(W)
+
+        def loop_body(state):
+            W, opt_state, predicted_e = state
+            predicted_e, grads = molecule_orbitals_energy(W, D, params, molecule, *args)
+            updates, opt_state = tx.update(grads, opt_state, W)
+            W = optax.apply_updates(W, updates)
+            return W, opt_state, predicted_e
+        
+        # Compute the scf loop
+        state = W, opt_state, predicted_e
+        final_state = fori_loop(0, cycles, body_fun = loop_body, init_val = state)
+        W, opt_state, predicted_e = final_state
+
+        return predicted_e
+
+    return neural_iterator
+
+
+def make_jitted_scf_loop(functional: Functional, cycles: int = 25,
+                            **kwargs) -> Callable:
+    
+    r"""
+    Creates an scf_iterator object that can be called to implement a self-consistent loop,
+    intented to be jax.jit compatible (fully self-differentiable).
+    If you are looking for a more flexible but not differentiable scf loop, see evaluate.py make_scf_loop.
+
+    Main parameters
+    ---------------
+    functional: Functional
+    max_cycles: int, default to 25
+
+    Returns
+    ---------
+    float
+    """
+
+    predict_molecule = molecule_predictor(functional, chunk_size = None, **kwargs)
+
+    @jit
+    def scf_jitted_iterator(
+        params: PyTree, molecule: Molecule, *args
+    ) -> Tuple[Scalar, Scalar]:
+        
+        r"""
+        Implements a scf loop intented for use in a jax.jit compiled function (training loop).
+        If you are looking for a more flexible but not differentiable scf loop, see evaluate.py make_scf_loop.
+        It asks for a Molecule and a functional implicitly defined predict_molecule with
+        parameters params
+
+        Parameters
+        ----------
+        params: PyTree
+        molecule: Molecule
+        *args: Arguments to be passed to predict_molecule function
+        """
+
+        if molecule.omegas:
+            raise NotImplementedError("SCF training loop not implemented for (range-separated) exact-exchange functionals. \
+                                    Doing so would require a differentiable way of recomputing the chi tensor.")
+
+        old_e = jnp.inf
+        norm_gorb = jnp.inf
+
+        predicted_e, fock = predict_molecule(params, molecule, *args)
+
+        # Initialize DIIS
+        A = jnp.identity(molecule.s1e.shape[0])
+        diis = JittableDiis(overlap_matrix=molecule.s1e, A = A, max_diis = 10)
+        diis_data = (jnp.zeros((diis.max_diis, 2, A.shape[0], A.shape[0])), 
+                    jnp.zeros((diis.max_diis, 2, A.shape[0], A.shape[0])), 
+                    jnp.zeros(diis.max_diis), 
+                    jnp.zeros((diis.max_diis, 2, A.shape[0], A.shape[0])))
+
+        state = (molecule, fock, predicted_e, old_e, norm_gorb, diis_data)
+
+        def loop_body(cycle, state):
+
+            old_state = state
+            molecule, fock, predicted_e, old_e, norm_gorb, diis_data = old_state
+            old_e = predicted_e
+
+            # DIIS iteration
+            new_data = (molecule.rdm1, fock, predicted_e)
+            fock, diis_data = diis.run(new_data, diis_data, cycle)
+
+            # Diagonalize Fock matrix
+            mo_energy, mo_coeff = eig(fock, molecule.s1e)
+            molecule = molecule.replace(mo_coeff = mo_coeff)
+            molecule = molecule.replace(mo_energy = mo_energy)
+
+            # Update the molecular occupation
+            mo_occ = molecule.get_occ()
+
+            # Update the density matrix
+            rdm1 = molecule.make_rdm1()
+            molecule = molecule.replace(rdm1 = rdm1)
+
+            # Compute the new energy and Fock matrix
+            predicted_e, fock = predict_molecule(params, molecule, *args)
+
+            # Compute the norm of the gradient
+            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+
+            state = (molecule, fock, predicted_e, old_e, norm_gorb, diis_data)
+
+            return state
+
+        # Compute the scf loop
+        final_state = fori_loop(0, cycles, body_fun = loop_body, init_val = state)
+        molecule, fock, predicted_e, old_e, norm_gorb, diis_data = final_state
+
+        # Perform a final diagonalization without diis (reinitializing)
+        diis_data = (jnp.zeros((diis.max_diis, 2, A.shape[0], A.shape[0])), 
+                    jnp.zeros((diis.max_diis, 2, A.shape[0], A.shape[0])), 
+                    jnp.zeros(diis.max_diis), 
+                    jnp.zeros((diis.max_diis, 2, A.shape[0], A.shape[0])))
+        state = (molecule, fock, predicted_e, old_e, norm_gorb, diis_data)
+        state = loop_body(0, state)
+        molecule, fock, predicted_e, _, _, _ = final_state
+
+        return predicted_e, fock, molecule.rdm1
+
+    return scf_jitted_iterator
+
+
+@struct.dataclass
+class JittableDiis:
+
+    r"""DIIS extrapolation, intended for training of the resulting energy of a scf loop.
+    If you are looking for a more flexible, not differentiable DIIS, see evaluate.py DIIS class
+    The implemented CDIIS computes the Fock matrix as a linear combination of the previous Fock matrices, with
+    ::math::
+        F_{DIIS} = \sum_i x_i F_i,
+
+    where the coefficients are determined by minimizing the error vector
+    ::math::
+        e_i = A^T (F_i D_i S - S D_i F_i) A,
+
+    with F_i the Fock matrix at iteration i, D_i the density matrix at iteration i,
+    and S the overlap matrix. The error vector is then used to compute the
+    coefficients as
+    ::math::
+        B = \begin{pmatrix}
+            <e_1|e_1> & <e_1|e_2> & \cdots & <e_1|e_n> & -1 \\
+            <e_2|e_1> & <e_2|e_2> & \cdots & <e_2|e_n> & -1 \\
+            \vdots & \vdots & \ddots & \vdots & \vdots \\
+            <e_n|e_1> & <e_n|e_2> & \cdots & <e_n|e_n> & -1 \\
+            -1 & -1 & \cdots & -1 & 0
+        \end{pmatrix},
+
+    ::math::
+        x = \begin{pmatrix}
+            x_1 \\
+            x_2 \\
+            \vdots \\
+            x_n \\
+            0
+        \end{pmatrix}
+    
+    and
+    ::math::
+        C= \begin{pmatrix}
+            0 \\
+            0 \\
+            \vdots \\
+            0 \\
+            1
+        \end{pmatrix}
+
+    where n is the number of stored Fock matrices. The coefficients are then
+    computed as
+    ::math::
+        x = B^{-1} C.
+
+    Diis attributes:
+        overlap_matrix (jnp.array): Overlap matrix, molecule.s1e. Shape: (n_orbitals, n_orbitals).
+        A (jnp.array): Transformation matrix for CDIIS, molecule.A. Shape: (n_orbitals, n_orbitals).
+        max_diis (int): Maximum number of DIIS vectors to store. Defaults to 8.
+
+    Other objects used during the calculation:
+        density_vector (jnp.array): Density matrix vectorized.
+            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
+        fock_vector (jnp.array): Fock matrix vectorized.
+            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
+        energy_vector (jnp.array): Fock energy vector.
+            Shape: (n_iterations).
+        error_vector (jnp.array): Error vector.
+            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
+    """
+
+    overlap_matrix: Array
+    A: Array
+    max_diis: Optional[int] = 8
+
+    def update(self, new_data, diis_data, cycle):
+
+        density_matrix, fock_matrix, energy = new_data
+        density_vector, fock_vector, energy_vector, error_vector = diis_data
+
+        fds =  jnp.einsum('ij,sjk,skl,lm,mn->sin', self.A, fock_matrix, density_matrix, self.overlap_matrix, self.A.T) 
+        error_matrix = fds - fds.transpose(0,2,1).conj()
+
+        error_vector = cond(jnp.greater(cycle, self.max_diis),
+                            lambda error_vector, error_matrix: jnp.concatenate((error_vector, jnp.expand_dims(error_matrix, axis = 0)), axis = 0)[1:],
+                            lambda error_vector, error_matrix: error_vector.at[cycle].set(error_matrix),
+                            error_vector, error_matrix)
+        density_vector = cond(jnp.greater(cycle, self.max_diis),
+                            lambda density_vector, density_matrix: jnp.concatenate((density_vector, jnp.expand_dims(density_matrix, axis = 0)), axis = 0)[1:],
+                            lambda density_vector, density_matrix: density_vector.at[cycle].set(density_matrix),
+                            density_vector, density_matrix)
+        fock_vector = cond(jnp.greater(cycle, self.max_diis),
+                            lambda fock_vector, fock_matrix: jnp.concatenate((fock_vector, jnp.expand_dims(fock_matrix, axis = 0)), axis = 0)[1:],
+                            lambda fock_vector, fock_matrix: fock_vector.at[cycle].set(fock_matrix),
+                            fock_vector, fock_matrix)
+        energy_vector = cond(jnp.greater(cycle, self.max_diis),
+                            lambda energy_vector, energy: jnp.concatenate((energy_vector, jnp.expand_dims(energy, axis = 0)), axis = 0)[1:],
+                            lambda energy_vector, energy: energy_vector.at[cycle].set(energy),
+                            energy_vector, energy)
+
+        return density_vector, fock_vector, energy_vector, error_vector
+
+    def run(self, new_data, diis_data, cycle = 0):
+
+        diis_data = self.update(new_data, diis_data, cycle)
+        density_vector, fock_vector, energy_vector, error_vector = diis_data
+
+        x = self.cdiis_minimize(error_vector, cycle)
+        F = jnp.einsum('si,isjk->sjk', x, fock_vector)
+        return jnp.einsum('ji,sjk,kl->sil', self.A, F, self.A), diis_data
+
+    def cdiis_minimize(self, error_vector, cycle):
+
+        # Find the coefficients x that solve B @ x = C with B and C defined below
+        B = jnp.zeros((2, len(error_vector) + 1, len(error_vector) + 1))
+        B = B.at[:, 1:, 1:].set(jnp.einsum('iskl,jskl->sij', error_vector, error_vector))
+
+        def assign_values(i, B):
+            value = cond(jnp.less_equal(i,cycle), lambda _: 1.0, lambda _: 0.0, operand=None)
+            B = B.at[:, 0, i+1].set(value) # Make 0 if i > cycle, else 1
+            B = B.at[:, i+1, 0].set(value) # Make 0 if i > cycle, else 1
+            return B
+
+        def assign_values_diag(i, B):
+            value = cond(jnp.less_equal(i,cycle), 
+                        lambda error_vector: jnp.einsum('iskl,jskl->sij', error_vector, error_vector)[:, i, i], 
+                        lambda _: jnp.array([1.0, 1.0]), 
+                        error_vector)
+            B = B.at[:, i+1, i+1].set(value)
+            return B
+
+        B = fori_loop(0, error_vector.shape[0]+2, assign_values, B)
+        B = fori_loop(0, error_vector.shape[0]+2, assign_values_diag, B)
+    
+        C = jnp.zeros((2, len(error_vector) + 1))
+        C = C.at[:, 0].set(1)
+
+        x0 = jnp.linalg.inv(B[0]) @ C[0]
+        x1 = jnp.linalg.inv(B[1]) @ C[1]
+        x = jnp.stack([x0, x1], axis=0)
+
+        return x[:,1:]
 
 
 ########################################################
