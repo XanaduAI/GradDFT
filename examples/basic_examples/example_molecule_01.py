@@ -1,5 +1,7 @@
+from functools import partial
 import os
-from jax import numpy as jnp
+from jax import grad, numpy as jnp, vmap
+import jax
 from tqdm import tqdm
 
 from interface import molecule_from_pyscf, loader
@@ -9,21 +11,19 @@ from molecule import Molecule, make_reaction
 # In this basic tutorial we want to introduce the concept of a molecule, which is a class that contains
 # all the information about a molecule that we need to compute its energy and its gradient.
 
+########################### Initializing a Molecule object #########################################
+
 # To prepare a molecule, we need to compute many properties of such system. We will use PySCF to do so,
 # though we could use any other software. For example:
 from pyscf import gto, dft
+from utils.types import Array
 # Define the geometry of the molecule
 geometry = [['H', (0, 0, 0)], ['F', (0, 0, 1.1)]]
 mol = gto.M(atom = geometry, basis = 'def2-tzvp', charge = 0, spin = 0)
 
-# To perform DFT we also need a grid
-grids = dft.gen_grid.Grids(mol)
-grids.level = 2
-grids.build()
-
 # And we will also need a mean-field object
-mf = dft.UKS(mol)
-mf.grids = grids
+mf = dft.UKS(mol, xc = 'b3lyp')
+mf.max_cycle = 0 # WE can select whether we want to converge the SCF or not
 ground_truth_energy = mf.kernel()
 
 # If we want to use the molecule to compute HF exact-exchange components we will need to decide which values of
@@ -55,6 +55,37 @@ HF_molecule = Molecule(
 name_ints = jnp.array([ord(char) for char in name])
 name = ''.join(chr(num) for num in name_ints)
 print(name, name_ints)
+
+########################### Computing gradients #########################################
+
+# Now that we have a molecule we can compute gradients with respect to some of the properties of the molecule.
+# For example, we can compute the gradient of the electronic density with respect to the atomic orbitals.
+
+# Let us compute |\nabla \rho|. In molecule.py we have defined the following function:
+
+def grad_density(rdm1: Array, ao: Array, grad_ao: Array) -> Array:
+    return 2 * jnp.einsum("...ab,ra,rbj->...rj", rdm1, ao, grad_ao)
+grad_density_0 = grad_density(HF_molecule.rdm1, HF_molecule.ao, HF_molecule.grad_ao)
+
+# Alternatively, we can compute grad_density as follows:
+# Parallelizing over the spin (first vmap) and the atomic orbitals (second vmap) axes
+def parallelized_density(rdm1: Array, ao: Array) -> Array: 
+    return jnp.einsum("ab,a,b->", rdm1, ao, ao)
+grad_density_ao = vmap(vmap(grad(parallelized_density, argnums = 1), in_axes = [None, 0]), in_axes=[0, None])(HF_molecule.rdm1, HF_molecule.ao)
+grad_density_1 = jnp.einsum("...rb,rbj->...rj",grad_density_ao, HF_molecule.grad_ao)
+
+# We can check we get the same result
+print('Are the two forms of computing the gradient of the density the same?',jnp.allclose(grad_density_0, grad_density_1))
+
+# We can now compute one of the finite-range adimensional variables in the article
+grad_density_norm = jnp.linalg.norm(grad_density_0, axis = -1)
+density = HF_molecule.density()
+# We need to avoid dividing by zero
+x = jnp.where(density > 1e-27, grad_density_norm / (2* (3*jnp.pi**2)**(1/3) * density**(4/3)), 0.)
+u = x**2/(1+x**2)
+print('We can check the range is bounded between', jnp.min(u), jnp.max(u))
+
+########################### Saving and loading #########################################
 
 # Now let's talk about how to save and load a molecule (or a list of Molecules).
 dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))

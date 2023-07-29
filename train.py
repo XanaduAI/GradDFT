@@ -27,6 +27,7 @@ def compute_features(functional, molecule, *args, **kwargs):
 
     elif functional.nograd_features:
         functional_inputs = stop_gradient(functional.nograd_features(molecule, *args, **kwargs))
+
     return functional_inputs
 
 def molecule_predictor(

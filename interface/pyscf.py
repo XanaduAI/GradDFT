@@ -17,6 +17,8 @@ import pyscf.data.elements as elements
 from molecule import Grid, Molecule, Reaction, make_reaction
 from utils import DType, default_dtype
 from jax.tree_util import tree_map
+from external import NeuralNumInt
+from external import Functional as ExternalFunctional
 
 import h5py
 from pyscf import cc, dft, scf
@@ -509,9 +511,12 @@ def process_mol(mol, compute_energy=False, grid_level: int = 2, training: bool =
     else: mf = dft.UKS(mol)
     mf.grids.level = int(grid_level)
     mf.grids.build() # with_non0tab=True
-    if training: 
-        mf.xc = xc_functional
-        mf.nlc='VV10'
+    if training:
+        if xc_functional == 'DM21':
+            mf._numint = NeuralNumInt(ExternalFunctional.DM21)
+        else:
+            mf.xc = xc_functional
+            mf.nlc='VV10'
     if max_cycle is not None:
         mf.max_cycle = max_cycle
     elif not training: 
