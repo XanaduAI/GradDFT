@@ -604,7 +604,7 @@ def canonicalize_inputs(x):
     
 
 @partial(value_and_grad, has_aux = True)
-def default_loss(params: PyTree, functional: Functional, molecule: Molecule, trueenergy: float, *functionalinputs):
+def default_loss(params: PyTree, molecule_predict: Callable, molecule: Molecule, trueenergy: float):
     
     r"""
     Computes the default loss function, here MSE, between predicted and true energy
@@ -613,10 +613,10 @@ def default_loss(params: PyTree, functional: Functional, molecule: Molecule, tru
     ----------
     params: PyTree
         functional parameters (weights)
+    molecule_predict: Callable. 
+        Use molecule_predict = molecule_predictor(functional) to generate it.
     molecule: Molecule
     trueenergy: float
-    *functionalinputs: Sequence
-        inputs to be passed to evaluate functional.energy(params, molecule, *functionalinputs)
 
     Returns
     ----------
@@ -629,7 +629,7 @@ def default_loss(params: PyTree, functional: Functional, molecule: Molecule, tru
     it will compute the gradients with respect to params.
     """
 
-    predictedenergy = functional.energy(params, molecule, *functionalinputs)
+    predictedenergy = molecule_predict(params, molecule)
     cost_value = (predictedenergy - trueenergy) ** 2
 
     return cost_value, predictedenergy

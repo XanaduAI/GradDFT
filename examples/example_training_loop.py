@@ -11,6 +11,7 @@ from jax.nn import gelu
 
 # First we define a molecule, using pyscf:
 from pyscf import gto, dft
+from train import molecule_predictor
 mol = gto.M(atom = 'H 0 0 0; F 0 0 1.1')
 
 grids = dft.gen_grid.Grids(mol)
@@ -90,8 +91,9 @@ opt_state = tx.init(params)
 
 # and implement the optimization loop
 n_epochs = 50
+molecule_predict = molecule_predictor(functional)
 for iteration in range(n_epochs):
-    (cost_value, predicted_energy), grads = default_loss(params, functional, molecule, ground_truth_energy, rhoinputs, localfeatures)
+    (cost_value, predicted_energy), grads = default_loss(params, molecule_predict, molecule, ground_truth_energy, rhoinputs, localfeatures)
     print('Iteration', iteration ,'Predicted energy:', predicted_energy)
     updates, opt_state = tx.update(grads, opt_state, params)
     params = apply_updates(params, updates)
