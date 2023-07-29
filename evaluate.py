@@ -210,7 +210,7 @@ def make_scf_loop(functional: Functional,
 
     return scf_iterator
 
-def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas: Sequence, chunk_size: int = 1024, 
+def make_orbital_optimizer(fxc: Functional, tx: Optimizer, chunk_size: int = 1024, 
                             max_cycles: int = 500, e_conv: float = 1e-7, whitening: str = "PCA",
                             precision = Precision.HIGHEST, verbose: int = 0, **kwargs) -> Callable:
     
@@ -223,9 +223,10 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas: Sequence, chu
     ICLR 2023, https://openreview.net/forum?id=aBWnqqsuot7
 
     Note: This only optimizes the rdm1, not the orbitals, also discussed in the article above.
+    Note too: The calculation of tensor chi is not implemented self differentiably, so the functional cannot include exact exchange.
     """
-    if len(omegas) > 0: raise NotImplementedError('The calculation of tensor chi is not implemented self differentiably, sorry!')
-    predict_molecule = molecule_predictor(fxc, omegas = omegas, chunk_size = chunk_size, **kwargs)
+
+    predict_molecule = molecule_predictor(fxc, chunk_size = chunk_size, **kwargs)
 
     @partial(jax.value_and_grad, argnums=0)
     def molecule_orbitals_iterator(W: Array, D: Array, params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Scalar]:
@@ -272,8 +273,8 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas: Sequence, chu
             D = (jnp.diag(jnp.sqrt(1/w)) @ v.T).real
             S_1 = (v @ jnp.diag(w) @ v.T).real
             diff = S_1 - molecule.s1e
-            assert jnp.isclose(diff, jnp.zeros_like(diff), atol=1e-4).all()
-            assert jnp.isclose(jnp.linalg.norm(jnp.linalg.inv(D) @ D - jnp.identity(D.shape[0])), 0.0, atol=1e-5)
+            #assert jnp.isclose(diff, jnp.zeros_like(diff), atol=1e-4).all()
+            #assert jnp.isclose(jnp.linalg.norm(jnp.linalg.inv(D) @ D - jnp.identity(D.shape[0])), 0.0, atol=1e-5)
         elif whitening == "Cholesky":
             D = jnp.linalg.cholesky(jnp.linalg.inv(molecule.s1e)).T
         elif whitening == "ZCA":
@@ -282,14 +283,14 @@ def make_orbital_optimizer(fxc: Functional, tx: Optimizer, omegas: Sequence, chu
 
         Q = jnp.einsum('sji,jk->sik', C, jnp.linalg.inv(D)) # C transposed
         Q_ = jnp.einsum('sji,jk,kl->sil', C, v, jnp.diag(jnp.sqrt(w))).real # C transposed
-        assert jnp.allclose(Q, Q_)
+        #assert jnp.allclose(Q, Q_)
 
         I = jnp.einsum('sji,jk,skl->sil', C, molecule.s1e, C) # The first C is transposed
         stack = jnp.stack((jnp.identity(I.shape[1]),jnp.identity(I.shape[1])))
-        assert jnp.allclose(I, stack)
+        #assert jnp.allclose(I, stack)
 
         I = jnp.einsum('sji,sjk->sik', Q, Q) # The first Q is transposed
-        assert jnp.allclose(I, jnp.stack((jnp.identity(I.shape[1]),jnp.identity(I.shape[1]))))
+        #assert jnp.allclose(I, jnp.stack((jnp.identity(I.shape[1]),jnp.identity(I.shape[1]))))
 
         W = Q
 

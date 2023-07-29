@@ -287,7 +287,7 @@ def get_grad(mo_coeff, mo_occ, F):
 ##################### SCF training loop #####################
 
 
-def make_scf_training_loop(functional: Functional, max_cycles: int = 25,
+def make_jitted_scf_loop(functional: Functional, cycles: int = 25,
                             **kwargs) -> Callable:
     
     r"""
@@ -376,7 +376,7 @@ def make_scf_training_loop(functional: Functional, max_cycles: int = 25,
             return state
 
         # Compute the scf loop
-        final_state = fori_loop(0, max_cycles, body_fun = loop_body, init_val = state)
+        final_state = fori_loop(0, cycles, body_fun = loop_body, init_val = state)
         molecule, fock, predicted_e, old_e, norm_gorb, diis_data = final_state
 
         # Perform a final diagonalization without diis (reinitializing)

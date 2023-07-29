@@ -14,7 +14,7 @@ from jax.nn import gelu
 from orbax.checkpoint import PyTreeCheckpointer
 from torch.utils.tensorboard import SummaryWriter
 
-from train import make_scf_training_loop, make_train_kernel, molecule_predictor
+from train import make_jitted_scf_loop, make_train_kernel, molecule_predictor
 
 from jax.config import config
 config.update('jax_disable_jit', True)
@@ -108,7 +108,7 @@ training_files = '/dissociation/H2_extrapolation_molecules.hdf5'
 
 # Here we use one of the following. We will use the second here.
 molecule_predict = molecule_predictor(functional)
-scf_train_loop = make_scf_training_loop(functional, max_cycles=1)
+scf_train_loop = make_jitted_scf_loop(functional, max_cycles=1)
 
 @partial(value_and_grad, has_aux = True)
 def loss(params, molecule, ground_truth_energy):

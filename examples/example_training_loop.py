@@ -93,7 +93,7 @@ opt_state = tx.init(params)
 n_epochs = 50
 molecule_predict = molecule_predictor(functional)
 for iteration in range(n_epochs):
-    (cost_value, predicted_energy), grads = default_loss(params, molecule_predict, molecule, ground_truth_energy, rhoinputs, localfeatures)
+    (cost_value, predicted_energy), grads = default_loss(params, molecule_predict, molecule, ground_truth_energy)
     print('Iteration', iteration ,'Predicted energy:', predicted_energy)
     updates, opt_state = tx.update(grads, opt_state, params)
     params = apply_updates(params, updates)

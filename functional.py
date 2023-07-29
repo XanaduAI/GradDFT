@@ -629,7 +629,7 @@ def default_loss(params: PyTree, molecule_predict: Callable, molecule: Molecule,
     it will compute the gradients with respect to params.
     """
 
-    predictedenergy = molecule_predict(params, molecule)
+    predictedenergy, _ = molecule_predict(params, molecule)
     cost_value = (predictedenergy - trueenergy) ** 2
 
     return cost_value, predictedenergy
