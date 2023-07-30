@@ -516,7 +516,7 @@ def process_mol(mol, compute_energy=False, grid_level: int = 2, training: bool =
             mf._numint = NeuralNumInt(ExternalFunctional.DM21)
         else:
             mf.xc = xc_functional
-            mf.nlc='VV10'
+            #mf.nlc='VV10'
     if max_cycle is not None:
         mf.max_cycle = max_cycle
     elif not training: 
