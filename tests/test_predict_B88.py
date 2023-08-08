@@ -55,7 +55,7 @@ def test_predict(mf, energy):
     ## Load the molecule, RKS
     warnings.warn('Remember to set the grid level to 3 in the config file!')
 
-    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [])
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [], scf_iteration=0)
 
     #tx = adam(learning_rate = learning_rate)
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
@@ -103,7 +103,7 @@ def test_predict(mf, energy):
     ## Load the molecule, UKS
     warnings.warn('Remember to set the grid level to 3 in the config file!')
 
-    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [])
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [], scf_iteration=0)
 
     #tx = adam(learning_rate = learning_rate)
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')

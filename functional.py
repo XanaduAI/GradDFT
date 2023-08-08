@@ -19,7 +19,7 @@ from optax import GradientTransformation
 from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 
 from utils import Scalar, Array, PyTree, DType, default_dtype
-from molecule import Molecule
+from molecule import Grid, Molecule
 
 @dataclass
 class Functional(nn.Module):
@@ -79,16 +79,22 @@ class Functional(nn.Module):
 
     """
 
-    function: staticmethod
-    features: staticmethod
-    nograd_features: staticmethod = None
-    featuregrads: staticmethod = None
-    combine: staticmethod = None
+    coefficients: staticmethod
+    densities: staticmethod
+    nograd_densities: staticmethod = None
+    densitygrads: staticmethod = None
+    combine_densities: staticmethod = None
+
+    coefficient_inputs: staticmethod = None
+    nograd_coefficient_inputs: staticmethod = None
+    coefficient_input_grads: staticmethod = None
+    combine_inputs: staticmethod = None
+
     is_xc: bool = True
     exchange_mask: Array = None
 
     @nn.compact
-    def __call__(self, *inputs) -> Scalar:
+    def __call__(self, coefficient_inputs) -> Scalar:
         r"""Where the functional is called, mapping the density to the energy.
         Expected to be overwritten by the inheriting class.
         Should use the _integrate() helper function to perform the integration.
@@ -102,9 +108,48 @@ class Functional(nn.Module):
         Union[Array, Scalar]
         """
 
-        return self.function(self, *inputs)
+        return self.coefficients(self, coefficient_inputs)
 
-    def apply_and_integrate(self, params: PyTree, molecule: Molecule, *inputs):
+    def compute_densities(self, molecule: Molecule, *args, **kwargs):
+        r"""
+        Computes the features for the functional
+        """
+
+        if self.nograd_densities and self.densities:
+            densities = self.densities(molecule, *args, **kwargs)
+            nograd_densities = stop_gradient(self.nograd_densities(molecule, *args, **kwargs))
+            densities = self.combine_densities(densities, nograd_densities)
+
+        elif self.densities:
+            densities = self.densities(molecule, *args, **kwargs)
+
+        elif self.nograd_densities:
+            densities = stop_gradient(self.nograd_densities(molecule, *args, **kwargs))
+
+        return densities
+    
+    def compute_coefficient_inputs(self, molecule: Molecule, *args, **kwargs):
+        r"""
+        Computes the features for the functional
+        """
+
+        if self.nograd_coefficient_inputs and self.coefficient_inputs:
+            cinputs = self.coefficient_inputs(molecule, *args, **kwargs)
+            nograd_cinputs = stop_gradient(self.nograd_coefficient_inputs(molecule, *args, **kwargs))
+            cinputs = self.combine_inputs(cinputs, nograd_cinputs)
+
+        elif self.coefficient_inputs:
+            cinputs = self.coefficient_inputs(molecule, *args, **kwargs)
+
+        elif self.nograd_coefficient_inputs:
+            cinputs = stop_gradient(self.nograd_coefficient_inputs(molecule, *args, **kwargs))
+
+        else:
+            cinputs = None
+
+        return cinputs
+
+    def apply_and_integrate(self, params: PyTree, grid: Grid, coefficient_inputs: Array, densities: Array):
         r"""
         Total energy of local functional
         
@@ -120,10 +165,11 @@ class Functional(nn.Module):
         Union[Array, Scalar]
         """
 
-        xc_energy_density = self.apply(params, *inputs)
-        return self._integrate(xc_energy_density, molecule.grid.weights)
+        coefficients = self.apply(params, coefficient_inputs)
+        xc_energy_density = jnp.einsum("rf,rf->r", coefficients, densities)
+        return self._integrate(xc_energy_density, grid.weights)
     
-    def energy(self, params: PyTree, molecule: Molecule, *args):
+    def energy(self, params: PyTree, molecule: Molecule, *args, **kwargs):
         r"""
         Total energy of local functional
         
@@ -145,7 +191,10 @@ class Functional(nn.Module):
         computed with function molecule.nonXC()
         """
 
-        energy = self.apply_and_integrate(params, molecule, *args)
+        densities = self.compute_densities(molecule, *args)
+        cinputs = self.compute_coefficient_inputs(molecule, *args)
+
+        energy = self.apply_and_integrate(params, molecule.grid, cinputs, densities)
 
         if self.is_xc:
             energy += stop_gradient(molecule.nonXC())
@@ -183,12 +232,20 @@ class NeuralFunctional(Functional):
     Neural functional, subclass of Functional
     """
 
-    function: staticmethod
-    features: staticmethod
-    nograd_features: staticmethod = None
-    featuregrads: staticmethod = None
-    combine: staticmethod = None
+    coefficients: staticmethod
+    densities: staticmethod
+    nograd_densities: staticmethod = None
+    densitygrads: staticmethod = None
+    combine_densities: staticmethod = None
+
+    coefficient_inputs: staticmethod = None
+    nograd_coefficient_inputs: staticmethod = None
+    coefficient_input_grads: staticmethod = None
+    combine_inputs: staticmethod = None
+
     is_xc: bool = True
+    exchange_mask: Array = None
+
     kernel_init: Callable = he_normal()
     bias_init: Callable = zeros
     activation: Callable = gelu
@@ -284,7 +341,7 @@ class NeuralFunctional(Functional):
 
 ######################## DM21 ########################
 
-def dm21_molecule_features(
+def dm21_coefficient_inputs(
         molecule: Molecule, 
         clip_cte: Optional[float] = 1e-27,
         *_, **__
@@ -317,7 +374,7 @@ def dm21_molecule_features(
 
     return features.T
 
-def dm21_local_features(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+def dm21_densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
     r"""
     Generates and concatenates different functional levels
 
@@ -390,7 +447,7 @@ def dm21_local_features(molecule: Molecule, functional_type: Optional[Union[str,
 
     return localfeatures.T
 
-def dm21_features(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *args, **kwargs):
+def dm21_densities_old(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *args, **kwargs):
 
     r"""
     Generates all features except the HF energy features.
@@ -413,14 +470,38 @@ def dm21_features(molecule: Molecule, functional_type: Optional[Union[str, Dict]
     Tuple[Array, Array]
         The features and local features, similar to those used by DM21
     """
+    raise DeprecationWarning('This function is deprecated, use dm21_densities instead.')
     
-    features = dm21_molecule_features(molecule, *args, **kwargs)
-    localfeatures = dm21_local_features(molecule, functional_type, clip_cte)
+    features = dm21_coefficient_inputs(molecule, *args, **kwargs)
+    localfeatures = dm21_densities(molecule, functional_type, clip_cte)
 
     # We return them with the first index being the position r and the second the feature.
     return features, localfeatures
 
-def dm21_combine(features, ehf):
+def dm21_combine_cinputs(cinputs, ehf):
+    r"""
+    Default way to combine Hartree-Fock and the rest of the input features to the neural network.
+    
+    Parameters
+    ----------
+    ehf: Array
+        The Hartree-Fock features
+        shape: (n_omega, n_spin, n_grid_points)
+    densities: Array
+        The rest of input features that constitute the input to the neural network in a 
+        functional of the form similar to DM21.
+        shape: (n_grid, n_input_features)
+
+    Returns
+    ----------
+    Tuple[Array, Array]
+        inputs, shape: (n_grid, 11)
+    """
+
+    # Remember that DM concatenates the hf density in the x features by spin...
+    return jnp.concatenate([cinputs, ehf[:,0].T, ehf[:,1].T], axis=1)
+
+def dm21_combine_densities(densities, ehf):
 
     r"""
     Default way to combine Hartree-Fock and the rest of the input default features.
@@ -430,32 +511,26 @@ def dm21_combine(features, ehf):
     ehf: Array
         The Hartree-Fock features
         shape: (n_omega, n_spin, n_grid_points)
-    features: Array
-        The rest of input features that constitute the input to the neural network in a 
-        functional of the form similar to DM21.
-        shape: (n_grid, n_input_features)
-    local features: Array
-        The rest of local features that get dot-multiplied by the output of a neural network
+    densities: Array
+        The rest of local energy densities that get dot-multiplied by the output of a neural network
         in a functional of the form similar to DM21.
         shape: (n_grid, n_local_features)
 
     Returns
     ----------
     Tuple[Array, Array]
-        features, shape: (n_grid, n_features + n_spin * n_omegas)
-        local_features, shape: (n_grid, n_local_features + n_omegas)
+        local_features, shape: (n_grid, n_densities + n_omegas)
     """
-    features, local_features = features
-
-    # Remember that DM concatenates the hf density in the x features by spin...
-    features = jnp.concatenate([features, ehf[:,0].T, ehf[:,1].T], axis=1)
 
     # ... and in the y features by omega.
-    local_features = jnp.concatenate([local_features] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
-    return features,local_features
+    return jnp.concatenate([densities] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
 
-def dm21_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas: Array = jnp.array([0., 0.4])):
-    vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, features)
+def dm21_hfgrads_densities(functional: nn.Module, params: Dict, molecule: Molecule, ehf: Array, coefficient_inputs: Array, densities_wout_hf: Array, omegas: Array = jnp.array([0., 0.4])):
+    vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, coefficient_inputs, densities_wout_hf)
+    return vxc_hf.sum(axis=0) # Sum over omega
+
+def dm21_hfgrads_cinputs(functional: nn.Module, params: Dict, molecule: Molecule, ehf: Array, cinputs_wout_hf: Array, densities: Array, omegas: Array = jnp.array([0., 0.4])):
+    vxc_hf = molecule.HF_coefficient_input_grad_2_Fock(functional, params, omegas, ehf, cinputs_wout_hf, densities)
     return vxc_hf.sum(axis=0) # Sum over omega
     
 @dataclass
@@ -466,18 +541,27 @@ class DM21(NeuralFunctional):
     Contains a function to generate the weights, called `generate_DM21_weights`
     """
 
-    function: Callable = lambda self, *inputs: self.default_nn(*inputs)
-    features: Callable = dm21_features
-    nograd_features: Callable = lambda molecule, *_, **__: molecule.HF_energy_density([0., 0.4])
-    featuregrads: Callable = lambda self, params, molecule, features, nograd_features, *_, **__: dm21_hfgrads(self, params, molecule, features, nograd_features, [0., 0.4])
-    combine: Callable = dm21_combine
+    coefficients: Callable = lambda self, inputs: self.default_nn(inputs)
+    densities: Callable = dm21_densities
+    nograd_densities: staticmethod = lambda molecule, *_, **__: molecule.HF_energy_density([0., 0.4])
+    densitygrads: staticmethod = lambda self, params, molecule, nograd_densities, cinputs, grad_densities, *_, **__: dm21_hfgrads_densities(self, params, molecule, nograd_densities, cinputs, grad_densities, [0., 0.4])
+    combine_densities: staticmethod = dm21_combine_densities
+
+    coefficient_inputs: staticmethod = dm21_coefficient_inputs
+    nograd_coefficient_inputs: staticmethod = lambda molecule, *_, **__: molecule.HF_energy_density([0., 0.4])
+    coefficient_input_grads: staticmethod = lambda self, params, molecule, nograd_cinputs, grad_cinputs, densities, *_, **__: dm21_hfgrads_cinputs(self, params, molecule, nograd_cinputs, grad_cinputs, densities, [0., 0.4])
+    combine_inputs: staticmethod = dm21_combine_cinputs
+
+    is_xc: bool = True
+    exchange_mask: Array = None
+
     activation: Callable = elu
     squash_offset: float = 1e-4
     layer_widths: Array = jnp.array([256,256,256,256,256,256])
     local_features: int = 3
     sigmoid_scale_factor: float = 2.
 
-    def default_nn(instance, rhoinputs, localfeatures, *_, **__):
+    def default_nn(instance, rhoinputs, *_, **__):
         x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
 
         # Initial layer: log -> dense -> tanh
@@ -500,9 +584,7 @@ class DM21(NeuralFunctional):
             x = instance.activation(x) # activation = jax.nn.gelu
             instance.sow('intermediates', 'residual_elu_'+str(i), x)
 
-        x = instance.head(x, instance.local_features, instance.sigmoid_scale_factor)
-
-        return jnp.einsum('ri,ri->r', x, localfeatures)
+        return instance.head(x, instance.local_features, instance.sigmoid_scale_factor)
 
     def generate_DM21_weights(self, folder: str = 'DM21_model', num_layers_with_dm_parameters: int = 7, n_input_features: int = 11, rng = PRNGKey(0)):
 
@@ -561,8 +643,8 @@ class DM21(NeuralFunctional):
             return params
 
         example_features = normal(rng, shape=(2, n_input_features))
-        example_local_features = normal(rng, shape=(2, self.local_features))
-        params = self.init(rng, example_features, example_local_features)
+        #example_local_features = normal(rng, shape=(2, self.local_features))
+        params = self.init(rng, example_features)
 
         dm_params = vars_to_params(variables)
 
@@ -738,7 +820,7 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
     return e_tilde
 
 
-def local_features(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+def densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
     r"""
     Generates and concatenates different functional levels
 

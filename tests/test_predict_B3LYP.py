@@ -35,14 +35,14 @@ params = {'params': {}}
 
 molecule_name = 'water'
 geometry = geometry_from_pubchem(molecule_name)
-mol = gto.M(atom = geometry,
-            basis="def2-tzvp")
+mol = gto.M(atom = geometry, basis="def2-tzvp")
+mol.build()
 mf2 = scf.RHF(mol)
 mf2.kernel()
 mycc = cc.CCSD(mf2).run()
 ccsd_energy = mycc.e_tot
-mf = dft.RKS(mol)
-mf.xc = 'B3LYP'
+mf = dft.UKS(mol)
+#mf.xc = 'B3LYP'
 mf.max_cycle = 0
 mf.kernel()
 
@@ -54,18 +54,19 @@ def test_predict(mf, energy):
     ## Load the molecule, RKS
     warnings.warn('Remember to set the grid level to 3 in the config file!')
 
-    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0.])
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0.], scf_iteration=0)
 
     #tx = adam(learning_rate = learning_rate)
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     #e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_scf_loop(functional, verbose = 2)
-    e_XND = iterator(params, molecule)
-
-    mf = dft.RKS(mol)
+    mf = dft.UKS(mol)
     mf.xc = 'B3LYP'
+    mf.max_cycle = 10
     e_DM = mf.kernel()
+
+    iterator = make_scf_loop(functional, verbose = 2, max_cycles=10)
+    e_XND = iterator(params, molecule)
 
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol = 1e1)
@@ -94,18 +95,18 @@ def test_predict(mf, energy):
     ## Load the molecule, UKS
     warnings.warn('Remember to set the grid level to 3 in the config file!')
 
-    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0.])
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0.], scf_iteration=0)
 
     #tx = adam(learning_rate = learning_rate)
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     #e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_scf_loop(functional,verbose = 2, max_cycles = 50)
+    iterator = make_scf_loop(functional,verbose = 2, max_cycles = 10)
     e_XND = iterator(params, molecule)
 
     mf = dft.UKS(mol)
     mf.xc = 'B3LYP'
-    mf.max_cycle = 50
+    mf.max_cycle = 10
     e_DM = mf.kernel()
 
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol

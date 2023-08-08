@@ -10,25 +10,7 @@ from optax import OptState, GradientTransformation, apply_updates
 
 from utils import Scalar, Array, PyTree
 from functional import DispersionFunctional, Functional
-from molecule import Molecule, coulomb_potential, symmetrize_rdm1, eig, orbital_grad
-
-def compute_features(functional, molecule, *args, **kwargs):
-    r"""
-    Computes the features for the functional
-    """
-
-    if functional.nograd_features and functional.features:
-        functional_inputs = functional.features(molecule, *args, **kwargs)
-        nograd_functional_inputs = stop_gradient(functional.nograd_features(molecule, *args, **kwargs))
-        functional_inputs = functional.combine(functional_inputs, nograd_functional_inputs)
-
-    elif functional.features:
-        functional_inputs = functional.features(molecule, *args, **kwargs)
-
-    elif functional.nograd_features:
-        functional_inputs = stop_gradient(functional.nograd_features(molecule, *args, **kwargs))
-
-    return functional_inputs
+from molecule import Molecule, coulomb_potential, symmetrize_rdm1
 
 def molecule_predictor(
     functional: Functional,
@@ -107,9 +89,7 @@ def molecule_predictor(
 
         molecule = molecule.replace(rdm1 = rdm1)
 
-        functional_inputs = compute_features(functional, molecule, *args, **kwargs)
-
-        e = functional.energy(params, molecule, *functional_inputs, **functional_kwargs)
+        e = functional.energy(params, molecule, **functional_kwargs)
         if nlc_functional:
             e = e + nlc_functional.energy({'params': params['dispersion']}, molecule, **functional_kwargs)
         return e
@@ -141,23 +121,51 @@ def molecule_predictor(
         energy, fock = energy_and_grads(params, molecule.rdm1, molecule, *args)
         fock = 1/2*(fock + fock.transpose(0,2,1))
 
-        # HF Potential
-        if functional.features:
-            functional_inputs = functional.features(molecule, *args, **kwargs)
-        else: functional_inputs = None
+        # Compute the features that should be autodifferentiated
+        if functional.densities and functional.densitygrads:
+            grad_densities = functional.densities(molecule, *args, **kwargs)
+            nograd_densities = stop_gradient(functional.nograd_densities(molecule, *args, **kwargs))
+            densities = functional.combine_densities(grad_densities, nograd_densities)
+        elif functional.densities:
+            grad_densities = functional.densities(molecule, *args, **kwargs)
+            nograd_densities = None
+            densities = grad_densities
+        elif functional.densitygrads:
+            grad_densities = None
+            nograd_densities = stop_gradient(functional.nograd_densities(molecule, *args, **kwargs))
+            densities = nograd_densities
+        else: densities, grad_densities, nograd_densities = None, None, None
 
-        if functional.featuregrads:
-            nograd_functional_inputs = stop_gradient(functional.nograd_features(molecule, *args, **kwargs))
-            vxc_expl = functional.featuregrads(functional, params, molecule, functional_inputs, nograd_functional_inputs)
+        if functional.coefficient_input_grads and functional.coefficient_inputs:
+            grad_cinputs = functional.coefficient_inputs(molecule, *args, **kwargs)
+            nograd_cinputs = stop_gradient(functional.nograd_coefficient_inputs(molecule, *args, **kwargs))
+            cinputs = functional.combine_inputs(grad_cinputs, nograd_cinputs)
+        elif functional.coefficient_inputs:
+            grad_cinputs = functional.coefficient_inputs(molecule, *args, **kwargs)
+            nograd_cinputs = None
+            cinputs = grad_cinputs
+        elif functional.coefficient_input_grads:
+            grad_cinputs = None
+            nograd_cinputs = stop_gradient(functional.nograd_coefficient_inputs(molecule, *args, **kwargs))
+            cinputs = nograd_cinputs
+        else: cinputs, grad_cinputs, nograd_cinputs = None, None, None
+
+        # Compute the derivatives with respect to nograd_densities
+        if functional.densitygrads:
+            vxc_expl = functional.densitygrads(functional, params, molecule, nograd_densities, cinputs, grad_densities)
+            fock += vxc_expl+vxc_expl.transpose(0,2,1) # Sum over omega
+
+        if functional.coefficient_input_grads:
+            vxc_expl = functional.coefficient_input_grads(functional, params, molecule, nograd_cinputs, grad_cinputs, densities)
             fock += vxc_expl+vxc_expl.transpose(0,2,1) # Sum over omega
 
         if functional.is_xc:
             rdm1 = symmetrize_rdm1(molecule.rdm1)
             fock += coulomb_potential(rdm1, molecule.rep_tensor)
-            fock = cond(jnp.isclose(molecule.spin, 0), # Condition
-                            lambda x: x, # Truefn branch
-                            lambda x: jnp.stack([x.sum(axis = 0)/2., x.sum(axis = 0)/2.], axis=0), # Falsefn branch
-                            fock) # Argument
+            #fock = cond(jnp.isclose(molecule.spin, 0), # Condition
+            #                lambda x: x, # Truefn branch
+            #                lambda x: jnp.stack([x.sum(axis = 0)/2., x.sum(axis = 0)/2.], axis=0), # Falsefn branch
+            #                fock) # Argument
             fock = fock + jnp.stack([molecule.h1e, molecule.h1e], axis=0)
 
         return energy, fock

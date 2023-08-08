@@ -1,6 +1,6 @@
 from functools import partial
 import os
-from jax import grad, numpy as jnp, vmap
+from jax import grad, vmap, numpy as jnp
 import jax
 from tqdm import tqdm
 
@@ -71,7 +71,8 @@ grad_density_0 = grad_density(HF_molecule.rdm1, HF_molecule.ao, HF_molecule.grad
 # Parallelizing over the spin (first vmap) and the atomic orbitals (second vmap) axes
 def parallelized_density(rdm1: Array, ao: Array) -> Array: 
     return jnp.einsum("ab,a,b->", rdm1, ao, ao)
-grad_density_ao = vmap(vmap(grad(parallelized_density, argnums = 1), in_axes = [None, 0]), in_axes=[0, None])(HF_molecule.rdm1, HF_molecule.ao)
+grad_density_ao = vmap(vmap(grad(parallelized_density, argnums = 1), 
+                            in_axes = [None, 0]), in_axes=[0, None])(HF_molecule.rdm1, HF_molecule.ao)
 grad_density_1 = jnp.einsum("...rb,rbj->...rj",grad_density_ao, HF_molecule.grad_ao)
 
 # We can check we get the same result

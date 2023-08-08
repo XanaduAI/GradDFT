@@ -145,9 +145,13 @@ class Molecule:
         chi = self.select_HF_omegas(omegas)
         return HF_energy_density(self.rdm1, self.ao, chi, *args, **kwargs)
 
-    def HF_density_grad_2_Fock(self, functional: nn.Module, params: PyTree, omegas: Array, ehf: Array, features, **kwargs):
+    def HF_density_grad_2_Fock(self, functional: nn.Module, params: PyTree, omegas: Array, ehf: Array, coefficient_inputs: Array, densities_wout_hf: Array, **kwargs):
         chi = self.select_HF_omegas(omegas)
-        return HF_density_grad_2_Fock(self, functional, params, chi, self.ao, ehf, features, **kwargs)
+        return HF_density_grad_2_Fock(self.grid, functional, params, chi, self.ao, ehf, coefficient_inputs, densities_wout_hf, **kwargs)
+    
+    def HF_coefficient_input_grad_2_Fock(self, functional: nn.Module, params: PyTree, omegas: Array, ehf: Array, cinputs_wout_hf: Array, densities: Array, **kwargs):
+        chi = self.select_HF_omegas(omegas)
+        return HF_coefficient_input_grad_2_Fock(self.grid, functional, params, chi, self.ao, ehf, cinputs_wout_hf, densities, **kwargs)
 
     def nonXC(self, *args, **kwargs):
         return nonXC(self.rdm1, self.h1e, self.rep_tensor, self.nuclear_repulsion, *args, **kwargs)
@@ -324,14 +328,15 @@ def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision =
     _hf_energy = lambda _chi, _rdm1, _ao: - jnp.einsum("wsc,sac,a->ws", _chi, _rdm1, _ao, precision=precision)/2
     return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
 
-def HF_density_grad_2_Fock(
-    molecule: Molecule,
+def HF_density_grad_2_Fock( #todo: change the documentation
+    grid: Grid,
     functional: nn.Module,
     params: PyTree,
     chi: Array, 
     ao: Array,
     ehf: Array,
-    features_wout_hf,
+    coefficient_inputs: Array,
+    densities_wout_hf: Array,
     chunk_size: Optional[int] = None,
     precision: Precision = Precision.HIGHEST,
     fxc_kwargs: dict = {}
@@ -399,13 +404,100 @@ def HF_density_grad_2_Fock(
         Shape: (n_omegas, n_spin, n_orbitals, n_orbitals).
     """
 
-    def partial_fxc(params, molecule, ehf, features):
+    def partial_fxc(params, grid, ehf, coefficient_inputs, densities_wout_hf):
+        densities = functional.combine_densities(densities_wout_hf, ehf)
+        return functional.apply_and_integrate(params, grid, coefficient_inputs, densities)
 
-        features = functional.combine(features, ehf)
+    gr = grad(partial_fxc, argnums = 2)(params, grid, ehf, coefficient_inputs, densities_wout_hf)
 
-        return functional.energy(params, molecule, *features, **fxc_kwargs)
+    @partial(vmap_chunked, in_axes=(0, None, None), chunk_size=chunk_size)
+    def chunked_jvp(chi_tensor, gr_tensor, ao_tensor):
+        return - jnp.einsum("rws,wsr,ra->wsa", chi_tensor, gr_tensor, ao_tensor, precision=precision)/2.
 
-    gr = grad(partial_fxc, argnums = 2)(params, molecule, ehf, features_wout_hf)
+    return (jax.jit(chunked_jvp)(chi.transpose(3,0,1,2), gr, ao)).transpose(1,2,3,0)
+
+
+def HF_coefficient_input_grad_2_Fock(
+    grid: Grid,
+    functional: nn.Module,
+    params: PyTree,
+    chi: Array, 
+    ao: Array,
+    ehf: Array,
+    cinputs_wout_hf: Array,
+    densities: Array,
+    chunk_size: Optional[int] = None,
+    precision: Precision = Precision.HIGHEST,
+    fxc_kwargs: dict = {}
+) -> Array:
+
+    r"""
+    Calculate the Hartree-Fock matrix contribution due to the partial derivative
+    with respect to the Hartree Fock energy energy density.
+
+    .. math::
+        F = ∂f(x)/∂e_{HF}^{ωσ} * ∂e_{HF}^{ωσ}/∂Γab^σ = ∂f(x)/∂e_{HF}^{ωσ} * ψa(r) Xb^σ.
+
+    Parameters
+    ----------
+    fxc : Callable
+        FeedForwardFunctional object.
+    feat_wout_hf : Array
+        Contains a list of the features to input to fxc, except the HF density.
+        Expected shape: (n_features, n_grid_points)
+    loc_feat_wout_hf : Array
+        Contains a list of the features to dot multiply with the output of the functional, except the HF density.
+        Expected shape: (n_features, n_grid_points)
+    ehf : Array
+        The Hartree-Fock energy density. 
+        Expected shape: (n_omega, n_spin, n_grid_points).
+    chi : Array
+        .. math::
+            Xa^σ = Γbd^σ ψb(r) ∫ dr' f(|r-r'|) ψa(r') ψd(r')
+
+        Expected shape: (n_grid_points, n_omegas, n_spin, n_orbitals)
+    ao : Array
+        The orbitals.
+        Expected shape: (n_grid_points, n_orbitals)
+    grid_weights : Array
+        The weights of the grid points.
+        Expected shape: (n_grid_points)
+    params : PyTree
+        The parameters of the neural network.
+    combine_features_hf: Callable
+        A function that takes the features and ehf, and outputs the updated features
+    chunk_size : int, optional
+        The batch size for the number of atomic orbitals the integral
+        evaluation is looped over. For a grid of N points, the solution
+        formally requires the construction of a N x N matrix in an intermediate
+        step. If `chunk_size` is given, the calculation is broken down into
+        smaller subproblems requiring construction of only chunk_size x N matrices.
+        Practically, higher `chunk_size`s mean faster calculations with larger
+        memory requirements and vice-versa.
+    precision : jax.lax.Precision, optional
+        Jax `Precision` enum member, indicating desired numerical precision.
+        By default jax.lax.Precision.HIGHEST.
+
+    Notes
+    -----
+    There are other contributions to the Fock matrix from the other features,
+    computed separately by automatic differentiation and added later on.
+    Also, the chunking is done over the atomic orbitals, not the grid points,
+    because the resulting Fock matrix calculation sums over the grid points.
+
+    Returns
+    -------
+    Array
+        The Hartree-Fock matrix contribution due to the partial derivative
+        with respect to the Hartree Fock energy density.
+        Shape: (n_omegas, n_spin, n_orbitals, n_orbitals).
+    """
+
+    def partial_fxc(params, grid, ehf, coefficient_inputs_wout_hf, densities):
+        coefficient_inputs = functional.combine_inputs(coefficient_inputs_wout_hf, ehf)
+        return functional.apply_and_integrate(params, grid, coefficient_inputs, densities)
+
+    gr = grad(partial_fxc, argnums = 2)(params, grid, ehf, cinputs_wout_hf, densities)
 
     @partial(vmap_chunked, in_axes=(0, None, None), chunk_size=chunk_size)
     def chunked_jvp(chi_tensor, gr_tensor, ao_tensor):

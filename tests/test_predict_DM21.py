@@ -4,7 +4,6 @@ import warnings
 from interface import molecule_from_pyscf
 from external import NeuralNumInt
 from external import Functional
-from functional import dm21_combine, dm21_features
 
 # This only works on startup!
 from jax.config import config
@@ -55,7 +54,7 @@ def test_predict(mf, energy):
     ## Load the molecule, RKS
     warnings.warn('Remember to set the grid level to 3 in the config file!')
 
-    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0., 0.4])
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0., 0.4], scf_iteration=0)
 
     #tx = adam(learning_rate = learning_rate)
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
@@ -63,11 +62,12 @@ def test_predict(mf, energy):
 
     iterator = make_scf_loop(functional,
                                     verbose = 2, 
-                                    functional_type = 'DM21')
+                                    max_cycles=10)
     e_XND = iterator(params, molecule)
 
     mf = dft.RKS(mol)
     mf._numint = NeuralNumInt(Functional.DM21)
+    mf.max_cycle = 10
     e_DM = mf.kernel()
 
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol
@@ -96,7 +96,7 @@ def test_predict(mf, energy):
     ## Load the molecule, UKS
     warnings.warn('Remember to set the grid level to 3 in the config file!')
 
-    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0, 0.4])
+    molecule = molecule_from_pyscf(mf, energy = energy, omegas = [0, 0.4], scf_iteration=0)
 
     #tx = adam(learning_rate = learning_rate)
     #iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
@@ -104,13 +104,12 @@ def test_predict(mf, energy):
 
     iterator = make_scf_loop(functional,
                             verbose = 2, 
-                            functional_type = 'DM21',
-                            max_cycles=50)
+                            max_cycles=10)
     e_XND = iterator(params, molecule)
 
     mf = dft.UKS(mol)
     mf._numint = NeuralNumInt(Functional.DM21)
-    mf.max_cycle = 50
+    mf.max_cycle = 10
     e_DM = mf.kernel()
 
     kcalmoldiff = (e_XND-e_DM)*Hartree2kcalmol
@@ -145,9 +144,6 @@ def test_rks():
     #e_XND_DF4T = iterator(params, molecule)
 
     iterator = make_scf_loop(functional,
-                                    feature_fn=dm21_features,
-                                    combine_features_hf=dm21_combine,
-                                    omegas = [0., 0.4], 
                                     verbose = 2, 
                                     functional_type = 'DM21')
     e_XND = iterator(params, molecule)

@@ -27,7 +27,7 @@ HF_molecule = molecule_from_pyscf(mf)
 # First a features method, which takes a molecule and returns an array of features
 # It computes what in the article appears as potential e_\theta(r), as well as the
 # input to the neural network to compute the density.
-def lsda_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+def lsda_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     r"""Auxiliary function to generate the features of LSDA."""
     # Molecule can compute the density matrix.
     rho = molecule.density()
@@ -38,16 +38,15 @@ def lsda_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     # For simplicity we do not include the exchange polarization correction
     # check function exchange_polarization_correction in functional.py
     # The output of features must be a list of arrays of dimension n_grid x n_features.
-    e = [jnp.expand_dims(lda_e, axis = 1)]
+    e = jnp.expand_dims(lda_e, axis = 1)
     return e
 
 # Then we have to define a function that takes the output of features and returns the energy density.
 # Its first argument represents the instance of the functional. Note how we sum over the dimensions
 # feature in the LDA energy density that we computed above
-def lsda(instance, e): return jnp.einsum('rf->r',e)
 
 # Overall, we have the functional
-LSDA = Functional(function=lsda, features=lsda_features)
+LSDA = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities=lsda_density)
 params = freeze({'params': {}}) # Since the functional is not neural, we pass frozen dict for the parameters
 
 # We can compute the predicted energy using the following code:
@@ -56,19 +55,17 @@ predicted_energy_0, fock = predict_molecule(params = params, molecule = HF_molec
 # We may use molecule_predictor to compute the energy of any other molecule too.
 
 # Another form of doing the same is first computing the features and then the energy.
-features = lsda_features(molecule = HF_molecule)
-predicted_energy_1 = LSDA.energy(params, HF_molecule, *features)
+predicted_energy_1 = LSDA.energy(params, HF_molecule)
 
-# Under the hood, what is really happening to compute the energy is the following
-features = lsda_features(molecule = HF_molecule)
-# If we want to compute the energy_density that come out of the functional we can do
-xc_energy_density = LSDA.apply(params, *features)
-# and then integrate them
-predicted_energy_2 = LSDA._integrate(xc_energy_density, HF_molecule.grid.weights)
-# and add the non-exchange-correlation energy component
+# Under the hood, what is really happening to compute the energy is the following:
+# First we compute the densities
+densities = LSDA.compute_densities(molecule = HF_molecule)
+# Then we compute the coefficient inputs
+cinputs = LSDA.compute_coefficient_inputs(molecule = HF_molecule)
+# Finally we compute the exchange-correlation energy
+predicted_energy_2 = LSDA.apply_and_integrate(params, HF_molecule.grid, cinputs, densities)
+# And add the non-exchange-correlation energy component
 predicted_energy_2 += stop_gradient(HF_molecule.nonXC())
-# Note that functional.apply(params, *features) implements
-# functional.function(functional, *features) with parameters params
 
 # We can check that all methods return the same energy
 print('Predicted energies', predicted_energy_0, predicted_energy_1, predicted_energy_2)
@@ -80,8 +77,7 @@ print('Predicted energies', predicted_energy_0, predicted_energy_1, predicted_en
 def compute_energy_and_fock(rdm1, molecule):
 
     molecule = molecule.replace(rdm1 = rdm1)
-    features = lsda_features(molecule = molecule)
-    return LSDA.energy(params, molecule, *features)
+    return LSDA.energy(params, molecule)
 
 # Now comes the magic of jax. We can compute the energy and the gradient of the energy
 # using jax.grad (or alternatively value_and_grad), indicating the argument with respect to which take derivatives.
@@ -90,7 +86,6 @@ new_fock = grad(compute_energy_and_fock, argnums = 0)(HF_molecule.rdm1, HF_molec
 new_fock = 1/2*(new_fock + new_fock.transpose(0,2,1))
 rdm1 = symmetrize_rdm1(HF_molecule.rdm1)
 new_fock += coulomb_potential(rdm1, HF_molecule.rep_tensor)
-new_fock = jnp.stack([new_fock.sum(axis = 0)/2., new_fock.sum(axis = 0)/2.], axis=0) # Only when molecule.spin != 0
 new_fock = new_fock + jnp.stack([HF_molecule.h1e, HF_molecule.h1e], axis=0)
 
 print('Is the newly computed fock matrix correct?:',jnp.isclose(fock, new_fock).all() )

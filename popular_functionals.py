@@ -174,42 +174,42 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     return - a * jnp.where(rho.sum(axis=0) > clip_cte,
                             gamma/(1+d*rhom1_3)*(rho.sum(axis=0) +  sum_), 0.)
 
-def lsda_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+def lsda_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     r"""Auxiliary function to generate the features of LSDA."""
     rho = molecule.density()
     lda_e = lsda_x_e(rho, clip_cte)
-    return [jnp.expand_dims(lda_e, axis = 1)]
+    return jnp.expand_dims(lda_e, axis = 1)
 
-def b88_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+def b88_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     r"""Auxiliary function to generate the features of B88 functional."""
     rho = molecule.density()
     grad_rho = molecule.grad_density()
     b88_e = b88_x_e(rho, grad_rho, clip_cte)
     lda_e = lsda_x_e(rho, clip_cte)
     #assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
-    return [jnp.stack((lda_e, b88_e), axis = 1)]
+    return jnp.stack((lda_e, b88_e), axis = 1)
 
-def vwn_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+def vwn_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     r"""Auxiliary function to generate the features of VWN functional."""
     rho = molecule.density()
     vwn_e = vwn_c_e(rho, clip_cte)
-    return [jnp.expand_dims(vwn_e, axis = 1)]
+    return jnp.expand_dims(vwn_e, axis = 1)
 
-def pw92_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+def pw92_densities(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     r"""Auxiliary function to generate the features of PW92 functional."""
     rho = molecule.density()
     pw92_e = pw92_c_e(rho, clip_cte)
-    return [jnp.expand_dims(pw92_e, axis = 1)]
+    return jnp.expand_dims(pw92_e, axis = 1)
 
-def lyp_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+def lyp_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     r"""Auxiliary function to generate the features of LYP functional."""
     rho = molecule.density()
     grad_rho = molecule.grad_density()
     grad2rho = molecule.lapl_density()
     lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
-    return [jnp.expand_dims(lyp_e, axis = 1)]
+    return jnp.expand_dims(lyp_e, axis = 1)
 
-def b3lyp_exhf_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+def b3lyp_exhf_densities(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
 
     r"""
     Auxiliary function to generate the non Hartree-Fock features of B3LYP functional
@@ -232,61 +232,41 @@ def b3lyp_exhf_features(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
 
     return jnp.stack((lda_e, b88_e, vwn_e, lyp_e), axis = 1)
 
-
-def b88_combine(features):
-    return [features]
-
-def lsda_combine(features):
-    return [features]
-
-def vwn_combine(features):
-    return [features]
-
-def pw92_combine(features):
-    return [features]
-
-def lyp_combine(features, ehf):
-    return [ehf]
-
 def b3lyp_combine(features, ehf):
     ehf = jnp.sum(ehf, axis = (0,1))
     ehf = jnp.expand_dims(ehf, axis = 1)
-    return [jnp.concatenate([features, ehf], axis=1)]
+    return jnp.concatenate([features, ehf], axis=1)
 
-def b3lyp(instance, features):
+def b3lyp_coefficients(instance, *args):
     r"""
     The dot product between the features and the weights in B3LYP.
     """
     a0=0.2
     ax=0.72
     ac=0.81
-    weights = jnp.array([1-a0, ax, 1-ac, ac, a0])
-    return jnp.einsum('rf,f->r',features, weights)
-def b88(instance, x): return jnp.einsum('ri->r',x)
-def lsda(instance, x): return jnp.einsum('ri->r',x)
-def lyp(instance, x): return jnp.einsum('ri->r',x)
-def vwn(instance, x): return jnp.einsum('ri->r',x)
-def pw92(instance, x): return jnp.einsum('ri->r',x)
+    return jnp.array([[1-a0, ax, 1-ac, ac, a0]])
 
-def b3lyp_nograd_features(molecule, *_, **__):
+def b3lyp_nograd_densities(molecule, *_, **__):
 
     ehf = molecule.HF_energy_density([0.])
     #assert not jnp.isnan(ehf).any() and not jnp.isinf(ehf).any()
     return ehf
 
-def b3lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, features: List[Array], ehf: Array, omegas = jnp.array([0.])):
-    vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, features)
+def b3lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, ehf: Array, cinputs: Array, grad_densities: Array, omegas = jnp.array([0.])):
+    vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, cinputs, grad_densities)
     return vxc_hf.sum(axis=0) # Sum over omega
 
-B88 = Functional(function=b88, features=b88_features, combine=b88_combine)
-LSDA = Functional(function=lsda, features=lsda_features, combine=lsda_combine)
-VWN = Functional(function=vwn, features=vwn_features, combine=vwn_combine)
-LYP = Functional(function=lyp, features=lyp_features, combine=lyp_combine, exchange_mask=jnp.array([1]))
-B3LYP = Functional(function=b3lyp, 
-                features=b3lyp_exhf_features, 
-                nograd_features=b3lyp_nograd_features, 
-                featuregrads=b3lyp_hfgrads,
-                combine=b3lyp_combine,
-                exchange_mask=jnp.array([1,1,0,0,1]))
 
-PW92 = Functional(function=pw92, features=pw92_features, combine=pw92_combine)
+LSDA = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities = lsda_density)
+B88 = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities = b88_density)
+VWN = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities = vwn_density)
+LYP = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities = lyp_density, exchange_mask=jnp.array([]))
+
+B3LYP = Functional(coefficients = b3lyp_coefficients,
+                   densities=b3lyp_exhf_densities,
+                   nograd_densities=b3lyp_nograd_densities,
+                   densitygrads=b3lyp_hfgrads,
+                   combine_densities=b3lyp_combine,
+                   exchange_mask=jnp.array([[1,1,0,0,1]]))
+
+PW92 = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities = pw92_densities)
