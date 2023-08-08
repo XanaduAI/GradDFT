@@ -35,39 +35,61 @@ class Functional(nn.Module):
     ----------
     function: Callable
         Implements the function f above.
-        Example:
-        ```
-        def external_f(instance, x):
-            x = instance.dense(x)
-            x = 0.5*jnp.tanh(x)
-            return x
-        ```
 
-    features : Callable, optional
-        A function that calculates and/or loads the molecule features where gradient is
-        computed via auto differentiation.
 
-        If given, it must be a callable with the following signature:
+    coefficients : Callable
+        A function that computes and returns the weights c_\theta. If it requires
+        some inputs, these may be computed via function compute_coefficient_inputs below.
 
-        feature_fn(molecule: Molecule, *args, **kwargs) -> Union[Array, Sequence[Arrays]]
+    densities : Callable
+        A function that computes and returns the energy densities e_\theta that can be autodifferentiated
+        with respect to the reduced density matrix.
 
-    nograd_features : Callable, optional
-        A function that calculates and/or loads the molecule features where gradient is
-        computed via in featuregrads.
+        densities(molecule: Molecule, *args, **kwargs) -> Array
 
-        nograd_features(molecule: Molecule, *args, **kwargs) -> Union[Array, Sequence[Arrays]]
+    nograd_densities : Callable, optional
+        A function that calculates the molecule energy densities e_\theta where gradient with respect to the
+        reduced density matrix is computed via in densitygrads.
+
+        nograd_densities(molecule: Molecule, *args, **kwargs) -> Array
 
     featuregrads: Callable, optional
-        A function to compute the Fock matrix using gradients of with respect to those features 
+        A function to compute contributions to the Fock matrix for energy densities 
         where autodifferentiation is not used.
 
         If given has signature
 
         featuregrads(functional: nn.Module, params: Dict, molecule: Molecule, 
-            features: List[Array], nogradfeatures: Array, *args) - > Fock matrix: Array of shape (2, nao, nao)
+            nograd_densities: Array, coefficient_inputs: Array, grad_densities, *args) - > Fock matrix: Array of shape (2, nao, nao)
 
-    combine : Callable, optional
-        A function that joins the features computed with and without autodifferentiation.
+    combine_densities : Callable, optional
+        A function that joins the densities computed with and without autodifferentiation.
+        combine_densities(grad_densities: Array, nograd_densities: Array, *args, **kwargs) -> Array
+
+    coefficient_inputs : Callable, optional
+        A function that computes the inputs to the coefficients function, that can be autodifferentiated
+        with respect to the reduced density matrix.
+
+        coefficient_inputs(molecule: Molecule, *args, **kwargs) -> Array
+
+    nograd_coefficient_inputs : Callable, optional
+        A function that computes the inputs to the coefficients function, where gradient with respect to the
+        reduced density matrix is computed via in coefficient_input_grads.
+
+        nograd_coefficient_inputs(molecule: Molecule, *args, **kwargs) -> Array
+
+    coefficient_inputs_grads: Callable, optional
+        A function to compute contributions to the Fock matrix for coefficient inputs 
+        where autodifferentiation is not used.
+
+        If given has signature
+
+        coefficient_inputs_grads(functional: nn.Module, params: Dict, molecule: Molecule, 
+            nograd_coefficient_inputs: Array, grad_coefficient_inputs: Array, densities, *args) - > Fock matrix: Array of shape (2, nao, nao)
+
+    combine_coefficient_inputs : Callable, optional
+        A function that joins the coefficient inputs computed with and without autodifferentiation.
+        combine_densities(grad_coefficient_inputs: Array, nograd_coefficient_inputs: Array, *args, **kwargs) -> Array
 
     is_xc: bool
         Whether the functional models only the exchange-correlation energy
@@ -112,7 +134,16 @@ class Functional(nn.Module):
 
     def compute_densities(self, molecule: Molecule, *args, **kwargs):
         r"""
-        Computes the features for the functional
+        Computes the densities for the functional, both with and without autodifferentiation.
+
+        Parameters
+        ----------
+        molecule: Molecule
+            The molecule to compute the densities for
+        
+        Returns
+        -------
+        densities: Array
         """
 
         if self.nograd_densities and self.densities:
@@ -130,7 +161,16 @@ class Functional(nn.Module):
     
     def compute_coefficient_inputs(self, molecule: Molecule, *args, **kwargs):
         r"""
-        Computes the features for the functional
+        Computes the inputs to the coefficients method in the functional
+
+        Parameters
+        ----------
+        molecule: Molecule
+            The molecule to compute the inputs for the coefficients
+
+        Returns
+        -------
+        coefficient_inputs: Array
         """
 
         if self.nograd_coefficient_inputs and self.coefficient_inputs:
@@ -149,7 +189,7 @@ class Functional(nn.Module):
 
         return cinputs
 
-    def apply_and_integrate(self, params: PyTree, grid: Grid, coefficient_inputs: Array, densities: Array):
+    def apply_and_integrate(self, params: PyTree, grid: Grid, coefficient_inputs: Array, densities: Array, **kwargs):
         r"""
         Total energy of local functional
         
@@ -157,15 +197,22 @@ class Functional(nn.Module):
         ---------
         params: PyTree
             params of the neural network if there is one in self.f
-        molecule: Molecule
-        args: inputs to the function self.f
+        grid: Grid
+            grid to integrate over
+        coefficient_inputs: Array
+            inputs to the coefficients function
+        densities: Array
+            densities to compute the energy for
+
+        **kwargs: 
+            key word arguments for the coefficients function
 
         Returns
         -------
-        Union[Array, Scalar]
+        Scalar
         """
 
-        coefficients = self.apply(params, coefficient_inputs)
+        coefficients = self.apply(params, coefficient_inputs, **kwargs)
         xc_energy_density = jnp.einsum("rf,rf->r", coefficients, densities)
         return self._integrate(xc_energy_density, grid.weights)
     
@@ -178,7 +225,9 @@ class Functional(nn.Module):
         params: PyTree
             params of the neural network if there is one in self.f
         molecule: Molecule
-        args: inputs to the function self.f
+        
+        *args: other arguments to compute_densities or compute_coefficient_inputs
+        **kwargs: other key word arguments to densities and self.apply_and_integrate
 
         Returns
         -------
@@ -191,10 +240,10 @@ class Functional(nn.Module):
         computed with function molecule.nonXC()
         """
 
-        densities = self.compute_densities(molecule, *args)
+        densities = self.compute_densities(molecule, *args, **kwargs)
         cinputs = self.compute_coefficient_inputs(molecule, *args)
 
-        energy = self.apply_and_integrate(params, molecule.grid, cinputs, densities)
+        energy = self.apply_and_integrate(params, molecule.grid, cinputs, densities, **kwargs)
 
         if self.is_xc:
             energy += stop_gradient(molecule.nonXC())
@@ -202,7 +251,7 @@ class Functional(nn.Module):
         return energy
 
     def _integrate(
-        self, features: Array, gridweights: Array, precision: Optional[Precision] = Precision.HIGHEST
+        self, energy_density: Array, gridweights: Array, precision: Optional[Precision] = Precision.HIGHEST
     ) -> Array:
         r"""
         Helper function that performs grid quadrature (integration) 
@@ -210,8 +259,8 @@ class Functional(nn.Module):
 
         Parameters
         ----------
-        features : Array
-            features to integrate.
+        energy_density : Array
+            energy_density to integrate.
             Expected shape: (n_grid, ...)
         gridweights: Array
             gridweights.
@@ -224,12 +273,37 @@ class Functional(nn.Module):
         Array
         """
 
-        return jnp.einsum("r,r...->...", gridweights, features, precision = precision)
+        return jnp.einsum("r,r...->...", gridweights, energy_density, precision = precision)
 
 @dataclass
 class NeuralFunctional(Functional):
     r"""
-    Neural functional, subclass of Functional
+    Neural functional, subclass of Functional.
+
+    Parameters
+    ----------
+    The methods of Functional
+
+    kernel_init: Callable, optional
+        kernel initializer for the neural network, by default he_normal()
+    bias_init: Callable, optional
+        bias initializer for the neural network, by default zeros
+    activation: Callable, optional
+        activation function for the neural network, by default gelu
+    param_dtype: DType, optional
+
+    Notes
+    ----------
+    coefficients is expected to implement a neural network. For example
+        ```
+        def externally_defined_coefficients(instance, x):
+            x = instance.dense(x)
+            x = 0.5*jnp.tanh(x)
+            return x
+        ```
+
+    NeuralFunctional contains some additional methods, such as implementation of dense
+    layers, and saving/loading checkpoints 
     """
 
     coefficients: staticmethod

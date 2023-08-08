@@ -89,7 +89,7 @@ def molecule_predictor(
 
         molecule = molecule.replace(rdm1 = rdm1)
 
-        e = functional.energy(params, molecule, **functional_kwargs)
+        e = functional.energy(params, molecule, *args, **functional_kwargs)
         if nlc_functional:
             e = e + nlc_functional.energy({'params': params['dispersion']}, molecule, **functional_kwargs)
         return e
