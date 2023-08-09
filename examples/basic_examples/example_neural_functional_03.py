@@ -33,10 +33,10 @@ HH_molecule = molecule_from_pyscf(mf)
 def densities(molecule: Molecule, *_, **__):
     rho = jnp.clip(molecule.density(), a_min = 1e-27)
     kinetic = jnp.clip(molecule.kinetic_density(), a_min = 1e-27)
-    return jnp.concatenate((rho, kinetic)).T
+    return jnp.concatenate((rho, kinetic), axis = 1)
 
 out_features = 4
-def nn_coefficients(instance, rhoinputs, *_, **__):
+def nn_coefficients(instance, rhoinputs):
     r"""
     Instance is an instance of the class Functional or NeuralFunctional.
     rhoinputs is the input to the neural network, in the form of an array.

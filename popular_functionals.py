@@ -9,7 +9,7 @@ from functional import Functional, correlation_polarization_correction, exchange
 def lsda_x_e(rho, clip_cte):
     # Eq 2.72 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
     rho = jnp.clip(rho, a_min = clip_cte)
-    lda_es = -3./4. * (jnp.array([[3.],[6.]]) / jnp.pi) ** (1 / 3) * (rho.sum(axis = 0))**(4/3)
+    lda_es = -3./4. * (jnp.array([[3.,6.]]) / jnp.pi) ** (1 / 3) * (rho.sum(axis = 1, keepdims = True))**(4/3)
     lda_e = exchange_polarization_correction(lda_es, rho)
 
     return lda_e
@@ -24,7 +24,6 @@ def b88_x_e(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
     beta = 0.0042
 
     rho = jnp.clip(rho, a_min = clip_cte)
-    zeta = (rho[0] - rho[1])/ rho.sum(axis = 0)
 
     # LDA preprocessing data: Note that we duplicate the density to sum and divide in the last eq.
     log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
@@ -42,7 +41,7 @@ def b88_x_e(rho: Array, grad_rho: Array, clip_cte: float = 1e-27):
     
     # Eq 2.78 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
     b88_e = - (beta*2**(4*log_rho/3 + 2*log_x_sigma - 
-                jnp.log2(1 + 6*beta*x_sigma*jnp.arcsinh(x_sigma)))).sum(axis = 0)
+                jnp.log2(1 + 6*beta*x_sigma*jnp.arcsinh(x_sigma)))).sum(axis = 1)
 
     #def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
     # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
@@ -58,20 +57,14 @@ def pw92_c_e(rho: Array, clip_cte: float = 1e-27):
     https://journals.aps.org/prb/abstract/10.1103/PhysRevB.45.13244
     """
 
-    A_ = jnp.array([[0.031091],
-                    [0.015545]])
-    alpha1 = jnp.array([[0.21370],
-                    [0.20548]])
-    beta1 = jnp.array([[7.5957],
-                    [14.1189]])
-    beta2 = jnp.array([[3.5876],
-                    [6.1977]])
-    beta3 = jnp.array([[1.6382],
-                    [3.3662]])
-    beta4 = jnp.array([[0.49294],
-                    [0.62517]])
+    A_ = jnp.array([[0.031091,0.015545]])
+    alpha1 = jnp.array([[0.21370,0.20548]])
+    beta1 = jnp.array([[7.5957,14.1189]])
+    beta2 = jnp.array([[3.5876,6.1977]])
+    beta3 = jnp.array([[1.6382,3.3662]])
+    beta4 = jnp.array([[0.49294,0.62517]])
     
-    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
+    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 1, keepdims = True), a_min = clip_cte))
     log_rs = jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
     brs_1_2 = 2**(log_rs/2 + jnp.log2(beta1))
     ars = 2**(log_rs + jnp.log2(alpha1))
@@ -94,17 +87,13 @@ def vwn_c_e(rho: Array, clip_cte: float = 1e-27):
 
     """
 
-    A = jnp.array([[0.0621814],
-                    [0.0621814/2]])
-    b = jnp.array([[3.72744], 
-                    [7.06042]])
-    c = jnp.array([[12.9352],
-                    [18.0578]])
-    x0 = jnp.array([[-0.10498], 
-                    [-0.325]])
+    A = jnp.array([[0.0621814,0.0621814/2]])
+    b = jnp.array([[3.72744,7.06042]])
+    c = jnp.array([[12.9352,18.0578]])
+    x0 = jnp.array([[-0.10498,-0.325]])
 
     rho = jnp.where(rho > clip_cte, rho, 0.)
-    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
+    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 1, keepdims = True), a_min = clip_cte))
     #assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
     log_rs = jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
     log_x = log_rs / 2
@@ -147,32 +136,32 @@ def lyp_c_e(rho: Array, grad_rho: Array, grad2rho: Array, clip_cte = 1e-27):
     t = (jnp.where(rho > clip_cte, grad_rho_norm_sq/rho, 0) - grad2rho)/8.
     #assert not jnp.isnan(t).any() and not jnp.isinf(t).any()
 
-    frac = jnp.where(rho.sum(axis=0) > clip_cte, 
-                    ((rho**2).sum(axis =0))/(rho.sum(axis =0))**2, 1)
+    frac = jnp.where(rho.sum(axis=1) > clip_cte, 
+                    ((rho**2).sum(axis =1))/(rho.sum(axis=1))**2, 1)
     gamma = 2 * (1-frac)
 
-    rhos_ts = rho.sum(axis = 0) * t.sum(axis = 0)
+    rhos_ts = rho.sum(axis = 1) * t.sum(axis = 1)
     #assert not jnp.isnan(rhos_ts).any() and not jnp.isinf(rhos_ts).any()
 
-    rho_t = (rho*t).sum(axis = 0)
+    rho_t = (rho*t).sum(axis = 1)
     #assert not jnp.isnan(rho_t).any() and not jnp.isinf(rho_t).any()
 
-    rho_grad2rho = (rho*grad2rho).sum(axis = 0)
+    rho_grad2rho = (rho*grad2rho).sum(axis = 1)
     #assert not jnp.isnan(rho_grad2rho).any() and not jnp.isinf(rho_grad2rho).any()
 
-    exp_factor = jnp.where(rho.sum(axis=0) > 0, jnp.exp(-c*rho.sum(axis=0)**(-1/3)), 0)
+    exp_factor = jnp.where(rho.sum(axis=1) > 0, jnp.exp(-c*rho.sum(axis=1)**(-1/3)), 0)
     #assert not jnp.isnan(exp_factor).any() and not jnp.isinf(exp_factor).any()
 
-    rhom1_3 = (rho.sum(axis=0))**(-1/3.)
-    rho8_3 = (rho**(8/3.)).sum(axis=0)
-    rhom5_3 = (rho.sum(axis=0))**(-5/3)
+    rhom1_3 = (rho.sum(axis=1))**(-1/3.)
+    rho8_3 = (rho**(8/3.)).sum(axis=1)
+    rhom5_3 = (rho.sum(axis=1))**(-5/3)
 
     par = 2**(2/3)*CF*(rho8_3) - rhos_ts + rho_t/9 + rho_grad2rho/18
 
-    sum_ = jnp.where(rho.sum(axis=0) > clip_cte, 2*b* rhom5_3 * par * exp_factor, 0.)
+    sum_ = jnp.where(rho.sum(axis=1) > clip_cte, 2*b* rhom5_3 * par * exp_factor, 0.)
 
-    return - a * jnp.where(rho.sum(axis=0) > clip_cte,
-                            gamma/(1+d*rhom1_3)*(rho.sum(axis=0) +  sum_), 0.)
+    return - a * jnp.where(rho.sum(axis=1) > clip_cte,
+                            gamma/(1+d*rhom1_3)*(rho.sum(axis=1) +  sum_), 0.)
 
 def lsda_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     r"""Auxiliary function to generate the features of LSDA."""

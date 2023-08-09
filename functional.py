@@ -443,11 +443,11 @@ def dm21_coefficient_inputs(
     tau = molecule.kinetic_density()
 
     grad_rho_norm = jnp.sum(grad_rho**2, axis=-1)
-    grad_rho_norm_sumspin = jnp.sum(grad_rho.sum(axis=0, keepdims=True) ** 2, axis=-1)
+    grad_rho_norm_sumspin = jnp.sum(grad_rho.sum(axis=1, keepdims=True) ** 2, axis=-1)
 
-    features = jnp.concatenate((rho, grad_rho_norm_sumspin, grad_rho_norm, tau), axis=0)
+    features = jnp.concatenate((rho, grad_rho_norm_sumspin, grad_rho_norm, tau), axis=1)
 
-    return features.T
+    return features
 
 def dm21_densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
     r"""
@@ -514,44 +514,13 @@ def dm21_densities(molecule: Molecule, functional_type: Optional[Union[str, Dict
     log_w_sigma = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
 
     # Compute the local features
-    localfeatures = jnp.empty((0, log_rho.shape[-1]))
+    localfeatures = jnp.empty((log_rho.shape[0], 0))
     for i, j in itertools.product(u_range, w_range):
-        mgga_term = jnp.expand_dims((2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)).sum(axis=0), axis = 0) \
+        mgga_term = (2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)).sum(axis=1, keepdims = True) \
                     * jnp.where(jnp.logical_and(i==0, j==0), -2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3), 1) # to match DM21
-        localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
+        localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=1)
 
-    return localfeatures.T
-
-def dm21_densities_old(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *args, **kwargs):
-
-    r"""
-    Generates all features except the HF energy features.
-    
-    Parameters
-    ----------
-    molecule: Molecule
-    
-    functional_type: Optional[Union[str, Dict]]
-        Either one of 'LDA', 'GGA', 'MGGA' or Dictionary
-        {'u_range': range(), 'w_range': range()} that generates 
-        a functional. See `default_functionals` function.
-
-    clip_cte: float
-        A numerical threshold to avoid numerical precision issues
-        Default: 1e-27
-
-    Returns
-    ----------
-    Tuple[Array, Array]
-        The features and local features, similar to those used by DM21
-    """
-    raise DeprecationWarning('This function is deprecated, use dm21_densities instead.')
-    
-    features = dm21_coefficient_inputs(molecule, *args, **kwargs)
-    localfeatures = dm21_densities(molecule, functional_type, clip_cte)
-
-    # We return them with the first index being the position r and the second the feature.
-    return features, localfeatures
+    return localfeatures
 
 def dm21_combine_cinputs(cinputs, ehf):
     r"""
@@ -827,10 +796,10 @@ def exchange_polarization_correction(e_PF, rho):
         Array, shape (n_grid)
         The ready to be integrated electronic energy density.
     """
-    zeta = (rho[0] - rho[1])/ rho.sum(axis = 0)
+    zeta = (rho[:,0] - rho[:,1])/ rho.sum(axis = 1)
     def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
     # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
-    return e_PF[0] + (e_PF[1]-e_PF[0])*fzeta(zeta)
+    return e_PF[:,0] + (e_PF[:,1]-e_PF[:,0])*fzeta(zeta)
 
 
 def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float = 1e-27):
@@ -858,13 +827,13 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
         The ready to be integrated electronic energy density.
     """
 
-    e_tilde_PF = jnp.einsum('sr,r->sr', e_PF, rho.sum(axis = 0))
+    e_tilde_PF = jnp.einsum('rs,r->rs', e_PF, rho.sum(axis = 1))
 
-    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
+    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 1), a_min = clip_cte))
     #assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
     log_rs =  jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
 
-    zeta = jnp.where(rho.sum(axis = 0) > clip_cte, (rho[0] - rho[1]) / (rho.sum(axis = 0)), 0.)
+    zeta = jnp.where(rho.sum(axis = 1) > clip_cte, (rho[:,0] - rho[:,1]) / (rho.sum(axis = 1)), 0.)
     def fzeta(z): 
         zm = 2**(4*jnp.log2(1-z)/3)
         zp = 2**(4*jnp.log2(1+z)/3)
@@ -889,7 +858,7 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
     fz = jnp.round(fzeta(zeta), int(math.log10(clip_cte)))
     z4 = jnp.round(2**(4*jnp.log2(jnp.clip(zeta, a_min = clip_cte))), int(math.log10(clip_cte)))
 
-    e_tilde = e_tilde_PF[0] + alphac * (fz/(grad(grad(fzeta))(0.)))* (1-z4) + (e_tilde_PF[1]-e_tilde_PF[0]) * fz*z4
+    e_tilde = e_tilde_PF[:,0] + alphac * (fz/(grad(grad(fzeta))(0.)))* (1-z4) + (e_tilde_PF[:,1]-e_tilde_PF[:,0]) * fz*z4
     #assert not jnp.isnan(e_tilde).any() and not jnp.isinf(e_tilde).any()
 
     return e_tilde
@@ -962,18 +931,18 @@ def densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str,
                             log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
 
     # Compute the local features
-    localfeatures = jnp.empty((0, log_rho.shape[-1]))
+    localfeatures = jnp.empty((log_rho.shape[0], 0))
     for i, j in itertools.product(u_range, w_range):
         mgga_term = 2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)
 
         # First we concatenate the exchange terms
-        localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
+        localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=1)
 
     ######### Correlation features ###############
 
-    grad_rho_norm_sq_ss = jnp.sum((grad_rho.sum(axis = 0))**2, axis=-1)
+    grad_rho_norm_sq_ss = jnp.sum((grad_rho.sum(axis = 1))**2, axis=-1)
     log_grad_rho_norm_ss = jnp.log2(jnp.clip(grad_rho_norm_sq_ss, a_min = clip_cte))/2
-    log_rho_ss = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
+    log_rho_ss = jnp.log2(jnp.clip(rho.sum(axis = 1), a_min = clip_cte))
     log_x_ss = log_grad_rho_norm_ss - 4/3.*log_rho_ss
 
     log_u_ss = jnp.where(jnp.greater(log_rho_ss,jnp.log2(clip_cte)), 
@@ -982,34 +951,28 @@ def densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str,
     log_u_ab = jnp.where(jnp.greater(log_rho_ss,jnp.log2(clip_cte)), 
                             log_x_ss - 1 - jnp.log2(1 + beta*(2**(log_x_ss-1))) + jnp.log2(beta), 0)
 
-    log_u_c = jnp.stack((log_u_ss, log_u_ab), axis = 0)
+    log_u_c = jnp.stack((log_u_ss, log_u_ab), axis = 1)
 
 
-    log_tau_ss = jnp.log2(jnp.clip(tau.sum(axis = 0), a_min = clip_cte))
+    log_tau_ss = jnp.log2(jnp.clip(tau.sum(axis = 1), a_min = clip_cte))
     log_1t_ss = log_tau_ss - 5/3.*log_rho_ss
-    log_w_ss = jnp.where(jnp.greater(log_rho.sum(axis = 0), jnp.log2(clip_cte)), 
+    log_w_ss = jnp.where(jnp.greater(log_rho.sum(axis = 1), jnp.log2(clip_cte)), 
                             log_1t_ss - jnp.log2(1 + beta*(2**log_1t_ss)) + jnp.log2(beta), 0)
     
-    log_w_ab = jnp.where(jnp.greater(log_rho.sum(axis = 0), jnp.log2(clip_cte)), 
+    log_w_ab = jnp.where(jnp.greater(log_rho.sum(axis = 1), jnp.log2(clip_cte)), 
                             log_1t_ss - 1 - jnp.log2(1 + beta*(2**(log_1t_ss-1))) + jnp.log2(beta), 0)
     
-    log_w_c = jnp.stack((log_w_ss, log_w_ab), axis = 0)
+    log_w_c = jnp.stack((log_w_ss, log_w_ab), axis = 1)
 
 
-    A_ = jnp.array([[0.031091],
-                    [0.015545]])
-    alpha1 = jnp.array([[0.21370],
-                    [0.20548]])
-    beta1 = jnp.array([[7.5957],
-                    [14.1189]])
-    beta2 = jnp.array([[3.5876],
-                    [6.1977]])
-    beta3 = jnp.array([[1.6382],
-                    [3.3662]])
-    beta4 = jnp.array([[0.49294],
-                    [0.62517]])
+    A_ = jnp.array([[0.031091,0.015545]])
+    alpha1 = jnp.array([[0.21370,0.20548]])
+    beta1 = jnp.array([[7.5957,14.1189]])
+    beta2 = jnp.array([[3.5876,6.1977]])
+    beta3 = jnp.array([[1.6382,3.3662]])
+    beta4 = jnp.array([[0.49294,0.62517]])
     
-    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 0), a_min = clip_cte))
+    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 1, keepdims = True), a_min = clip_cte))
     log_rs = jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
     brs_1_2 = 2**(log_rs/2 + jnp.log2(beta1))
     ars = 2**(log_rs + jnp.log2(alpha1))
@@ -1025,9 +988,9 @@ def densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str,
             2**(jnp.log2(e_PW92) + i * log_u_c + j * log_w_c), 0)
 
         # First we concatenate the exchange terms
-        localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=0)
+        localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=1)
 
-    return localfeatures.T
+    return localfeatures
 
 
 ############# Dispersion functional #############

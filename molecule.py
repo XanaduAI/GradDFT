@@ -228,7 +228,7 @@ def density(rdm1: Array, ao: Array, precision: Precision = Precision.HIGHEST) ->
         The density. Shape: (n_spin, n_grid_points)
     """
 
-    return jnp.einsum("...ab,ra,rb->...r", rdm1, ao, ao, precision=precision)
+    return jnp.einsum("...ab,ra,rb->r...", rdm1, ao, ao, precision=precision)
 
 @partial(jax.jit, static_argnames="precision")
 def grad_density(
@@ -259,13 +259,13 @@ def grad_density(
         The density gradient. Shape: (n_spin, n_grid_points, 3)
     """
 
-    return 2 * jnp.einsum("...ab,ra,rbj->...rj", rdm1, ao, grad_ao, precision=precision)
+    return 2 * jnp.einsum("...ab,ra,rbj->r...j", rdm1, ao, grad_ao, precision=precision)
 
 @partial(jax.jit, static_argnames="precision")
 def lapl_density(rdm1: Array, ao: Array, grad_ao: Array, grad_2_ao: PyTree, precision: Precision = Precision.HIGHEST):
 
-    return 2* jnp.einsum("...ab,raj,rbj->...r", rdm1, grad_ao, grad_ao, precision=precision) + \
-            2 * jnp.einsum("...ab,ra,rbi->...r", rdm1, ao, grad_2_ao, precision=precision)
+    return 2* jnp.einsum("...ab,raj,rbj->r...", rdm1, grad_ao, grad_ao, precision=precision) + \
+            2 * jnp.einsum("...ab,ra,rbi->r...", rdm1, ao, grad_2_ao, precision=precision)
 
 @partial(jax.jit, static_argnames="precision")
 def kinetic_density(rdm1: Array, grad_ao: Array, precision: Precision = Precision.HIGHEST) -> Array:
@@ -291,7 +291,7 @@ def kinetic_density(rdm1: Array, grad_ao: Array, precision: Precision = Precisio
         The kinetic energy density. Shape: (n_spin, n_grid_points)
     """
 
-    return 0.5 * jnp.einsum("...ab,raj,rbj->...r", rdm1, grad_ao, grad_ao, precision=precision)
+    return 0.5 * jnp.einsum("...ab,raj,rbj->r...", rdm1, grad_ao, grad_ao, precision=precision)
 
 @partial(jax.jit, static_argnames=["precision"])
 def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision = Precision.HIGHEST):

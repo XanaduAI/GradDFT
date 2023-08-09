@@ -1,3 +1,4 @@
+from ast import Return
 from functools import partial
 from flax.core import unfreeze, freeze
 from typing import Dict, Optional, Union
@@ -13,7 +14,7 @@ from orbax.checkpoint import PyTreeCheckpointer
 from molecule import Molecule
 
 from train import make_train_kernel, molecule_predictor
-from functional import DispersionFunctional, Functional, NeuralFunctional, canonicalize_inputs, dm21_combine, dm21_hfgrads, dm21_coefficient_inputs, densities
+from functional import DispersionFunctional, NeuralFunctional, canonicalize_inputs, dm21_coefficient_inputs, densities, dm21_combine_cinputs, dm21_combine_densities, dm21_hfgrads_cinputs, dm21_hfgrads_densities
 from interface.pyscf import loader
 
 from torch.utils.tensorboard import SummaryWriter
@@ -27,7 +28,7 @@ config.update('jax_disable_jit', True)
 
 dirpath = os.path.dirname(os.path.dirname(__file__))
 training_data_dirpath = os.path.normpath(dirpath + "/data/training/dissociation/")
-training_files = ["H2_extrapolation.h5"] 
+training_files = ["H2_extrapolation_train.h5"] 
 # alternatively, use "H2plus_extrapolation.h5". You will have needed to execute in data_processing.py
 #distances = [0.5, 0.75, 1, 1.25, 1.5]
 #process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
@@ -48,7 +49,7 @@ sigmoid_scale_factor = 2.
 activation = gelu
 loadcheckpoint = False
 
-def function(instance, rhoinputs, localfeatures, *_, **__):
+def nn_coefficients(instance, rhoinputs, *_, **__):
     x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
 
     # Initial layer: log -> dense -> tanh
@@ -71,9 +72,8 @@ def function(instance, rhoinputs, localfeatures, *_, **__):
         x = activation(x) # activation = jax.nn.gelu
         instance.sow('intermediates', 'residual_elu_'+str(i), x)
 
-    x = instance.head(x, out_features, sigmoid_scale_factor)
+    return instance.head(x, out_features, sigmoid_scale_factor)
 
-    return jnp.einsum('ri,ri->r', x, localfeatures)
 
 def nn_dispersion(instance: nn.Module, x, *_, **__):
 
@@ -127,57 +127,21 @@ def nn_dispersion(instance: nn.Module, x, *_, **__):
 
     return Cab/(1+jnp.exp(-(Rab/Rab0-1)))
 
-def features(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = 'LDA', clip_cte: float = 1e-27, *args, **kwargs):
-
-    r"""
-    Generates all features except the HF energy features.
-    
-    Parameters
-    ----------
-    molecule: Molecule
-    
-    functional_type: Optional[Union[str, Dict]]
-        Either one of 'LDA', 'GGA', 'MGGA' or Dictionary
-        {'u_range': range(), 'w_range': range()} that generates 
-        a functional. See `default_functionals` function.
-
-    clip_cte: float
-        A numerical threshold to avoid numerical precision issues
-        Default: 1e-27
-
-    Returns
-    ----------
-    Tuple[Array, Array]
-        The features and local features, similar to those used by DM21
-    """
-    
-    features = dm21_coefficient_inputs(molecule, *args, **kwargs)
-    localfeatures = densities(molecule, functional_type, clip_cte)
-
-    # We return them with the first index being the position r and the second the feature.
-    return features, localfeatures
-
-features = partial(features, functional_type = 'MGGA')
-
-def combine(features, ehf):
-
-    features, local_features = features
-
-    # Remember that DM concatenates the hf density in the x features by spin...
-    features = jnp.concatenate([features, ehf[:,0].T, ehf[:,1].T], axis=1)
-
-    # ... and in the y features by omega.
-    local_features = jnp.concatenate([local_features, ehf[:,0].T, ehf[:,1].T], axis=1)
-    return features,local_features
+def combine_densities(densities, ehf):
+    ehf = jnp.reshape(ehf, (ehf.shape[2], ehf.shape[0]*ehf.shape[1]))
+    return jnp.concatenate((densities, ehf), axis = 1)
 
 omegas = [0., 0.4]
-functional = NeuralFunctional(function = function, 
-                            features = features,
-                            nograd_features = lambda molecule, *_, **__: molecule.HF_energy_density(omegas),
-                            featuregrads=lambda self, params, molecule, features, nograd_features, *_, **__: dm21_hfgrads(self, params, 
-                                                                                                            molecule, features, nograd_features,
-                                                                                                            omegas = omegas),
-                            combine = combine)
+functional = NeuralFunctional(coefficients = nn_coefficients,
+                            energy_densities=partial(densities, functional_type = 'MGGA'),
+                            nograd_densities=lambda molecule, *_, **__: molecule.HF_energy_density(omegas),
+                            densitygrads = lambda self, params, molecule, nograd_densities, cinputs, grad_densities, *_, **__: dm21_hfgrads_densities(self, params, molecule, nograd_densities, cinputs, grad_densities, omegas),
+                            combine_densities = combine_densities,
+                            coefficient_inputs=dm21_coefficient_inputs, 
+                            nograd_coefficient_inputs = lambda molecule, *_, **__: molecule.HF_energy_density(omegas),
+                            coefficient_input_grads = lambda self, params, molecule, nograd_cinputs, grad_cinputs, densities, *_, **__: dm21_hfgrads_cinputs(self, params, molecule, nograd_cinputs, grad_cinputs, densities, omegas),
+                            combine_inputs = dm21_combine_cinputs
+                            )
 
 DispersionNN = DispersionFunctional(dispersion = nn_dispersion)
 
@@ -188,8 +152,7 @@ key = PRNGKey(42) # Jax-style random seed
 # We generate the features from the molecule we created before, to initialize the parameters
 key, = split(key, 1)
 rhoinputs = jax.random.normal(key, shape = [2, 11])
-localfeatures = jax.random.normal(key, shape = [2, out_features])
-params = functional.init(key, rhoinputs, localfeatures)
+params = functional.init(key, rhoinputs)
 
 dispersioninputs = jax.random.normal(key, shape = [2, 4])
 dparams = DispersionNN.init(key, dispersioninputs)
