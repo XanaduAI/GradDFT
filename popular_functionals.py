@@ -257,16 +257,16 @@ def b3lyp_hfgrads(functional: nn.Module, params: Dict, molecule: Molecule, ehf: 
     return vxc_hf.sum(axis=0) # Sum over omega
 
 
-LSDA = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities = lsda_density)
-B88 = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities = b88_density)
-VWN = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities = vwn_density)
-LYP = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities = lyp_density, exchange_mask=jnp.array([]))
+LSDA = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), energy_densities = lsda_density)
+B88 = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), energy_densities = b88_density)
+VWN = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), energy_densities = vwn_density)
+LYP = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), energy_densities = lyp_density, exchange_mask=jnp.array([]))
 
 B3LYP = Functional(coefficients = b3lyp_coefficients,
-                   densities=b3lyp_exhf_densities,
+                   energy_densities=b3lyp_exhf_densities,
                    nograd_densities=b3lyp_nograd_densities,
                    densitygrads=b3lyp_hfgrads,
                    combine_densities=b3lyp_combine,
                    exchange_mask=jnp.array([[1,1,0,0,1]]))
 
-PW92 = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities = pw92_densities)
+PW92 = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), energy_densities = pw92_densities)

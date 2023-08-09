@@ -34,19 +34,18 @@ def lsda_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
     # To avoid numerical issues in JAX we limit too small numbers.
     rho = jnp.clip(rho, a_min = clip_cte)
     # Now we can implement the LDA energy density equation in the paper.
-    lda_e = -3./2. * (3. / (4*jnp.pi)) ** (1 / 3) * (rho.sum(axis = 0))**(4/3)
+    lda_e = -3./2. * (3. / (4*jnp.pi)) ** (1 / 3) * (rho**(4/3)).sum(axis = 0, keepdims = True)
     # For simplicity we do not include the exchange polarization correction
     # check function exchange_polarization_correction in functional.py
-    # The output of features must be a list of arrays of dimension n_grid x n_features.
-    e = jnp.expand_dims(lda_e, axis = 1)
-    return e
+    # The output of features must be an Array of dimension n_grid x n_features.
+    return lda_e.T
 
 # Then we have to define a function that takes the output of features and returns the energy density.
 # Its first argument represents the instance of the functional. Note how we sum over the dimensions
 # feature in the LDA energy density that we computed above
 
 # Overall, we have the functional
-LSDA = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), densities=lsda_density)
+LSDA = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), energy_densities=lsda_density)
 params = freeze({'params': {}}) # Since the functional is not neural, we pass frozen dict for the parameters
 
 # We can compute the predicted energy using the following code:

@@ -5,7 +5,7 @@ from jax.random import split, PRNGKey
 from jax import numpy as jnp
 from jax.nn import gelu
 from matplotlib import pyplot as plt
-#plt.rcParams['text.usetex'] = True
+plt.rcParams['text.usetex'] = True
 import numpy as np
 from optax import adam
 import pandas as pd
@@ -25,20 +25,20 @@ config.update("jax_enable_x64", True)
 # In this example we explain how to evaluate the experiments that train
 # the functional in some points of the dissociation curve of H2 or H2^+.
 
-dirpath = os.path.dirname(os.path.dirname(__file__))
+dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 #todo: Select here the file to evaluate
 
 # Select here the file you would like to evaluate your model on
-test_files = ["H2plus_dissociation.h5"]
+test_files = ["N2_dissociation.h5"]
 
 # Select here the folder where the checkpoints are stored
-ckpt_folder = "checkpoints/ckpts_H2plus_extrapolation/"
+ckpt_folder = "checkpoints/ckpts_N2_interpolation/"
 training_data_dirpath = os.path.join(dirpath, ckpt_folder) #os.path.normpath(dirpath + "/data/training/dissociation/")
 
 
 # Just for plotting, indicate the name of the file this model was trained on
-train_file = 'H2plus_extrapolation_train.hdf5'
+train_file = 'N2_interpolation_train.hdf5'
 control_files = [train_file]
 # alternatively, use "H2_interpolation.h5". You will have needed to execute in data_processing.py
 #process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z')
@@ -57,7 +57,7 @@ out_features = 4
 sigmoid_scale_factor = 2.
 activation = gelu
 
-def nn_coefficients(instance, rhoinputs, localfeatures, *_, **__):
+def nn_coefficients(instance, rhoinputs, *_, **__):
     x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
 
     # Initial layer: log -> dense -> tanh
@@ -80,14 +80,12 @@ def nn_coefficients(instance, rhoinputs, localfeatures, *_, **__):
         x = activation(x) # activation = jax.nn.gelu
         instance.sow('intermediates', 'residual_elu_'+str(i), x)
 
-    x = instance.head(x, out_features, sigmoid_scale_factor)
-
-    return jnp.einsum('ri,ri->r', x, localfeatures)
+    return instance.head(x, out_features, sigmoid_scale_factor)
 
 cinputs = dm21_coefficient_inputs
 functional = NeuralFunctional(coefficients = nn_coefficients, 
                               coefficient_inputs=dm21_coefficient_inputs,
-                              densities = partial(dm21_densities, functional_type = 'MGGA'))
+                              energy_densities = partial(dm21_densities, functional_type = 'MGGA'))
 
 ####### Initializing the functional and some parameters #######
 
@@ -96,8 +94,7 @@ key = PRNGKey(42) # Jax-style random seed
 # We generate the features from the molecule we created before, to initialize the parameters
 key, = split(key, 1)
 rhoinputs = jax.random.normal(key, shape = [2, 7])
-localfeatures = jax.random.normal(key, shape = [2, out_features])
-params = functional.init(key, rhoinputs, localfeatures)
+params = functional.init(key, rhoinputs)
 
 # Select the checkpoint to load and more parameters
 loadcheckpoint = True
@@ -148,7 +145,7 @@ control_dict = predict(state, control_files, training_data_dirpath)
 for k in control_dict.keys():
     print(k, control_dict[k], predictions_dict[k])
 
-main_folder = os.path.dirname(os.path.dirname(__file__))
+main_folder = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 # Reading the dissociation curves from files
 raw_data_folder = os.path.join(main_folder, 'data/raw/dissociation/')
@@ -163,9 +160,9 @@ dissociation_N2_file = os.path.join(raw_data_folder, 'N2_dissociation.xlsx')
 dissociation_N2_df = pd.read_excel(dissociation_N2_file, header=0, index_col=0)
 
 #todo: Select here the file where original data is stored
-df = dissociation_H2plus_df
-image_file_name = 'dissociation_H2plus_inter.pdf'
-column = 'cc-pV5Z'
+df = dissociation_N2_df
+image_file_name = 'dissociation_N2_inter.pdf'
+column = 'energy (Ha)' #'cc-pV5Z'
 
 def MAE(predictions: Dict, dissociation_df: pd.DataFrame):
     dissociation = dissociation_df[column].to_dict()
@@ -206,33 +203,35 @@ true_energies = {k: v for (k, v) in zip(df.index, df[column])}
 ax.plot(df.index, df[column], 'b-', label='Ground Truth')
 ax.plot(trained_dict.keys(), trained_dict.values(), 'o', label='Trained points', color='black')
 
-ax.set_ylabel('Energy (Ha)', fontsize=16)
-ax.set_xlabel('Distance (A)', fontsize=16)
+ax.set_ylabel(r'Energy (Ha)', fontsize=16)
+ax.set_xlabel(r'Distance ($\mathring{A}$)', fontsize=16)
 finaly = list(df[column])[-1]
 miny = min(df[column])
 maxy = finaly + (finaly - miny)/5
 miny -= (finaly - miny)/10
-ax.set_ybound(-0.65, -0.4) #todo: change range as appropriate
+#todo: change range as appropriate
+#ax.set_ybound(-0.65, -0.4) 
 #ax.set_ybound(-1.2, -0.85)
-t = ax.text(0.05, 0.9, '(b)', transform=ax.transAxes, fontsize=24)
+ax.set_ybound(-109.63, -109.)
+t = ax.text(0.05, 0.9, r'(f) $N_2$ dissociation interpolation', transform=ax.transAxes, fontsize=24)
 t.set_bbox(dict(facecolor='white', alpha=1, linewidth=0))
 mae = MAE(predictions, df)
 
-#ax.set_title('H2 dissociation', loc='center')
-#ax.text(0.5, 0.9, r'$H_2$ dissociation', ha='center', va='center', transform=ax.transAxes, fontsize=16)
-ax.text(0.9, 0.1, 'Evaluation MAE: '+  f"{mae:.4e}"+ ' Ha', ha='right', va='bottom', transform=ax.transAxes, fontsize=18)
+#ax.set_title('H2 dissociation', loc='center')#todo: change title
+#ax.text(0.5, 0.9, r'$N_2$ dissociation', ha='center', va='center', transform=ax.transAxes, fontsize=16)
+ax.text(0.9, 0.2, r'Evaluation MAE: '+  f"{mae:.4e}"+ ' Ha', ha='right', va='bottom', transform=ax.transAxes, fontsize=18)
 ax.legend(fontsize="16")
 ax.tick_params(axis='both', which='major', labelsize=16)
 
 
 file = os.path.join(dirpath, ckpt_folder, image_file_name)
-fig.savefig(file, dpi = 300)
+fig.savefig(file, dpi = 200)
 plt.show()
 plt.close()
 
 for k in predictions.keys():
     print(k, predictions[k], df.loc[k,column])
 
-print('The MAE over all predictions in H2 dissociation extrapolation is '+  str(MAE(predictions, df)))
+print('The MAE over all predictions in H2 dissociation interpolation is '+  str(MAE(predictions, df)))
 
 

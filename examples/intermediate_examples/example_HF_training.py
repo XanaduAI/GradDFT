@@ -33,7 +33,7 @@ params = functional.generate_DM21_weights()
 key = PRNGKey(42) # Jax-style random seed
 
 # We generate the input densities from the molecule we created before
-grad_densities = functional.densities(molecule)
+grad_densities = functional.energy_densities(molecule)
 nograd_densities = stop_gradient(functional.nograd_densities(molecule))
 densities = functional.combine_densities(grad_densities, nograd_densities)
 

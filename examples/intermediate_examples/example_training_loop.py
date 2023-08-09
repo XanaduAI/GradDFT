@@ -59,7 +59,7 @@ def nn_coefficients(instance, rhoinputs, *_, **__):
     return instance.head(x, out_features, sigmoid_scale_factor)
 
 functional = NeuralFunctional(coefficients = nn_coefficients,
-                            densities=dm21_densities,
+                            energy_densities=dm21_densities,
                             coefficient_inputs=dm21_coefficient_inputs)
 
 key = PRNGKey(42) # Jax-style random seed
@@ -72,7 +72,7 @@ key, = split(key, 1)
 params = functional.init(key, rhoinputs)
 
 # We generate the input densities from the molecule we created before
-densities = functional.densities(molecule)
+densities = functional.energy_densities(molecule)
 # We now generated the inputs to the coefficients nn
 coefficient_inputs = functional.coefficient_inputs(molecule)
 # We can use this features to compute the energy by parts

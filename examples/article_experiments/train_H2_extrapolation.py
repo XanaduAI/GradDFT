@@ -18,7 +18,7 @@ import jax
 # In this example we explain how to replicate the experiments that train
 # the functional in some points of the dissociation curve of H2 or H2^+.
 
-dirpath = os.path.dirname(os.path.dirname(__file__))
+dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 training_data_dirpath = os.path.normpath(dirpath + "/data/training/dissociation/")
 training_files = ["H2plus_extrapolation_train.h5"] 
 # alternatively, use "H2plus_extrapolation.h5". You will have needed to execute in data_processing.py
@@ -65,10 +65,9 @@ def nn_coefficients(instance, rhoinputs, *_, **__):
 
     return instance.head(x, out_features, sigmoid_scale_factor)
 
-cinputs = dm21_coefficient_inputs
 functional = NeuralFunctional(coefficients = nn_coefficients, 
                               coefficient_inputs=dm21_coefficient_inputs,
-                              densities = partial(dm21_densities, functional_type = 'MGGA'))
+                              energy_densities = partial(dm21_densities, functional_type = 'MGGA'))
 
 ####### Initializing the functional and some parameters #######
 

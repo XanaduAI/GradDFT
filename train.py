@@ -122,12 +122,12 @@ def molecule_predictor(
         fock = 1/2*(fock + fock.transpose(0,2,1))
 
         # Compute the features that should be autodifferentiated
-        if functional.densities and functional.densitygrads:
-            grad_densities = functional.densities(molecule, *args, **kwargs)
+        if functional.energy_densities and functional.densitygrads:
+            grad_densities = functional.energy_densities(molecule, *args, **kwargs)
             nograd_densities = stop_gradient(functional.nograd_densities(molecule, *args, **kwargs))
             densities = functional.combine_densities(grad_densities, nograd_densities)
-        elif functional.densities:
-            grad_densities = functional.densities(molecule, *args, **kwargs)
+        elif functional.energy_densities:
+            grad_densities = functional.energy_densities(molecule, *args, **kwargs)
             nograd_densities = None
             densities = grad_densities
         elif functional.densitygrads:

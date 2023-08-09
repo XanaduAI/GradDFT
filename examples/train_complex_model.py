@@ -13,7 +13,7 @@ from orbax.checkpoint import PyTreeCheckpointer
 from molecule import Molecule
 
 from train import make_train_kernel, molecule_predictor
-from functional import DispersionFunctional, Functional, NeuralFunctional, canonicalize_inputs, dm21_combine, dm21_hfgrads, dm21_molecule_features, local_features
+from functional import DispersionFunctional, Functional, NeuralFunctional, canonicalize_inputs, dm21_combine, dm21_hfgrads, dm21_coefficient_inputs, densities
 from interface.pyscf import loader
 
 from torch.utils.tensorboard import SummaryWriter
@@ -151,8 +151,8 @@ def features(molecule: Molecule, functional_type: Optional[Union[str, Dict]] = '
         The features and local features, similar to those used by DM21
     """
     
-    features = dm21_molecule_features(molecule, *args, **kwargs)
-    localfeatures = local_features(molecule, functional_type, clip_cte)
+    features = dm21_coefficient_inputs(molecule, *args, **kwargs)
+    localfeatures = densities(molecule, functional_type, clip_cte)
 
     # We return them with the first index being the position r and the second the feature.
     return features, localfeatures

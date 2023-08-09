@@ -69,10 +69,9 @@ def nn_coefficients(instance, rhoinputs, *_, **__):
 
     return instance.head(x, out_features, sigmoid_scale_factor)
 
-cinputs = dm21_coefficient_inputs
 functional = NeuralFunctional(coefficients = nn_coefficients, 
                               coefficient_inputs=dm21_coefficient_inputs,
-                              densities = partial(dm21_densities, functional_type = 'MGGA'))
+                              energy_densities = partial(dm21_densities, functional_type = 'MGGA'))
 
 ####### Initializing the functional and some parameters #######
 

@@ -9,7 +9,7 @@ import tqdm
 
 from interface.pyscf import molecule_from_pyscf
 from interface.pyscf import loader
-from functional import NeuralFunctional, canonicalize_inputs, dm21_molecule_features, local_features
+from functional import NeuralFunctional, canonicalize_inputs, dm21_coefficient_inputs, densities
 from jax.nn import gelu
 from orbax.checkpoint import PyTreeCheckpointer
 from torch.utils.tensorboard import SummaryWriter
@@ -49,7 +49,7 @@ out_features = 16 # 2 spin channels, 2 for exchange/correlation, 4 for MGGA
 sigmoid_scale_factor = 2.
 activation = gelu
 
-def function(instance, rhoinputs, localfeatures, *_, **__):
+def coefficients(instance, rhoinputs, *_, **__):
     x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
 
     # Initial layer: log -> dense -> tanh
@@ -72,26 +72,20 @@ def function(instance, rhoinputs, localfeatures, *_, **__):
         x = activation(x) # activation = jax.nn.gelu
         instance.sow('intermediates', 'residual_elu_'+str(i), x)
 
-    x = instance.head(x, out_features, sigmoid_scale_factor)
+    return instance.head(x, out_features, sigmoid_scale_factor)
 
-    return jnp.einsum('ri,ri->r', x, localfeatures)
-
-def features(molecule, functional_type='MGGA', *_, **__):
-    localfeatures = local_features(molecule, functional_type)
-    rhoinputs = dm21_molecule_features(molecule)
-    return [rhoinputs, localfeatures]
-
-functional = NeuralFunctional(function = function, features = features)
+functional = NeuralFunctional(coefficients=coefficients, 
+                              energy_densities=partial(densities, functional_type='MGGA'),
+                              coefficient_inputs=dm21_coefficient_inputs)
 
 ####### Initializing the functional and some parameters #######
 
 key = PRNGKey(42) # Jax-style random seed
 
 # We generate the features from the molecule we created before, to initialize the parameters
-localfeatures = local_features(molecule, functional_type='MGGA')
-rhoinputs = dm21_molecule_features(molecule)
+rhoinputs = dm21_coefficient_inputs(molecule)
 key, = split(key, 1)
-params = functional.init(key, rhoinputs, localfeatures)
+params = functional.init(key, rhoinputs)
 
 learning_rate = 1e-5
 momentum = 0.9

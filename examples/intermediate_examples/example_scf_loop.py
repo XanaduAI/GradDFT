@@ -57,7 +57,7 @@ def nn_coefficients(instance, rhoinputs, *_, **__):
     return instance.head(x, out_features, sigmoid_scale_factor)
 
 functional = NeuralFunctional(coefficients = nn_coefficients,
-                            densities=dm21_densities,
+                            energy_densities=dm21_densities,
                             coefficient_inputs=dm21_coefficient_inputs)
 
 # Load a saved checkpoint (if wished, otherwise just initialize the parameters

@@ -51,7 +51,7 @@ def nn_coefficients(instance, rhoinputs, *_, **__):
     return sigmoid(x)
 
 neuralfunctional = NeuralFunctional(coefficients=nn_coefficients, 
-                                    densities=densities,
+                                    energy_densities=densities,
                                     coefficient_inputs=densities)
 
 # Now we can initialize the parameters of the neural network

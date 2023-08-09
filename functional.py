@@ -102,7 +102,7 @@ class Functional(nn.Module):
     """
 
     coefficients: staticmethod
-    densities: staticmethod
+    energy_densities: staticmethod
     nograd_densities: staticmethod = None
     densitygrads: staticmethod = None
     combine_densities: staticmethod = None
@@ -146,13 +146,13 @@ class Functional(nn.Module):
         densities: Array
         """
 
-        if self.nograd_densities and self.densities:
-            densities = self.densities(molecule, *args, **kwargs)
+        if self.nograd_densities and self.energy_densities:
+            densities = self.energy_densities(molecule, *args, **kwargs)
             nograd_densities = stop_gradient(self.nograd_densities(molecule, *args, **kwargs))
             densities = self.combine_densities(densities, nograd_densities)
 
-        elif self.densities:
-            densities = self.densities(molecule, *args, **kwargs)
+        elif self.energy_densities:
+            densities = self.energy_densities(molecule, *args, **kwargs)
 
         elif self.nograd_densities:
             densities = stop_gradient(self.nograd_densities(molecule, *args, **kwargs))
@@ -307,7 +307,7 @@ class NeuralFunctional(Functional):
     """
 
     coefficients: staticmethod
-    densities: staticmethod
+    energy_densities: staticmethod
     nograd_densities: staticmethod = None
     densitygrads: staticmethod = None
     combine_densities: staticmethod = None
@@ -428,6 +428,7 @@ def dm21_coefficient_inputs(
     molecule:
         class Molecule
     clip_cte: Optional[float]
+        Needed to make sure it 
         default 1e-27 (chosen carefully, take care if decrease)
     
     Returns
@@ -616,7 +617,7 @@ class DM21(NeuralFunctional):
     """
 
     coefficients: Callable = lambda self, inputs: self.default_nn(inputs)
-    densities: Callable = dm21_densities
+    energy_densities: Callable = dm21_densities
     nograd_densities: staticmethod = lambda molecule, *_, **__: molecule.HF_energy_density([0., 0.4])
     densitygrads: staticmethod = lambda self, params, molecule, nograd_densities, cinputs, grad_densities, *_, **__: dm21_hfgrads_densities(self, params, molecule, nograd_densities, cinputs, grad_densities, [0., 0.4])
     combine_densities: staticmethod = dm21_combine_densities
