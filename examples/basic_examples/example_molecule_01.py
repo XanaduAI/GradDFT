@@ -4,9 +4,9 @@ from jax import grad, vmap, numpy as jnp
 import jax
 from tqdm import tqdm
 
-from interface import molecule_from_pyscf, loader
-from interface import saver as save
-from molecule import Molecule, make_reaction
+from grad_dft.interface import molecule_from_pyscf, loader
+from grad_dft.interface import saver as save
+from grad_dft.molecule import Molecule, make_reaction
 
 # In this basic tutorial we want to introduce the concept of a molecule, which is a class that contains
 # all the information about a molecule that we need to compute its energy and its gradient.
@@ -16,7 +16,7 @@ from molecule import Molecule, make_reaction
 # To prepare a molecule, we need to compute many properties of such system. We will use PySCF to do so,
 # though we could use any other software. For example:
 from pyscf import gto, dft
-from utils.types import Array
+from grad_dft.utils.types import Array
 # Define the geometry of the molecule
 geometry = [['H', (0, 0, 0)], ['F', (0, 0, 1.1)]]
 mol = gto.M(atom = geometry, basis = 'def2-tzvp', charge = 0, spin = 0)
