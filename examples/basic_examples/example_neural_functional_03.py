@@ -2,11 +2,11 @@ from jax import numpy as jnp
 from jax.random import split, PRNGKey
 from optax import adam, apply_updates
 from tqdm import tqdm
-from evaluate import make_jitted_orbital_optimizer, make_orbital_optimizer, make_scf_loop, make_jitted_scf_loop
-from train import molecule_predictor
-from functional import NeuralFunctional, default_loss
-from interface import molecule_from_pyscf
-from molecule import Molecule
+from grad_dft.evaluate import make_jitted_orbital_optimizer, make_orbital_optimizer, make_scf_loop, make_jitted_scf_loop
+from grad_dft.train import molecule_predictor
+from grad_dft.functional import NeuralFunctional, default_loss
+from grad_dft.interface import molecule_from_pyscf
+from grad_dft.molecule import Molecule
 from jax.nn import sigmoid, gelu
 from flax import linen as nn
 from jax import config
