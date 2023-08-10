@@ -14,17 +14,17 @@ from pyscf.gto import Mole
 import pyscf.data.elements as elements
 
 #from qdft.reaction import Reaction, make_reaction, get_grad
-from molecule import Grid, Molecule, Reaction, make_reaction
-from utils import DType, default_dtype
+from grad_dft.molecule import Grid, Molecule, Reaction, make_reaction
+from grad_dft.utils import DType, default_dtype
 from jax.tree_util import tree_map
-from external import NeuralNumInt
-from external import Functional as ExternalFunctional
+from grad_dft.external import NeuralNumInt
+from grad_dft.external import Functional as ExternalFunctional
 
 import h5py
 from pyscf import cc, dft, scf
 
-from utils import Array, Scalar, DensityFunctional, HartreeFock
-from external import _nu_chunk
+from grad_dft.utils import Array, Scalar, DensityFunctional, HartreeFock
+from grad_dft.external import _nu_chunk
 
 def grid_from_pyscf(grids: Grids, dtype: Optional[DType] = None) -> Grid:
 
