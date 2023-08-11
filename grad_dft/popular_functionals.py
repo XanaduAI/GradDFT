@@ -1,10 +1,10 @@
 import jax.numpy as jnp
-from molecule import Molecule
-from utils import Array
-from typing import Dict, List
+from grad_dft.molecule import Molecule
+from grad_dft.utils import Array
+from grad_dft.typing import Dict, List
 from flax import linen as nn
 
-from functional import Functional, correlation_polarization_correction, exchange_polarization_correction
+from grad_dft.functional import Functional, correlation_polarization_correction, exchange_polarization_correction
 
 def lsda_x_e(rho, clip_cte):
     # Eq 2.72 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
