@@ -1,10 +1,8 @@
-from utils import Scalar, Array
 from typing import Optional, Union, Sequence, Tuple, NamedTuple
 from dataclasses import fields
-from utils import Array, Scalar
+from grad_dft.utils import Array, Scalar, PyTree, vmap_chunked
 from functools import partial
-from utils import PyTree, vmap_chunked
-from external.eigh_impl import eigh2d
+from grad_dft.external.eigh_impl import eigh2d
 
 from jax import numpy as jnp
 from jax.lax import Precision

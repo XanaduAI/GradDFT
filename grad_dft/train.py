@@ -8,9 +8,9 @@ from jax.lax import stop_gradient, cond, fori_loop
 from flax import struct
 from optax import OptState, GradientTransformation, apply_updates
 
-from utils import Scalar, Array, PyTree
-from functional import DispersionFunctional, Functional
-from molecule import Molecule, coulomb_potential, symmetrize_rdm1
+from grad_dft.utils import Scalar, Array, PyTree
+from grad_dft.functional import DispersionFunctional, Functional
+from grad_dft.molecule import Molecule, coulomb_potential, symmetrize_rdm1
 
 def molecule_predictor(
     functional: Functional,

@@ -18,8 +18,8 @@ from flax.training.train_state import TrainState
 from optax import GradientTransformation
 from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 
-from utils import Scalar, Array, PyTree, DType, default_dtype
-from molecule import Grid, Molecule
+from grad_dft.utils import Scalar, Array, PyTree, DType, default_dtype
+from grad_dft.molecule import Grid, Molecule
 
 @dataclass
 class Functional(nn.Module):

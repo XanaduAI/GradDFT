@@ -26,7 +26,7 @@ from pyscf.dft import numint
 import tensorflow.compat.v1 as tf
 import tensorflow_hub as hub
 
-import external.density_functional_approximation_dm21.density_functional_approximation_dm21.compute_hfx_density as compute_hfx_density
+import grad_dft.external.density_functional_approximation_dm21.density_functional_approximation_dm21.compute_hfx_density as compute_hfx_density
 
 tf.disable_v2_behavior()
 #tf.enable_eager_execution()

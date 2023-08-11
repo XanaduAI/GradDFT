@@ -1,9 +1,9 @@
 from jax import grad, numpy as jnp
 from jax.lax import stop_gradient
 from flax.core import freeze
-from functional import Functional, exchange_polarization_correction
-from interface import molecule_from_pyscf
-from molecule import Molecule, coulomb_potential, symmetrize_rdm1
+from grad_dft.functional import Functional, exchange_polarization_correction
+from grad_dft.interface import molecule_from_pyscf
+from grad_dft.molecule import Molecule, coulomb_potential, symmetrize_rdm1 
 
 from jax import config
 config.update("jax_enable_x64", True)
@@ -12,7 +12,7 @@ config.update("jax_enable_x64", True)
 
 # We we will prepare a molecule, following the previous tutorial:
 from pyscf import gto, dft
-from train import molecule_predictor
+from grad_dft.train import molecule_predictor
 # Define the geometry of the molecule and mean-field object
 mol = gto.M(atom = [['H', (0, 0, 0)]], basis = 'def2-tzvp', charge = 0, spin = 1)
 mf = dft.UKS(mol)

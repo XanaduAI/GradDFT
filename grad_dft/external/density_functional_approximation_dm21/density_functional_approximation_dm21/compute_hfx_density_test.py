@@ -22,7 +22,7 @@ from pyscf import gto
 from pyscf import lib
 from pyscf import scf
 import scipy
-from density_functional_approximation_dm21 import compute_hfx_density
+from grad_dft.external.density_functional_approximation_dm21 import compute_hfx_density
 
 
 class ComputeHfxDensityTest(parameterized.TestCase):

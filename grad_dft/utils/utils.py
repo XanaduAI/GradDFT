@@ -1,6 +1,6 @@
 import argparse
 from typing import Optional
-from utils import DType,  default_dtype
+from grad_dft.utils import DType, default_dtype
 import jax.numpy as jnp
 import json
 
