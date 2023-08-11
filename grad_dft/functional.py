@@ -35,9 +35,10 @@ from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 from grad_dft.utils import Scalar, Array, PyTree, DType, default_dtype
 from grad_dft.molecule import Grid, Molecule
 
+
 @dataclass
 class Functional(nn.Module):
-    r""" A base class of local functionals.
+    r"""A base class of local functionals.
     .. math::
         F[n(r)] = \int f(n(r)) d^3 r
 
@@ -68,12 +69,12 @@ class Functional(nn.Module):
         nograd_densities(molecule: Molecule, *args, **kwargs) -> Array
 
     featuregrads: Callable, optional
-        A function to compute contributions to the Fock matrix for energy densities 
+        A function to compute contributions to the Fock matrix for energy densities
         where autodifferentiation is not used.
 
         If given has signature
 
-        featuregrads(functional: nn.Module, params: Dict, molecule: Molecule, 
+        featuregrads(functional: nn.Module, params: Dict, molecule: Molecule,
             nograd_densities: Array, coefficient_inputs: Array, grad_densities, *args) - > Fock matrix: Array of shape (2, nao, nao)
 
     combine_densities : Callable, optional
@@ -93,12 +94,12 @@ class Functional(nn.Module):
         nograd_coefficient_inputs(molecule: Molecule, *args, **kwargs) -> Array
 
     coefficient_inputs_grads: Callable, optional
-        A function to compute contributions to the Fock matrix for coefficient inputs 
+        A function to compute contributions to the Fock matrix for coefficient inputs
         where autodifferentiation is not used.
 
         If given has signature
 
-        coefficient_inputs_grads(functional: nn.Module, params: Dict, molecule: Molecule, 
+        coefficient_inputs_grads(functional: nn.Module, params: Dict, molecule: Molecule,
             nograd_coefficient_inputs: Array, grad_coefficient_inputs: Array, densities, *args) - > Fock matrix: Array of shape (2, nao, nao)
 
     combine_coefficient_inputs : Callable, optional
@@ -154,7 +155,7 @@ class Functional(nn.Module):
         ----------
         molecule: Molecule
             The molecule to compute the densities for
-        
+
         Returns
         -------
         densities: Array
@@ -172,7 +173,7 @@ class Functional(nn.Module):
             densities = stop_gradient(self.nograd_densities(molecule, *args, **kwargs))
 
         return densities
-    
+
     def compute_coefficient_inputs(self, molecule: Molecule, *args, **kwargs):
         r"""
         Computes the inputs to the coefficients method in the functional
@@ -189,7 +190,9 @@ class Functional(nn.Module):
 
         if self.nograd_coefficient_inputs and self.coefficient_inputs:
             cinputs = self.coefficient_inputs(molecule, *args, **kwargs)
-            nograd_cinputs = stop_gradient(self.nograd_coefficient_inputs(molecule, *args, **kwargs))
+            nograd_cinputs = stop_gradient(
+                self.nograd_coefficient_inputs(molecule, *args, **kwargs)
+            )
             cinputs = self.combine_inputs(cinputs, nograd_cinputs)
 
         elif self.coefficient_inputs:
@@ -203,10 +206,12 @@ class Functional(nn.Module):
 
         return cinputs
 
-    def apply_and_integrate(self, params: PyTree, grid: Grid, coefficient_inputs: Array, densities: Array, **kwargs):
+    def apply_and_integrate(
+        self, params: PyTree, grid: Grid, coefficient_inputs: Array, densities: Array, **kwargs
+    ):
         r"""
         Total energy of local functional
-        
+
         Paramters
         ---------
         params: PyTree
@@ -218,7 +223,7 @@ class Functional(nn.Module):
         densities: Array
             densities to compute the energy for
 
-        **kwargs: 
+        **kwargs:
             key word arguments for the coefficients function
 
         Returns
@@ -229,17 +234,17 @@ class Functional(nn.Module):
         coefficients = self.apply(params, coefficient_inputs, **kwargs)
         xc_energy_density = jnp.einsum("rf,rf->r", coefficients, densities)
         return self._integrate(xc_energy_density, grid.weights)
-    
+
     def energy(self, params: PyTree, molecule: Molecule, *args, **kwargs):
         r"""
         Total energy of local functional
-        
+
         Paramters
         ---------
         params: PyTree
             params of the neural network if there is one in self.f
         molecule: Molecule
-        
+
         *args: other arguments to compute_densities or compute_coefficient_inputs
         **kwargs: other key word arguments to densities and self.apply_and_integrate
 
@@ -265,11 +270,14 @@ class Functional(nn.Module):
         return energy
 
     def _integrate(
-        self, energy_density: Array, gridweights: Array, precision: Optional[Precision] = Precision.HIGHEST
+        self,
+        energy_density: Array,
+        gridweights: Array,
+        precision: Optional[Precision] = Precision.HIGHEST,
     ) -> Array:
         r"""
-        Helper function that performs grid quadrature (integration) 
-				in a differentiable way (using jax.numpy).
+        Helper function that performs grid quadrature (integration)
+                                in a differentiable way (using jax.numpy).
 
         Parameters
         ----------
@@ -287,7 +295,8 @@ class Functional(nn.Module):
         Array
         """
 
-        return jnp.einsum("r,r...->...", gridweights, energy_density, precision = precision)
+        return jnp.einsum("r,r...->...", gridweights, energy_density, precision=precision)
+
 
 @dataclass
 class NeuralFunctional(Functional):
@@ -317,7 +326,7 @@ class NeuralFunctional(Functional):
         ```
 
     NeuralFunctional contains some additional methods, such as implementation of dense
-    layers, and saving/loading checkpoints 
+    layers, and saving/loading checkpoints
     """
 
     coefficients: staticmethod
@@ -340,7 +349,6 @@ class NeuralFunctional(Functional):
     param_dtype: DType = default_dtype()
 
     def setup(self):
-
         self.dense = partial(
             nn.Dense,
             param_dtype=self.param_dtype,
@@ -348,26 +356,27 @@ class NeuralFunctional(Functional):
             bias_init=self.bias_init,
         )
 
-        self.layer_norm = partial(
-            nn.LayerNorm,
-            param_dtype=self.param_dtype
-        )
+        self.layer_norm = partial(nn.LayerNorm, param_dtype=self.param_dtype)
 
     def head(self, x: Array, local_features, sigmoid_scale_factor):
-
         # Final layer: dense -> sigmoid -> scale (x2)
-        x = self.dense(features=local_features)(x) # eg local_features = 3 in DM21
-        self.sow('intermediates', 'head_dense', x)
+        x = self.dense(features=local_features)(x)  # eg local_features = 3 in DM21
+        self.sow("intermediates", "head_dense", x)
         x = sigmoid(x / sigmoid_scale_factor)
-        self.sow('intermediates', 'sigmoid', x)
-        out = sigmoid_scale_factor * x # sigmoid_scale_factor = 2.0 in DM21
-        self.sow('intermediates', 'sigmoid_product', out)
+        self.sow("intermediates", "sigmoid", x)
+        out = sigmoid_scale_factor * x  # sigmoid_scale_factor = 2.0 in DM21
+        self.sow("intermediates", "sigmoid_product", out)
 
-        return jnp.squeeze(out) # Eliminating unnecessary dimensions
+        return jnp.squeeze(out)  # Eliminating unnecessary dimensions
 
-    def save_checkpoints(self, params: PyTree, tx: GradientTransformation, step: Optional[int], 
-                        orbax_checkpointer: Checkpointer = PyTreeCheckpointer(), ckpt_dir: str = 'ckpts'):
-
+    def save_checkpoints(
+        self,
+        params: PyTree,
+        tx: GradientTransformation,
+        step: Optional[int],
+        orbax_checkpointer: Checkpointer = PyTreeCheckpointer(),
+        ckpt_dir: str = "ckpts",
+    ):
         r"""
         A convenience function to save the network parameters to disk.
 
@@ -386,16 +395,24 @@ class NeuralFunctional(Functional):
         None
         """
 
-        state = train_state.TrainState.create(apply_fn=self.apply,
-                                            params=params,
-                                            tx=tx)
+        state = train_state.TrainState.create(apply_fn=self.apply, params=params, tx=tx)
 
-        checkpoints.save_checkpoint(ckpt_dir=ckpt_dir, target=state, step=step, overwrite=True, 
-                                    orbax_checkpointer=orbax_checkpointer, keep_every_n_steps = 50)
+        checkpoints.save_checkpoint(
+            ckpt_dir=ckpt_dir,
+            target=state,
+            step=step,
+            overwrite=True,
+            orbax_checkpointer=orbax_checkpointer,
+            keep_every_n_steps=50,
+        )
 
-    def load_checkpoint(self, tx: GradientTransformation = None, ckpt_dir: str = 'ckpts', step: Optional[int] = None, 
-                        orbax_checkpointer: Checkpointer = PyTreeCheckpointer()) -> PyTree:
-
+    def load_checkpoint(
+        self,
+        tx: GradientTransformation = None,
+        ckpt_dir: str = "ckpts",
+        step: Optional[int] = None,
+        orbax_checkpointer: Checkpointer = PyTreeCheckpointer(),
+    ) -> PyTree:
         r"""
         A convenience function to load the network parameters from disk.
 
@@ -421,19 +438,21 @@ class NeuralFunctional(Functional):
         """
 
         state_dict = orbax_checkpointer.restore(ckpt_dir)
-        state = TrainState(params = freeze(state_dict['params']), tx = tx, step = step, 
-                                opt_state = tx.init(freeze(state_dict['params'])), apply_fn=self.apply)
+        state = TrainState(
+            params=freeze(state_dict["params"]),
+            tx=tx,
+            step=step,
+            opt_state=tx.init(freeze(state_dict["params"])),
+            apply_fn=self.apply,
+        )
 
         return state
 
 
 ######################## DM21 ########################
 
-def dm21_coefficient_inputs(
-        molecule: Molecule, 
-        clip_cte: Optional[float] = 1e-27,
-        *_, **__
-    ):
+
+def dm21_coefficient_inputs(molecule: Molecule, clip_cte: Optional[float] = 1e-27, *_, **__):
     r"""
     Computes the electronic density and derivatives
 
@@ -442,9 +461,9 @@ def dm21_coefficient_inputs(
     molecule:
         class Molecule
     clip_cte: Optional[float]
-        Needed to make sure it 
+        Needed to make sure it
         default 1e-27 (chosen carefully, take care if decrease)
-    
+
     Returns
     -------
         Array: shape (n_grid, 7) where 7 is the number of features
@@ -452,7 +471,7 @@ def dm21_coefficient_inputs(
 
     rho = molecule.density()
     # We need to clip rho away from 0 to obtain good gradients.
-    rho = jnp.maximum(abs(rho) , clip_cte)*jnp.sign(rho)
+    rho = jnp.maximum(abs(rho), clip_cte) * jnp.sign(rho)
     grad_rho = molecule.grad_density()
     tau = molecule.kinetic_density()
 
@@ -463,7 +482,14 @@ def dm21_coefficient_inputs(
 
     return features
 
-def dm21_densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+
+def dm21_densities(
+    molecule: Molecule,
+    functional_type: Optional[Union[str, Dict[str, int]]] = "LDA",
+    clip_cte: float = 1e-27,
+    *_,
+    **__,
+):
     r"""
     Generates and concatenates different functional levels
 
@@ -474,7 +500,7 @@ def dm21_densities(molecule: Molecule, functional_type: Optional[Union[str, Dict
 
     functional_type:
         Either one of 'LDA', 'GGA', 'MGGA' or Dictionary
-        {'u_range': range(), 'w_range': range()} that generates 
+        {'u_range': range(), 'w_range': range()} that generates
         a functional
 
         .. math::
@@ -497,16 +523,19 @@ def dm21_densities(molecule: Molecule, functional_type: Optional[Union[str, Dict
         Array: shape (n_grid, n_features)
     """
 
-    beta = 1/1024.
+    beta = 1 / 1024.0
 
     if isinstance(functional_type, str):
-        if functional_type == 'LDA' or functional_type == 'DM21':  
-            u_range, w_range = range(0,1), range(0,1)
-        elif functional_type == 'GGA':
-            u_range, w_range = range(0,2), range(0,1)
-        elif functional_type == 'MGGA': 
-            u_range, w_range = range(0,2), range(0,2)
-        else: raise ValueError(f'Functional type {functional_type} not recognized, must be one of LDA, GGA, MGGA.')
+        if functional_type == "LDA" or functional_type == "DM21":
+            u_range, w_range = range(0, 1), range(0, 1)
+        elif functional_type == "GGA":
+            u_range, w_range = range(0, 2), range(0, 1)
+        elif functional_type == "MGGA":
+            u_range, w_range = range(0, 2), range(0, 2)
+        else:
+            raise ValueError(
+                f"Functional type {functional_type} not recognized, must be one of LDA, GGA, MGGA."
+            )
 
     # Molecule preprocessing data
     rho = molecule.density()
@@ -515,38 +544,52 @@ def dm21_densities(molecule: Molecule, functional_type: Optional[Union[str, Dict
     grad_rho_norm_sq = jnp.sum(grad_rho**2, axis=-1)
 
     # LDA preprocessing data
-    log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
+    log_rho = jnp.log2(jnp.clip(rho, a_min=clip_cte))
 
     # GGA preprocessing data
-    log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm_sq, a_min = clip_cte))/2
-    log_x_sigma = log_grad_rho_norm - 4/3.*log_rho
-    log_u_sigma = jnp.where(jnp.greater(log_rho,jnp.log2(clip_cte)), log_x_sigma - jnp.log2(1 + beta*(2**log_x_sigma)) + jnp.log2(beta), 0)
+    log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm_sq, a_min=clip_cte)) / 2
+    log_x_sigma = log_grad_rho_norm - 4 / 3.0 * log_rho
+    log_u_sigma = jnp.where(
+        jnp.greater(log_rho, jnp.log2(clip_cte)),
+        log_x_sigma - jnp.log2(1 + beta * (2**log_x_sigma)) + jnp.log2(beta),
+        0,
+    )
 
     # MGGA preprocessing data
-    log_tau = jnp.log2(jnp.clip(tau, a_min = clip_cte))
-    log_1t_sigma = -(5/3.*log_rho - log_tau + 2/3.*jnp.log2(6*jnp.pi**2) + jnp.log2(3/5.))
-    log_w_sigma = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
+    log_tau = jnp.log2(jnp.clip(tau, a_min=clip_cte))
+    log_1t_sigma = -(
+        5 / 3.0 * log_rho - log_tau + 2 / 3.0 * jnp.log2(6 * jnp.pi**2) + jnp.log2(3 / 5.0)
+    )
+    log_w_sigma = jnp.where(
+        jnp.greater(log_rho, jnp.log2(clip_cte)),
+        log_1t_sigma - jnp.log2(1 + beta * (2**log_1t_sigma)) + jnp.log2(beta),
+        0,
+    )
 
     # Compute the local features
     localfeatures = jnp.empty((log_rho.shape[0], 0))
     for i, j in itertools.product(u_range, w_range):
-        mgga_term = (2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)).sum(axis=1, keepdims = True) \
-                    * jnp.where(jnp.logical_and(i==0, j==0), -2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3), 1) # to match DM21
+        mgga_term = (2 ** (4 / 3.0 * log_rho + i * log_u_sigma + j * log_w_sigma)).sum(
+            axis=1, keepdims=True
+        ) * jnp.where(
+            jnp.logical_and(i == 0, j == 0), -2 * jnp.pi * (3 / (4 * jnp.pi)) ** (4 / 3), 1
+        )  # to match DM21
         localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=1)
 
     return localfeatures
 
+
 def dm21_combine_cinputs(cinputs, ehf):
     r"""
     Default way to combine Hartree-Fock and the rest of the input features to the neural network.
-    
+
     Parameters
     ----------
     ehf: Array
         The Hartree-Fock features
         shape: (n_omega, n_spin, n_grid_points)
     densities: Array
-        The rest of input features that constitute the input to the neural network in a 
+        The rest of input features that constitute the input to the neural network in a
         functional of the form similar to DM21.
         shape: (n_grid, n_input_features)
 
@@ -557,10 +600,10 @@ def dm21_combine_cinputs(cinputs, ehf):
     """
 
     # Remember that DM concatenates the hf density in the x features by spin...
-    return jnp.concatenate([cinputs, ehf[:,0].T, ehf[:,1].T], axis=1)
+    return jnp.concatenate([cinputs, ehf[:, 0].T, ehf[:, 1].T], axis=1)
+
 
 def dm21_combine_densities(densities, ehf):
-
     r"""
     Default way to combine Hartree-Fock and the rest of the input default features.
 
@@ -581,19 +624,43 @@ def dm21_combine_densities(densities, ehf):
     """
 
     # ... and in the y features by omega.
-    return jnp.concatenate([densities] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1)
+    return jnp.concatenate(
+        [densities] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1
+    )
 
-def dm21_hfgrads_densities(functional: nn.Module, params: Dict, molecule: Molecule, ehf: Array, coefficient_inputs: Array, densities_wout_hf: Array, omegas: Array = jnp.array([0., 0.4])):
-    vxc_hf = molecule.HF_density_grad_2_Fock(functional, params, omegas, ehf, coefficient_inputs, densities_wout_hf)
-    return vxc_hf.sum(axis=0) # Sum over omega
 
-def dm21_hfgrads_cinputs(functional: nn.Module, params: Dict, molecule: Molecule, ehf: Array, cinputs_wout_hf: Array, densities: Array, omegas: Array = jnp.array([0., 0.4])):
-    vxc_hf = molecule.HF_coefficient_input_grad_2_Fock(functional, params, omegas, ehf, cinputs_wout_hf, densities)
-    return vxc_hf.sum(axis=0) # Sum over omega
-    
+def dm21_hfgrads_densities(
+    functional: nn.Module,
+    params: Dict,
+    molecule: Molecule,
+    ehf: Array,
+    coefficient_inputs: Array,
+    densities_wout_hf: Array,
+    omegas: Array = jnp.array([0.0, 0.4]),
+):
+    vxc_hf = molecule.HF_density_grad_2_Fock(
+        functional, params, omegas, ehf, coefficient_inputs, densities_wout_hf
+    )
+    return vxc_hf.sum(axis=0)  # Sum over omega
+
+
+def dm21_hfgrads_cinputs(
+    functional: nn.Module,
+    params: Dict,
+    molecule: Molecule,
+    ehf: Array,
+    cinputs_wout_hf: Array,
+    densities: Array,
+    omegas: Array = jnp.array([0.0, 0.4]),
+):
+    vxc_hf = molecule.HF_coefficient_input_grad_2_Fock(
+        functional, params, omegas, ehf, cinputs_wout_hf, densities
+    )
+    return vxc_hf.sum(axis=0)  # Sum over omega
+
+
 @dataclass
 class DM21(NeuralFunctional):
-
     r"""
     Creates the architecture of the DM21 functional.
     Contains a function to generate the weights, called `generate_DM21_weights`
@@ -601,13 +668,21 @@ class DM21(NeuralFunctional):
 
     coefficients: Callable = lambda self, inputs: self.default_nn(inputs)
     energy_densities: Callable = dm21_densities
-    nograd_densities: staticmethod = lambda molecule, *_, **__: molecule.HF_energy_density([0., 0.4])
-    densitygrads: staticmethod = lambda self, params, molecule, nograd_densities, cinputs, grad_densities, *_, **__: dm21_hfgrads_densities(self, params, molecule, nograd_densities, cinputs, grad_densities, [0., 0.4])
+    nograd_densities: staticmethod = lambda molecule, *_, **__: molecule.HF_energy_density(
+        [0.0, 0.4]
+    )
+    densitygrads: staticmethod = lambda self, params, molecule, nograd_densities, cinputs, grad_densities, *_, **__: dm21_hfgrads_densities(
+        self, params, molecule, nograd_densities, cinputs, grad_densities, [0.0, 0.4]
+    )
     combine_densities: staticmethod = dm21_combine_densities
 
     coefficient_inputs: staticmethod = dm21_coefficient_inputs
-    nograd_coefficient_inputs: staticmethod = lambda molecule, *_, **__: molecule.HF_energy_density([0., 0.4])
-    coefficient_input_grads: staticmethod = lambda self, params, molecule, nograd_cinputs, grad_cinputs, densities, *_, **__: dm21_hfgrads_cinputs(self, params, molecule, nograd_cinputs, grad_cinputs, densities, [0., 0.4])
+    nograd_coefficient_inputs: staticmethod = lambda molecule, *_, **__: molecule.HF_energy_density(
+        [0.0, 0.4]
+    )
+    coefficient_input_grads: staticmethod = lambda self, params, molecule, nograd_cinputs, grad_cinputs, densities, *_, **__: dm21_hfgrads_cinputs(
+        self, params, molecule, nograd_cinputs, grad_cinputs, densities, [0.0, 0.4]
+    )
     combine_inputs: staticmethod = dm21_combine_cinputs
 
     is_xc: bool = True
@@ -615,37 +690,44 @@ class DM21(NeuralFunctional):
 
     activation: Callable = elu
     squash_offset: float = 1e-4
-    layer_widths: Array = jnp.array([256,256,256,256,256,256])
+    layer_widths: Array = jnp.array([256, 256, 256, 256, 256, 256])
     local_features: int = 3
-    sigmoid_scale_factor: float = 2.
+    sigmoid_scale_factor: float = 2.0
 
     def default_nn(instance, rhoinputs, *_, **__):
-        x = canonicalize_inputs(rhoinputs) # Making sure dimensions are correct
+        x = canonicalize_inputs(rhoinputs)  # Making sure dimensions are correct
 
         # Initial layer: log -> dense -> tanh
-        x = jnp.log(jnp.abs(x) + instance.squash_offset) # squash_offset = 1e-4
-        instance.sow('intermediates', 'log', x)
-        x = instance.dense(features=instance.layer_widths[0])(x) # features = 256
-        instance.sow('intermediates', 'initial_dense', x)
+        x = jnp.log(jnp.abs(x) + instance.squash_offset)  # squash_offset = 1e-4
+        instance.sow("intermediates", "log", x)
+        x = instance.dense(features=instance.layer_widths[0])(x)  # features = 256
+        instance.sow("intermediates", "initial_dense", x)
         x = jnp.tanh(x)
-        instance.sow('intermediates', 'tanh', x)
+        instance.sow("intermediates", "tanh", x)
 
         # 6 Residual blocks with 256-features dense layer and layer norm
-        for features,i in zip(instance.layer_widths,range(len(instance.layer_widths))): # layer_widths = [256]*6
+        for features, i in zip(
+            instance.layer_widths, range(len(instance.layer_widths))
+        ):  # layer_widths = [256]*6
             res = x
             x = instance.dense(features=features)(x)
-            instance.sow('intermediates', 'residual_dense_'+str(i), x)
-            x = x + res # nn.Dense + Residual connection
-            instance.sow('intermediates', 'residual_residual_'+str(i), x)
-            x = instance.layer_norm()(x) #+ res # nn.LayerNorm
-            instance.sow('intermediates', 'residual_layernorm_'+str(i), x) 
-            x = instance.activation(x) # activation = jax.nn.gelu
-            instance.sow('intermediates', 'residual_elu_'+str(i), x)
+            instance.sow("intermediates", "residual_dense_" + str(i), x)
+            x = x + res  # nn.Dense + Residual connection
+            instance.sow("intermediates", "residual_residual_" + str(i), x)
+            x = instance.layer_norm()(x)  # + res # nn.LayerNorm
+            instance.sow("intermediates", "residual_layernorm_" + str(i), x)
+            x = instance.activation(x)  # activation = jax.nn.gelu
+            instance.sow("intermediates", "residual_elu_" + str(i), x)
 
         return instance.head(x, instance.local_features, instance.sigmoid_scale_factor)
 
-    def generate_DM21_weights(self, folder: str = 'DM21_model', num_layers_with_dm_parameters: int = 7, n_input_features: int = 11, rng = PRNGKey(0)):
-
+    def generate_DM21_weights(
+        self,
+        folder: str = "DM21_model",
+        num_layers_with_dm_parameters: int = 7,
+        n_input_features: int = 11,
+        rng=PRNGKey(0),
+    ):
         r"""
         A convenience function to generate the DM21 weights and biases.
 
@@ -655,7 +737,7 @@ class DM21(NeuralFunctional):
             The folder to the DM21 weights.
             Defaults to 'DM21_model'. Download the DM21 weights from
             https://github.com/deepmind/deepmind-research/tree/72c72d530f7de050451014895c1068b588f94733/density_functional_approximation_dm21/density_functional_approximation_dm21/checkpoints/DM21
-        
+
         Returns
         -------
         params: Frozen
@@ -663,6 +745,7 @@ class DM21(NeuralFunctional):
         """
 
         import tensorflow as tf
+
         tf.compat.v1.enable_eager_execution()
 
         variables = tf.saved_model.load(folder).variables
@@ -672,67 +755,80 @@ class DM21(NeuralFunctional):
 
         def vars_to_params(variables: List[tf.Variable]) -> PyTree:
             import re
+
             params = {}
             for var in variables:
-
-                if 'ResidualBlock_' in var.name:
-                    number = int(re.findall("ResidualBlock_[0-9]", var.name)[0][-1])+1
-                elif 'ResidualBlock/' in var.name:
+                if "ResidualBlock_" in var.name:
+                    number = int(re.findall("ResidualBlock_[0-9]", var.name)[0][-1]) + 1
+                elif "ResidualBlock/" in var.name:
                     number = 1
-                elif 'Squash' in var.name:
+                elif "Squash" in var.name:
                     number = 0
-                elif 'Output' in var.name:
+                elif "Output" in var.name:
                     number = 7
                 else:
-                    raise ValueError('Unknown variable name.')
+                    raise ValueError("Unknown variable name.")
 
-                if '/linear/' in var.name:
-                    if 'Dense_'+str(number) not in params.keys(): params['Dense_'+str(number)] = {}
-                    if '/w:' in var.name:
-                        params['Dense_'+str(number)]['kernel'] = tf_tensor_to_jax(var.value())
-                    elif '/b:' in var.name:
-                        params['Dense_'+str(number)]['bias'] = tf_tensor_to_jax(var.value())
-                elif '/layer_norm/' in var.name:
-                    if 'LayerNorm_'+str(number-1) not in params.keys(): params['LayerNorm_'+str(number-1)] = {}
-                    if 'gamma:' in var.name:
-                        params['LayerNorm_'+str(number-1)]['scale'] = tf_tensor_to_jax(var.value())
-                    elif 'beta:' in var.name:
-                        params['LayerNorm_'+str(number-1)]['bias'] = tf_tensor_to_jax(var.value())
+                if "/linear/" in var.name:
+                    if "Dense_" + str(number) not in params.keys():
+                        params["Dense_" + str(number)] = {}
+                    if "/w:" in var.name:
+                        params["Dense_" + str(number)]["kernel"] = tf_tensor_to_jax(var.value())
+                    elif "/b:" in var.name:
+                        params["Dense_" + str(number)]["bias"] = tf_tensor_to_jax(var.value())
+                elif "/layer_norm/" in var.name:
+                    if "LayerNorm_" + str(number - 1) not in params.keys():
+                        params["LayerNorm_" + str(number - 1)] = {}
+                    if "gamma:" in var.name:
+                        params["LayerNorm_" + str(number - 1)]["scale"] = tf_tensor_to_jax(
+                            var.value()
+                        )
+                    elif "beta:" in var.name:
+                        params["LayerNorm_" + str(number - 1)]["bias"] = tf_tensor_to_jax(
+                            var.value()
+                        )
             return params
 
         example_features = normal(rng, shape=(2, n_input_features))
-        #example_local_features = normal(rng, shape=(2, self.local_features))
+        # example_local_features = normal(rng, shape=(2, self.local_features))
         params = self.init(rng, example_features)
 
         dm_params = vars_to_params(variables)
 
         new_params = {}
-        for key in params['params'].keys():
+        for key in params["params"].keys():
             check_same_params = []
-            for k in params['params'][key].keys():
-                if key in dm_params.keys(): check_same_params.append(params['params'][key][k].shape != dm_params[key][k].shape)
-                else: check_same_params.append(True)
-            if int(key.split('_')[1]) > num_layers_with_dm_parameters or any(check_same_params):
-                new_params[key] = params['params'][key]
-                if 'Dense' in key and new_params[key]['kernel'].shape[0] == new_params[key]['kernel'].shape[1]: # DM21 suggests initializing the kernel matrices close to the identity matrix
+            for k in params["params"][key].keys():
+                if key in dm_params.keys():
+                    check_same_params.append(
+                        params["params"][key][k].shape != dm_params[key][k].shape
+                    )
+                else:
+                    check_same_params.append(True)
+            if int(key.split("_")[1]) > num_layers_with_dm_parameters or any(check_same_params):
+                new_params[key] = params["params"][key]
+                if (
+                    "Dense" in key
+                    and new_params[key]["kernel"].shape[0] == new_params[key]["kernel"].shape[1]
+                ):  # DM21 suggests initializing the kernel matrices close to the identity matrix
                     new_params[key] = unfreeze(new_params[key])
-                    new_params[key]['kernel'] = new_params[key]['kernel'] + jnp.identity(new_params[key]['kernel'].shape[0])
+                    new_params[key]["kernel"] = new_params[key]["kernel"] + jnp.identity(
+                        new_params[key]["kernel"].shape[0]
+                    )
                     new_params[key] = freeze(new_params[key])
             else:
                 new_params[key] = dm_params[key]
 
         params = unfreeze(params)
-        params['params'] = new_params
+        params["params"] = new_params
         params = freeze(params)
         return params
-
 
 
 ######################### Helper functions #########################
 
 
 def canonicalize_inputs(x):
-
     x = jnp.asarray(x)
 
     if x.ndim == 1:
@@ -741,11 +837,10 @@ def canonicalize_inputs(x):
         raise ValueError("`features` has to be at least 1D array!")
     else:
         return x
-    
 
-@partial(value_and_grad, has_aux = True)
+
+@partial(value_and_grad, has_aux=True)
 def default_loss(params: PyTree, molecule_predict: Callable, molecule: Molecule, trueenergy: float):
-    
     r"""
     Computes the default loss function, here MSE, between predicted and true energy
 
@@ -753,7 +848,7 @@ def default_loss(params: PyTree, molecule_predict: Callable, molecule: Molecule,
     ----------
     params: PyTree
         functional parameters (weights)
-    molecule_predict: Callable. 
+    molecule_predict: Callable.
         Use molecule_predict = molecule_predictor(functional) to generate it.
     molecule: Molecule
     trueenergy: float
@@ -774,8 +869,8 @@ def default_loss(params: PyTree, molecule_predict: Callable, molecule: Molecule,
 
     return cost_value, predictedenergy
 
-def _canonicalize_fxc(fxc: Functional) -> Callable:
 
+def _canonicalize_fxc(fxc: Functional) -> Callable:
     if hasattr(fxc, "energy"):
         return fxc.energy
     if hasattr(fxc, "apply"):
@@ -787,16 +882,17 @@ def _canonicalize_fxc(fxc: Functional) -> Callable:
             f"`fxc` should be a flax `Module` with a `predict_exc` method or a callable, got {type(fxc)}"
         )
 
+
 ################ Spin polarization correction functions ################
 
 
 def exchange_polarization_correction(e_PF, rho):
-    r"""Spin polarization correction to an exchange functional using eq 2.71 from 
+    r"""Spin polarization correction to an exchange functional using eq 2.71 from
     Carsten A. Ullrich, "Time-Dependent Density-Functional Theory".
 
     Parameters
     ----------
-    e_PF: 
+    e_PF:
         Array, shape (2, n_grid)
         The paramagnetic/ferromagnetic energy contributions on the grid, to be combined.
 
@@ -810,19 +906,22 @@ def exchange_polarization_correction(e_PF, rho):
         Array, shape (n_grid)
         The ready to be integrated electronic energy density.
     """
-    zeta = (rho[:,0] - rho[:,1])/ rho.sum(axis = 1)
-    def fzeta(z): return ((1-z)**(4/3) + (1+z)**(4/3) - 2) / (2*(2**(1/3) - 1))
+    zeta = (rho[:, 0] - rho[:, 1]) / rho.sum(axis=1)
+
+    def fzeta(z):
+        return ((1 - z) ** (4 / 3) + (1 + z) ** (4 / 3) - 2) / (2 * (2 ** (1 / 3) - 1))
+
     # Eq 2.71 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
-    return e_PF[:,0] + (e_PF[:,1]-e_PF[:,0])*fzeta(zeta)
+    return e_PF[:, 0] + (e_PF[:, 1] - e_PF[:, 0]) * fzeta(zeta)
 
 
 def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float = 1e-27):
-    r"""Spin polarization correction to a correlation functional using eq 2.75 from 
+    r"""Spin polarization correction to a correlation functional using eq 2.75 from
     Carsten A. Ullrich, "Time-Dependent Density-Functional Theory".
 
     Parameters
     ----------
-    e_PF: 
+    e_PF:
         Array, shape (2, n_grid)
         The paramagnetic/ferromagnetic energy contributions on the grid, to be combined.
 
@@ -841,17 +940,18 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
         The ready to be integrated electronic energy density.
     """
 
-    e_tilde_PF = jnp.einsum('rs,r->rs', e_PF, rho.sum(axis = 1))
+    e_tilde_PF = jnp.einsum("rs,r->rs", e_PF, rho.sum(axis=1))
 
-    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 1), a_min = clip_cte))
-    #assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
-    log_rs =  jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
+    log_rho = jnp.log2(jnp.clip(rho.sum(axis=1), a_min=clip_cte))
+    # assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
+    log_rs = jnp.log2((3 / (4 * jnp.pi)) ** (1 / 3)) - log_rho / 3.0
 
-    zeta = jnp.where(rho.sum(axis = 1) > clip_cte, (rho[:,0] - rho[:,1]) / (rho.sum(axis = 1)), 0.)
-    def fzeta(z): 
-        zm = 2**(4*jnp.log2(1-z)/3)
-        zp = 2**(4*jnp.log2(1+z)/3)
-        return (zm + zp - 2) / (2*(2**(1/3) - 1))
+    zeta = jnp.where(rho.sum(axis=1) > clip_cte, (rho[:, 0] - rho[:, 1]) / (rho.sum(axis=1)), 0.0)
+
+    def fzeta(z):
+        zm = 2 ** (4 * jnp.log2(1 - z) / 3)
+        zp = 2 ** (4 * jnp.log2(1 + z) / 3)
+        return (zm + zp - 2) / (2 * (2 ** (1 / 3) - 1))
 
     A_ = 0.016887
     alpha1 = 0.11125
@@ -860,25 +960,35 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
     beta3 = 0.88026
     beta4 = 0.49671
 
-    ars = 2**(jnp.log2(alpha1) + log_rs)
-    brs_1_2 = 2**(jnp.log2(beta1) +  log_rs/2)
-    brs = 2**(jnp.log2(beta2)+log_rs)
-    brs_3_2 = 2**(jnp.log2(beta3)+3*log_rs/2)
-    brs2 = 2**(jnp.log2(beta4)+2*log_rs)
+    ars = 2 ** (jnp.log2(alpha1) + log_rs)
+    brs_1_2 = 2 ** (jnp.log2(beta1) + log_rs / 2)
+    brs = 2 ** (jnp.log2(beta2) + log_rs)
+    brs_3_2 = 2 ** (jnp.log2(beta3) + 3 * log_rs / 2)
+    brs2 = 2 ** (jnp.log2(beta4) + 2 * log_rs)
 
-    alphac = 2*A_*(1+ars)*jnp.log(1+(1/(2*A_))/(brs_1_2 + brs + brs_3_2 + brs2))
-    #assert not jnp.isnan(alphac).any() and not jnp.isinf(alphac).any()
+    alphac = 2 * A_ * (1 + ars) * jnp.log(1 + (1 / (2 * A_)) / (brs_1_2 + brs + brs_3_2 + brs2))
+    # assert not jnp.isnan(alphac).any() and not jnp.isinf(alphac).any()
 
     fz = jnp.round(fzeta(zeta), int(math.log10(clip_cte)))
-    z4 = jnp.round(2**(4*jnp.log2(jnp.clip(zeta, a_min = clip_cte))), int(math.log10(clip_cte)))
+    z4 = jnp.round(2 ** (4 * jnp.log2(jnp.clip(zeta, a_min=clip_cte))), int(math.log10(clip_cte)))
 
-    e_tilde = e_tilde_PF[:,0] + alphac * (fz/(grad(grad(fzeta))(0.)))* (1-z4) + (e_tilde_PF[:,1]-e_tilde_PF[:,0]) * fz*z4
-    #assert not jnp.isnan(e_tilde).any() and not jnp.isinf(e_tilde).any()
+    e_tilde = (
+        e_tilde_PF[:, 0]
+        + alphac * (fz / (grad(grad(fzeta))(0.0))) * (1 - z4)
+        + (e_tilde_PF[:, 1] - e_tilde_PF[:, 0]) * fz * z4
+    )
+    # assert not jnp.isnan(e_tilde).any() and not jnp.isinf(e_tilde).any()
 
     return e_tilde
 
 
-def densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str, int]]] = 'LDA', clip_cte: float = 1e-27, *_, **__):
+def densities(
+    molecule: Molecule,
+    functional_type: Optional[Union[str, Dict[str, int]]] = "LDA",
+    clip_cte: float = 1e-27,
+    *_,
+    **__,
+):
     r"""
     Generates and concatenates different functional levels
 
@@ -889,7 +999,7 @@ def densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str,
 
     functional_type:
         Either one of 'LDA', 'GGA', 'MGGA' or Dictionary
-        {'u_range': range(), 'w_range': range()} that generates 
+        {'u_range': range(), 'w_range': range()} that generates
         a functional
 
         .. math::
@@ -912,16 +1022,19 @@ def densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str,
         Array: shape (n_grid, n_features)
     """
 
-    beta = 1/1024.
+    beta = 1 / 1024.0
 
     if isinstance(functional_type, str):
-        if functional_type == 'LDA' or functional_type == 'DM21':  
-            u_range, w_range = range(0,1), range(0,1)
-        elif functional_type == 'GGA':
-            u_range, w_range = range(0,2), range(0,1)
-        elif functional_type == 'MGGA': 
-            u_range, w_range = range(0,2), range(0,2)
-        else: raise ValueError(f'Functional type {functional_type} not recognized, must be one of LDA, GGA, MGGA.')
+        if functional_type == "LDA" or functional_type == "DM21":
+            u_range, w_range = range(0, 1), range(0, 1)
+        elif functional_type == "GGA":
+            u_range, w_range = range(0, 2), range(0, 1)
+        elif functional_type == "MGGA":
+            u_range, w_range = range(0, 2), range(0, 2)
+        else:
+            raise ValueError(
+                f"Functional type {functional_type} not recognized, must be one of LDA, GGA, MGGA."
+            )
 
     # Molecule preprocessing data
     rho = molecule.density()
@@ -930,76 +1043,96 @@ def densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str,
     grad_rho_norm_sq = jnp.sum(grad_rho**2, axis=-1)
 
     # LDA preprocessing data
-    log_rho = jnp.log2(jnp.clip(rho, a_min = clip_cte))
+    log_rho = jnp.log2(jnp.clip(rho, a_min=clip_cte))
 
     # GGA preprocessing data
-    log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm_sq, a_min = clip_cte))/2
-    log_x_sigma = log_grad_rho_norm - 4/3.*log_rho
-    log_u_sigma = jnp.where(jnp.greater(log_rho,jnp.log2(clip_cte)), 
-                            log_x_sigma - jnp.log2(1 + beta*(2**log_x_sigma)) + jnp.log2(beta), 0)
+    log_grad_rho_norm = jnp.log2(jnp.clip(grad_rho_norm_sq, a_min=clip_cte)) / 2
+    log_x_sigma = log_grad_rho_norm - 4 / 3.0 * log_rho
+    log_u_sigma = jnp.where(
+        jnp.greater(log_rho, jnp.log2(clip_cte)),
+        log_x_sigma - jnp.log2(1 + beta * (2**log_x_sigma)) + jnp.log2(beta),
+        0,
+    )
 
     # MGGA preprocessing data
-    log_tau = jnp.log2(jnp.clip(tau, a_min = clip_cte))
-    log_1t_sigma = log_tau -5/3.*log_rho
-    log_w_sigma = jnp.where(jnp.greater(log_rho, jnp.log2(clip_cte)), 
-                            log_1t_sigma - jnp.log2(1 + beta*(2**log_1t_sigma)) + jnp.log2(beta), 0)
+    log_tau = jnp.log2(jnp.clip(tau, a_min=clip_cte))
+    log_1t_sigma = log_tau - 5 / 3.0 * log_rho
+    log_w_sigma = jnp.where(
+        jnp.greater(log_rho, jnp.log2(clip_cte)),
+        log_1t_sigma - jnp.log2(1 + beta * (2**log_1t_sigma)) + jnp.log2(beta),
+        0,
+    )
 
     # Compute the local features
     localfeatures = jnp.empty((log_rho.shape[0], 0))
     for i, j in itertools.product(u_range, w_range):
-        mgga_term = 2**(4/3.*log_rho + i * log_u_sigma + j * log_w_sigma)
+        mgga_term = 2 ** (4 / 3.0 * log_rho + i * log_u_sigma + j * log_w_sigma)
 
         # First we concatenate the exchange terms
         localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=1)
 
     ######### Correlation features ###############
 
-    grad_rho_norm_sq_ss = jnp.sum((grad_rho.sum(axis = 1))**2, axis=-1)
-    log_grad_rho_norm_ss = jnp.log2(jnp.clip(grad_rho_norm_sq_ss, a_min = clip_cte))/2
-    log_rho_ss = jnp.log2(jnp.clip(rho.sum(axis = 1), a_min = clip_cte))
-    log_x_ss = log_grad_rho_norm_ss - 4/3.*log_rho_ss
+    grad_rho_norm_sq_ss = jnp.sum((grad_rho.sum(axis=1)) ** 2, axis=-1)
+    log_grad_rho_norm_ss = jnp.log2(jnp.clip(grad_rho_norm_sq_ss, a_min=clip_cte)) / 2
+    log_rho_ss = jnp.log2(jnp.clip(rho.sum(axis=1), a_min=clip_cte))
+    log_x_ss = log_grad_rho_norm_ss - 4 / 3.0 * log_rho_ss
 
-    log_u_ss = jnp.where(jnp.greater(log_rho_ss,jnp.log2(clip_cte)), 
-                            log_x_ss - jnp.log2(1 + beta*(2**log_x_ss)) + jnp.log2(beta), 0)
-    
-    log_u_ab = jnp.where(jnp.greater(log_rho_ss,jnp.log2(clip_cte)), 
-                            log_x_ss - 1 - jnp.log2(1 + beta*(2**(log_x_ss-1))) + jnp.log2(beta), 0)
+    log_u_ss = jnp.where(
+        jnp.greater(log_rho_ss, jnp.log2(clip_cte)),
+        log_x_ss - jnp.log2(1 + beta * (2**log_x_ss)) + jnp.log2(beta),
+        0,
+    )
 
-    log_u_c = jnp.stack((log_u_ss, log_u_ab), axis = 1)
+    log_u_ab = jnp.where(
+        jnp.greater(log_rho_ss, jnp.log2(clip_cte)),
+        log_x_ss - 1 - jnp.log2(1 + beta * (2 ** (log_x_ss - 1))) + jnp.log2(beta),
+        0,
+    )
 
+    log_u_c = jnp.stack((log_u_ss, log_u_ab), axis=1)
 
-    log_tau_ss = jnp.log2(jnp.clip(tau.sum(axis = 1), a_min = clip_cte))
-    log_1t_ss = log_tau_ss - 5/3.*log_rho_ss
-    log_w_ss = jnp.where(jnp.greater(log_rho.sum(axis = 1), jnp.log2(clip_cte)), 
-                            log_1t_ss - jnp.log2(1 + beta*(2**log_1t_ss)) + jnp.log2(beta), 0)
-    
-    log_w_ab = jnp.where(jnp.greater(log_rho.sum(axis = 1), jnp.log2(clip_cte)), 
-                            log_1t_ss - 1 - jnp.log2(1 + beta*(2**(log_1t_ss-1))) + jnp.log2(beta), 0)
-    
-    log_w_c = jnp.stack((log_w_ss, log_w_ab), axis = 1)
+    log_tau_ss = jnp.log2(jnp.clip(tau.sum(axis=1), a_min=clip_cte))
+    log_1t_ss = log_tau_ss - 5 / 3.0 * log_rho_ss
+    log_w_ss = jnp.where(
+        jnp.greater(log_rho.sum(axis=1), jnp.log2(clip_cte)),
+        log_1t_ss - jnp.log2(1 + beta * (2**log_1t_ss)) + jnp.log2(beta),
+        0,
+    )
 
+    log_w_ab = jnp.where(
+        jnp.greater(log_rho.sum(axis=1), jnp.log2(clip_cte)),
+        log_1t_ss - 1 - jnp.log2(1 + beta * (2 ** (log_1t_ss - 1))) + jnp.log2(beta),
+        0,
+    )
 
-    A_ = jnp.array([[0.031091,0.015545]])
-    alpha1 = jnp.array([[0.21370,0.20548]])
-    beta1 = jnp.array([[7.5957,14.1189]])
-    beta2 = jnp.array([[3.5876,6.1977]])
-    beta3 = jnp.array([[1.6382,3.3662]])
-    beta4 = jnp.array([[0.49294,0.62517]])
-    
-    log_rho = jnp.log2(jnp.clip(rho.sum(axis = 1, keepdims = True), a_min = clip_cte))
-    log_rs = jnp.log2((3/(4*jnp.pi))**(1/3)) - log_rho/3.
-    brs_1_2 = 2**(log_rs/2 + jnp.log2(beta1))
-    ars = 2**(log_rs + jnp.log2(alpha1))
-    brs = 2**(log_rs + jnp.log2(beta2))
-    brs_3_2 = 2**(3*log_rs/2+ jnp.log2(beta3))
-    brs2 = 2**(2*log_rs+ jnp.log2(beta4))
+    log_w_c = jnp.stack((log_w_ss, log_w_ab), axis=1)
 
-    e_PW92 = jnp.round(-2*A_*(1+ars)*jnp.log(1+(1/(2*A_))/(brs_1_2 + brs + brs_3_2 + brs2)), int(math.log10(clip_cte)))
+    A_ = jnp.array([[0.031091, 0.015545]])
+    alpha1 = jnp.array([[0.21370, 0.20548]])
+    beta1 = jnp.array([[7.5957, 14.1189]])
+    beta2 = jnp.array([[3.5876, 6.1977]])
+    beta3 = jnp.array([[1.6382, 3.3662]])
+    beta4 = jnp.array([[0.49294, 0.62517]])
+
+    log_rho = jnp.log2(jnp.clip(rho.sum(axis=1, keepdims=True), a_min=clip_cte))
+    log_rs = jnp.log2((3 / (4 * jnp.pi)) ** (1 / 3)) - log_rho / 3.0
+    brs_1_2 = 2 ** (log_rs / 2 + jnp.log2(beta1))
+    ars = 2 ** (log_rs + jnp.log2(alpha1))
+    brs = 2 ** (log_rs + jnp.log2(beta2))
+    brs_3_2 = 2 ** (3 * log_rs / 2 + jnp.log2(beta3))
+    brs2 = 2 ** (2 * log_rs + jnp.log2(beta4))
+
+    e_PW92 = jnp.round(
+        -2 * A_ * (1 + ars) * jnp.log(1 + (1 / (2 * A_)) / (brs_1_2 + brs + brs_3_2 + brs2)),
+        int(math.log10(clip_cte)),
+    )
 
     # Compute the local features
     for i, j in itertools.product(u_range, w_range):
-        mgga_term = jnp.where(jnp.greater(e_PW92, clip_cte),
-            2**(jnp.log2(e_PW92) + i * log_u_c + j * log_w_c), 0)
+        mgga_term = jnp.where(
+            jnp.greater(e_PW92, clip_cte), 2 ** (jnp.log2(e_PW92) + i * log_u_c + j * log_w_c), 0
+        )
 
         # First we concatenate the exchange terms
         localfeatures = jnp.concatenate((localfeatures, mgga_term), axis=1)
@@ -1008,6 +1141,7 @@ def densities(molecule: Molecule, functional_type: Optional[Union[str, Dict[str,
 
 
 ############# Dispersion functional #############
+
 
 @dataclass
 class DispersionFunctional(nn.Module):
@@ -1022,7 +1156,6 @@ class DispersionFunctional(nn.Module):
     param_dtype: DType = default_dtype()
 
     def setup(self):
-
         self.dense = partial(
             nn.Dense,
             param_dtype=self.param_dtype,
@@ -1030,10 +1163,7 @@ class DispersionFunctional(nn.Module):
             bias_init=self.bias_init,
         )
 
-        self.layer_norm = partial(
-            nn.LayerNorm,
-            param_dtype=self.param_dtype
-        )
+        self.layer_norm = partial(nn.LayerNorm, param_dtype=self.param_dtype)
 
     @nn.compact
     def __call__(self, *inputs) -> Scalar:
@@ -1051,38 +1181,38 @@ class DispersionFunctional(nn.Module):
         """
 
         return self.dispersion(self, *inputs)
-    
-    def head(self, x: Array, local_features, sigmoid_scale_factor):
 
+    def head(self, x: Array, local_features, sigmoid_scale_factor):
         # Final layer: dense -> sigmoid -> scale (x2)
         x = self.dense(features=local_features)(x)
-        self.sow('intermediates', 'head_dense', x)
+        self.sow("intermediates", "head_dense", x)
         x = sigmoid(x / sigmoid_scale_factor)
-        self.sow('intermediates', 'sigmoid', x)
+        self.sow("intermediates", "sigmoid", x)
         out = sigmoid_scale_factor * x
-        self.sow('intermediates', 'sigmoid_product', out)
+        self.sow("intermediates", "sigmoid_product", out)
 
-        return jnp.squeeze(out) # Eliminating unnecessary dimensions
-    
+        return jnp.squeeze(out)  # Eliminating unnecessary dimensions
+
     def energy(self, params: PyTree, molecule: Molecule):
-
         R_AB, ai = calculate_distances(molecule.nuclear_pos, molecule.atom_index)
 
         result = 0
-        for n in range(3,6):
-            x = jnp.concatenate((R_AB, ai, n*jnp.ones(R_AB.shape)), axis = -1)
-            y = self.apply(params, x) / jnp.squeeze(R_AB)**(2*n) 
+        for n in range(3, 6):
+            x = jnp.concatenate((R_AB, ai, n * jnp.ones(R_AB.shape)), axis=-1)
+            y = self.apply(params, x) / jnp.squeeze(R_AB) ** (2 * n)
             result = result + jnp.sum(y)
-        return -result/2
+        return -result / 2
 
 
 def calculate_distances(positions, atoms):
     pairwise_distances = jnp.linalg.norm(positions[:, None] - positions, axis=-1)
-    atom_pairs = jnp.array([(atoms[i], atoms[j]) for i in range(len(atoms)) for j in range(len(atoms))])
+    atom_pairs = jnp.array(
+        [(atoms[i], atoms[j]) for i in range(len(atoms)) for j in range(len(atoms))]
+    )
 
-    pairwise_distances = jnp.reshape(pairwise_distances, newshape = (-1))
+    pairwise_distances = jnp.reshape(pairwise_distances, newshape=(-1))
 
-    non_zero_mask = jnp.greater(pairwise_distances, 0.)
+    non_zero_mask = jnp.greater(pairwise_distances, 0.0)
     pairwise_distances = pairwise_distances[non_zero_mask]
     atom_pairs = atom_pairs[non_zero_mask]
     return pairwise_distances[:, None], atom_pairs

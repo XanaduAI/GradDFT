@@ -1,0 +1,20 @@
+repos:
+-   repo: https://github.com/psf/black
+    rev: 22.3.0
+    hooks:
+    - id: black
+      exclude: ^(checkpoint_dimers/|ckpt_dimers/|ckpts/|data/|DM21_model/)
+- repo: local
+  hooks:
+    - id: pylint
+      name: pylint
+      entry: pylint
+      language: system
+      types: [python]
+      args:
+        [
+          "-rn", # Only display messages
+          "-sn", # Don't display the score
+          "--rcfile=.pylintrc", # Link to your config file
+        ]
+      exclude: ^(checkpoint_dimers/|ckpt_dimers/|ckpts/|data/|DM21_model/)

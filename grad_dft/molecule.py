@@ -29,11 +29,10 @@ import jax
 
 @struct.dataclass
 class Grid:
-
     coords: Array
     weights: Array
 
-    #def __repr__(self):
+    # def __repr__(self):
     #    return f"{self.__class__.__name__}(size={len(self)})"
 
     def __len__(self):
@@ -43,7 +42,6 @@ class Grid:
         return {"coords": self.coords, "weights": self.weights}
 
     def integrate(self, vals: Array, axis: int = 0) -> Array:
-
         r"""
         A function that performs grid quadrature (integration) in a differentiable way (using jax.numpy).
 
@@ -68,6 +66,7 @@ class Grid:
 
         return jnp.tensordot(self.weights, vals, axes=(0, axis))
 
+
 @struct.dataclass
 class Molecule:
     r"""
@@ -89,7 +88,7 @@ class Molecule:
     mo_occ: Array
     mo_energy: Array
     mf_energy: Optional[Scalar] = None
-    s1e: Optional[Array] = None # Not used during training
+    s1e: Optional[Array] = None  # Not used during training
     omegas: Optional[Array] = None
     chi: Optional[Array] = None
     rep_tensor: Optional[Array] = None
@@ -103,7 +102,7 @@ class Molecule:
     scf_iteration: Optional[int] = 50
     fock: Optional[Array] = None
 
-    #def __repr__(self):
+    # def __repr__(self):
     #    return f"{self.__class__.__name__}(grid_size={self.grid_size})"
 
     @property
@@ -121,12 +120,12 @@ class Molecule:
 
     def kinetic_density(self, *args, **kwargs):
         return kinetic_density(self.rdm1, self.grad_ao, *args, **kwargs)
-    
+
     def select_HF_omegas(self, omegas):
         r"""
-        Selects the chi tensor according to the omegas passed. 
+        Selects the chi tensor according to the omegas passed.
         self.chi is ordered according to self.omegas in dimension = 1.
-        
+
         Parameters
         ----------
         omegas: List[float]
@@ -145,32 +144,65 @@ class Molecule:
 
         """
 
-        if self.chi is None: raise ValueError("Precomputed chi tensor has not been loaded.")
+        if self.chi is None:
+            raise ValueError("Precomputed chi tensor has not been loaded.")
         for o in omegas:
-            if o not in self.omegas: 
-                raise ValueError(f"The molecule.chi tensor does not contain omega value {o}, only {self.omegas}")
+            if o not in self.omegas:
+                raise ValueError(
+                    f"The molecule.chi tensor does not contain omega value {o}, only {self.omegas}"
+                )
         indices = [list(self.omegas).index(o) for o in omegas]
-        chi = jnp.stack([self.chi[:,i] for i in indices], axis = 1)
+        chi = jnp.stack([self.chi[:, i] for i in indices], axis=1)
         return chi
 
     def HF_energy_density(self, omegas, *args, **kwargs):
         chi = self.select_HF_omegas(omegas)
         return HF_energy_density(self.rdm1, self.ao, chi, *args, **kwargs)
 
-    def HF_density_grad_2_Fock(self, functional: nn.Module, params: PyTree, omegas: Array, ehf: Array, coefficient_inputs: Array, densities_wout_hf: Array, **kwargs):
+    def HF_density_grad_2_Fock(
+        self,
+        functional: nn.Module,
+        params: PyTree,
+        omegas: Array,
+        ehf: Array,
+        coefficient_inputs: Array,
+        densities_wout_hf: Array,
+        **kwargs,
+    ):
         chi = self.select_HF_omegas(omegas)
-        return HF_density_grad_2_Fock(self.grid, functional, params, chi, self.ao, ehf, coefficient_inputs, densities_wout_hf, **kwargs)
-    
-    def HF_coefficient_input_grad_2_Fock(self, functional: nn.Module, params: PyTree, omegas: Array, ehf: Array, cinputs_wout_hf: Array, densities: Array, **kwargs):
+        return HF_density_grad_2_Fock(
+            self.grid,
+            functional,
+            params,
+            chi,
+            self.ao,
+            ehf,
+            coefficient_inputs,
+            densities_wout_hf,
+            **kwargs,
+        )
+
+    def HF_coefficient_input_grad_2_Fock(
+        self,
+        functional: nn.Module,
+        params: PyTree,
+        omegas: Array,
+        ehf: Array,
+        cinputs_wout_hf: Array,
+        densities: Array,
+        **kwargs,
+    ):
         chi = self.select_HF_omegas(omegas)
-        return HF_coefficient_input_grad_2_Fock(self.grid, functional, params, chi, self.ao, ehf, cinputs_wout_hf, densities, **kwargs)
+        return HF_coefficient_input_grad_2_Fock(
+            self.grid, functional, params, chi, self.ao, ehf, cinputs_wout_hf, densities, **kwargs
+        )
 
     def nonXC(self, *args, **kwargs):
         return nonXC(self.rdm1, self.h1e, self.rep_tensor, self.nuclear_repulsion, *args, **kwargs)
-    
+
     def make_rdm1(self):
         return make_rdm1(self.mo_coeff, self.mo_occ)
-    
+
     def get_occ(self):
         nelecs = [self.mo_occ[i].sum() for i in range(2)]
         naos = self.mo_occ.shape[1]
@@ -182,8 +214,8 @@ class Molecule:
         return dict(**grid_dict, **rest)
 
 
-
 #######################################################################
+
 
 def orbital_grad(mo_coeff, mo_occ, F):
     r"""
@@ -208,17 +240,17 @@ def orbital_grad(mo_coeff, mo_occ, F):
     return g.ravel()
     """
 
-    C_occ = jax.vmap(jnp.where, in_axes = (None, 1, None), out_axes=1)(mo_occ > 0, mo_coeff, 0)
-    C_vir = jax.vmap(jnp.where, in_axes = (None, 1, None), out_axes=1)(mo_occ == 0, mo_coeff, 0)
+    C_occ = jax.vmap(jnp.where, in_axes=(None, 1, None), out_axes=1)(mo_occ > 0, mo_coeff, 0)
+    C_vir = jax.vmap(jnp.where, in_axes=(None, 1, None), out_axes=1)(mo_occ == 0, mo_coeff, 0)
 
     return jnp.einsum("sab,sac,scd->bd", C_vir.conj(), F, C_occ)
 
 
 ##########################################################
 
+
 @partial(jax.jit, static_argnames="precision")
 def density(rdm1: Array, ao: Array, precision: Precision = Precision.HIGHEST) -> Array:
-
     r"""
     Calculate electronic density from atomic orbitals.
 
@@ -242,11 +274,11 @@ def density(rdm1: Array, ao: Array, precision: Precision = Precision.HIGHEST) ->
 
     return jnp.einsum("...ab,ra,rb->r...", rdm1, ao, ao, precision=precision)
 
+
 @partial(jax.jit, static_argnames="precision")
 def grad_density(
     rdm1: Array, ao: Array, grad_ao: Array, precision: Precision = Precision.HIGHEST
 ) -> Array:
-
     r"""
     Calculate the electronic density gradient from atomic orbitals.
 
@@ -273,15 +305,22 @@ def grad_density(
 
     return 2 * jnp.einsum("...ab,ra,rbj->r...j", rdm1, ao, grad_ao, precision=precision)
 
-@partial(jax.jit, static_argnames="precision")
-def lapl_density(rdm1: Array, ao: Array, grad_ao: Array, grad_2_ao: PyTree, precision: Precision = Precision.HIGHEST):
 
-    return 2* jnp.einsum("...ab,raj,rbj->r...", rdm1, grad_ao, grad_ao, precision=precision) + \
-            2 * jnp.einsum("...ab,ra,rbi->r...", rdm1, ao, grad_2_ao, precision=precision)
+@partial(jax.jit, static_argnames="precision")
+def lapl_density(
+    rdm1: Array,
+    ao: Array,
+    grad_ao: Array,
+    grad_2_ao: PyTree,
+    precision: Precision = Precision.HIGHEST,
+):
+    return 2 * jnp.einsum(
+        "...ab,raj,rbj->r...", rdm1, grad_ao, grad_ao, precision=precision
+    ) + 2 * jnp.einsum("...ab,ra,rbi->r...", rdm1, ao, grad_2_ao, precision=precision)
+
 
 @partial(jax.jit, static_argnames="precision")
 def kinetic_density(rdm1: Array, grad_ao: Array, precision: Precision = Precision.HIGHEST) -> Array:
-
     r"""
     Calculate kinetic energy density from atomic orbitals.
 
@@ -305,9 +344,9 @@ def kinetic_density(rdm1: Array, grad_ao: Array, precision: Precision = Precisio
 
     return 0.5 * jnp.einsum("...ab,raj,rbj->r...", rdm1, grad_ao, grad_ao, precision=precision)
 
+
 @partial(jax.jit, static_argnames=["precision"])
 def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision = Precision.HIGHEST):
-
     r"""
     Calculate the Hartree-Fock energy density.
 
@@ -336,24 +375,27 @@ def HF_energy_density(rdm1: Array, ao: Array, chi: Array, precision: Precision =
         The Hartree-Fock energy density. Shape: (n_omega, n_spin, n_grid_points).
     """
 
-    #return - jnp.einsum("rwsc,sac,ra->wsr", chi, rdm1, ao, precision=precision)/2
-    _hf_energy = lambda _chi, _rdm1, _ao: - jnp.einsum("wsc,sac,a->ws", _chi, _rdm1, _ao, precision=precision)/2
+    # return - jnp.einsum("rwsc,sac,ra->wsr", chi, rdm1, ao, precision=precision)/2
+    _hf_energy = (
+        lambda _chi, _rdm1, _ao: -jnp.einsum("wsc,sac,a->ws", _chi, _rdm1, _ao, precision=precision)
+        / 2
+    )
     return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
 
-def HF_density_grad_2_Fock( #todo: change the documentation
+
+def HF_density_grad_2_Fock(  # todo: change the documentation
     grid: Grid,
     functional: nn.Module,
     params: PyTree,
-    chi: Array, 
+    chi: Array,
     ao: Array,
     ehf: Array,
     coefficient_inputs: Array,
     densities_wout_hf: Array,
     chunk_size: Optional[int] = None,
     precision: Precision = Precision.HIGHEST,
-    fxc_kwargs: dict = {}
+    fxc_kwargs: dict = {},
 ) -> Array:
-
     r"""
     Calculate the Hartree-Fock matrix contribution due to the partial derivative
     with respect to the Hartree Fock energy energy density.
@@ -372,7 +414,7 @@ def HF_density_grad_2_Fock( #todo: change the documentation
         Contains a list of the features to dot multiply with the output of the functional, except the HF density.
         Expected shape: (n_features, n_grid_points)
     ehf : Array
-        The Hartree-Fock energy density. 
+        The Hartree-Fock energy density.
         Expected shape: (n_omega, n_spin, n_grid_points).
     chi : Array
         .. math::
@@ -420,29 +462,31 @@ def HF_density_grad_2_Fock( #todo: change the documentation
         densities = functional.combine_densities(densities_wout_hf, ehf)
         return functional.apply_and_integrate(params, grid, coefficient_inputs, densities)
 
-    gr = grad(partial_fxc, argnums = 2)(params, grid, ehf, coefficient_inputs, densities_wout_hf)
+    gr = grad(partial_fxc, argnums=2)(params, grid, ehf, coefficient_inputs, densities_wout_hf)
 
     @partial(vmap_chunked, in_axes=(0, None, None), chunk_size=chunk_size)
     def chunked_jvp(chi_tensor, gr_tensor, ao_tensor):
-        return - jnp.einsum("rws,wsr,ra->wsa", chi_tensor, gr_tensor, ao_tensor, precision=precision)/2.
+        return (
+            -jnp.einsum("rws,wsr,ra->wsa", chi_tensor, gr_tensor, ao_tensor, precision=precision)
+            / 2.0
+        )
 
-    return (jax.jit(chunked_jvp)(chi.transpose(3,0,1,2), gr, ao)).transpose(1,2,3,0)
+    return (jax.jit(chunked_jvp)(chi.transpose(3, 0, 1, 2), gr, ao)).transpose(1, 2, 3, 0)
 
 
 def HF_coefficient_input_grad_2_Fock(
     grid: Grid,
     functional: nn.Module,
     params: PyTree,
-    chi: Array, 
+    chi: Array,
     ao: Array,
     ehf: Array,
     cinputs_wout_hf: Array,
     densities: Array,
     chunk_size: Optional[int] = None,
     precision: Precision = Precision.HIGHEST,
-    fxc_kwargs: dict = {}
+    fxc_kwargs: dict = {},
 ) -> Array:
-
     r"""
     Calculate the Hartree-Fock matrix contribution due to the partial derivative
     with respect to the Hartree Fock energy energy density.
@@ -461,7 +505,7 @@ def HF_coefficient_input_grad_2_Fock(
         Contains a list of the features to dot multiply with the output of the functional, except the HF density.
         Expected shape: (n_features, n_grid_points)
     ehf : Array
-        The Hartree-Fock energy density. 
+        The Hartree-Fock energy density.
         Expected shape: (n_omega, n_spin, n_grid_points).
     chi : Array
         .. math::
@@ -509,26 +553,35 @@ def HF_coefficient_input_grad_2_Fock(
         coefficient_inputs = functional.combine_inputs(coefficient_inputs_wout_hf, ehf)
         return functional.apply_and_integrate(params, grid, coefficient_inputs, densities)
 
-    gr = grad(partial_fxc, argnums = 2)(params, grid, ehf, cinputs_wout_hf, densities)
+    gr = grad(partial_fxc, argnums=2)(params, grid, ehf, cinputs_wout_hf, densities)
 
     @partial(vmap_chunked, in_axes=(0, None, None), chunk_size=chunk_size)
     def chunked_jvp(chi_tensor, gr_tensor, ao_tensor):
-        return - jnp.einsum("rws,wsr,ra->wsa", chi_tensor, gr_tensor, ao_tensor, precision=precision)/2.
+        return (
+            -jnp.einsum("rws,wsr,ra->wsa", chi_tensor, gr_tensor, ao_tensor, precision=precision)
+            / 2.0
+        )
 
-    return (jax.jit(chunked_jvp)(chi.transpose(3,0,1,2), gr, ao)).transpose(1,2,3,0)
+    return (jax.jit(chunked_jvp)(chi.transpose(3, 0, 1, 2), gr, ao)).transpose(1, 2, 3, 0)
 
-def eig(h,x):
-    e0, c0 = eigh2d(h[0],x)
-    e1, c1 = eigh2d(h[1],x)
-    return jnp.stack((e0, e1), axis = 0), jnp.stack((c0, c1), axis = 0)
+
+def eig(h, x):
+    e0, c0 = eigh2d(h[0], x)
+    e1, c1 = eigh2d(h[1], x)
+    return jnp.stack((e0, e1), axis=0), jnp.stack((c0, c1), axis=0)
+
 
 ######################################################################
 
+
 @partial(jax.jit, static_argnames=["precision"])
 def nonXC(
-    rdm1: Array, h1e: Array, rep_tensor: Array, nuclear_repulsion: Scalar, precision = Precision.HIGHEST
+    rdm1: Array,
+    h1e: Array,
+    rep_tensor: Array,
+    nuclear_repulsion: Scalar,
+    precision=Precision.HIGHEST,
 ) -> Scalar:
-
     r"""
     A function that computes the non-XC part of a DFT functional.
 
@@ -563,25 +616,30 @@ def nonXC(
 
     return nuclear_repulsion + h1e_energy + coulomb2e_energy
 
+
 @partial(jax.jit)
 def symmetrize_rdm1(rdm1):
-    dm = rdm1.sum(axis = 0)
-    rdm1 = jnp.stack([dm, dm], axis = 0)/2.
+    dm = rdm1.sum(axis=0)
+    rdm1 = jnp.stack([dm, dm], axis=0) / 2.0
     return rdm1
 
-@partial(jax.jit, static_argnames=["precision"])
-def two_body_energy(rdm1, rep_tensor, precision = Precision.HIGHEST):
-    v_coul = 2 * jnp.einsum("pqrt,srt->spq", rep_tensor, rdm1, precision=precision) # The 2 is to compensate for the /2 in the dm definition
-    coulomb2e_energy = jnp.einsum('sji,sij->', rdm1, v_coul, precision=precision)/2.
-    return coulomb2e_energy
 
 @partial(jax.jit, static_argnames=["precision"])
-def one_body_energy(rdm1, h1e, precision = Precision.HIGHEST):
+def two_body_energy(rdm1, rep_tensor, precision=Precision.HIGHEST):
+    v_coul = 2 * jnp.einsum(
+        "pqrt,srt->spq", rep_tensor, rdm1, precision=precision
+    )  # The 2 is to compensate for the /2 in the dm definition
+    coulomb2e_energy = jnp.einsum("sji,sij->", rdm1, v_coul, precision=precision) / 2.0
+    return coulomb2e_energy
+
+
+@partial(jax.jit, static_argnames=["precision"])
+def one_body_energy(rdm1, h1e, precision=Precision.HIGHEST):
     h1e_energy = jnp.einsum("sij,ji->", rdm1, h1e, precision=precision)
     return h1e_energy
 
-def coulomb_potential(rdm1, rep_tensor, precision = Precision.HIGHEST):
-    
+
+def coulomb_potential(rdm1, rep_tensor, precision=Precision.HIGHEST):
     r"""
     A function that computes the non-XC part of a DFT functional.
 
@@ -605,11 +663,9 @@ def coulomb_potential(rdm1, rep_tensor, precision = Precision.HIGHEST):
     """
     return 2 * jnp.einsum("pqrt,srt->spq", rep_tensor, rdm1, precision=precision)
 
+
 @partial(jax.jit, static_argnames=["precision"])
-def HF_exact_exchange(
-    chi, rdm1, ao, precision = Precision.HIGHEST
-) -> Array:
-    
+def HF_exact_exchange(chi, rdm1, ao, precision=Precision.HIGHEST) -> Array:
     r"""
     A function that computes the exact exchange energy of a DFT functional.
 
@@ -642,12 +698,13 @@ def HF_exact_exchange(
         The exact exchange energy of the DFT functional at each point of the grid.
     """
 
-    _hf_energy = lambda _chi, _dm, _ao: - jnp.einsum("wsc,sac,a->ws", _chi, _dm, _ao, precision=precision)/2
+    _hf_energy = (
+        lambda _chi, _dm, _ao: -jnp.einsum("wsc,sac,a->ws", _chi, _dm, _ao, precision=precision) / 2
+    )
     return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
 
 
 def make_rdm1(mo_coeff, mo_occ):
-
     r"""
     One-particle density matrix in AO representation
 
@@ -668,13 +725,11 @@ def make_rdm1(mo_coeff, mo_occ):
     return jnp.array((dm_a, dm_b))
     """
 
-    return jnp.einsum('sij,sj,skj -> sik', mo_coeff, mo_occ, mo_coeff.conj())
+    return jnp.einsum("sij,sj,skj -> sik", mo_coeff, mo_occ, mo_coeff.conj())
 
 
 def get_occ(mo_energies, nelecs, naos):
-
     def get_occ_spin(mo_energy, nelec_spin, naos):
-
         sorted_indices = jnp.argsort(mo_energy)
 
         mo_occ = jnp.zeros_like(mo_energy)
@@ -689,12 +744,15 @@ def get_occ(mo_energies, nelecs, naos):
 
         return mo_occ
 
-    mo_occ = jnp.stack([get_occ_spin(mo_energies[s], jnp.int32(nelecs[s]), naos) for s in range(2)], axis=0)
+    mo_occ = jnp.stack(
+        [get_occ_spin(mo_energies[s], jnp.int32(nelecs[s]), naos) for s in range(2)], axis=0
+    )
 
     return mo_occ
 
 
 ######################################################################
+
 
 class Reaction(NamedTuple):
     reactants: Sequence[Molecule]
@@ -713,7 +771,6 @@ def make_reaction(
     energy: Optional[float] = None,
     name: Optional[str] = None,
 ) -> Reaction:
-
     r"""
     Parse inputs and make a `Reaction` object.
 
@@ -743,7 +800,6 @@ def make_reaction(
 def _canonicalize_molecules(
     molecules: Union[Molecule, Sequence[Molecule]], numbers: Optional[Sequence[int]]
 ) -> Tuple[Sequence[Molecule], Sequence[int]]:
-
     if isinstance(molecules, Molecule):
         molecules = (molecules,)
 

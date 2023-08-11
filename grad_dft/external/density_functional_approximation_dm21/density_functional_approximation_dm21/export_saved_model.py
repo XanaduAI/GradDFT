@@ -22,17 +22,16 @@ from absl import flags
 
 from density_functional_approximation_dm21 import neural_numint
 
-_OUT_DIR = flags.DEFINE_string(
-    'out_dir', None, 'Output directory.', required=True)
+_OUT_DIR = flags.DEFINE_string("out_dir", None, "Output directory.", required=True)
 _BATCH_SIZE = flags.DEFINE_integer(
-    'batch_size',
+    "batch_size",
     1000,
-    'Number of grid points exported functional will process in a single call.',
-    lower_bound=0)
-_FUNCTIONAL = flags.DEFINE_enum_class('functional',
-                                      neural_numint.Functional.DM21,
-                                      neural_numint.Functional,
-                                      'Functional to export.')
+    "Number of grid points exported functional will process in a single call.",
+    lower_bound=0,
+)
+_FUNCTIONAL = flags.DEFINE_enum_class(
+    "functional", neural_numint.Functional.DM21, neural_numint.Functional, "Functional to export."
+)
 
 
 def export(
@@ -40,23 +39,22 @@ def export(
     export_path: str,
     batch_dim: int,
 ) -> None:
-  """Export a functional and its derivatives to a single saved_model.
+    """Export a functional and its derivatives to a single saved_model.
 
-  Args:
-    functional: functional to export.
-    export_path: path to saved the model to.
-    batch_dim: number of grid points to process in a single call.
-  """
-  ni = neural_numint.NeuralNumInt(functional)
-  ni.export_functional_and_derivatives(
-      export_path=export_path, batch_dim=batch_dim)
+    Args:
+      functional: functional to export.
+      export_path: path to saved the model to.
+      batch_dim: number of grid points to process in a single call.
+    """
+    ni = neural_numint.NeuralNumInt(functional)
+    ni.export_functional_and_derivatives(export_path=export_path, batch_dim=batch_dim)
 
 
 def main(argv: Sequence[str]) -> None:
-  if len(argv) > 1:
-    raise app.UsageError('Too many command-line arguments.')
-  export(_FUNCTIONAL.value, _OUT_DIR.value, _BATCH_SIZE.value)
+    if len(argv) > 1:
+        raise app.UsageError("Too many command-line arguments.")
+    export(_FUNCTIONAL.value, _OUT_DIR.value, _BATCH_SIZE.value)
 
 
-if __name__ == '__main__':
-  app.run(main)
+if __name__ == "__main__":
+    app.run(main)

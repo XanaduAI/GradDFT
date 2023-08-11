@@ -37,7 +37,6 @@ def unchunk(x: Array):
 
 
 def _get_chunks(x, n_bulk, chunk_size):
-
     bulk = tree_map(
         lambda l: lax.dynamic_slice_in_dim(l, start_index=0, slice_size=n_bulk, axis=0),
         x,
@@ -54,12 +53,10 @@ def _get_rest(x, n_bulk, n_rest):
 
 
 def map_over_chunks(fun, argnums=0):
-
     if isinstance(argnums, int):
         argnums = (argnums,)
 
     def mapped(*args, **kwargs):
-
         f = lu.wrap_init(fun, kwargs)
         f_partial, dyn_args = argnums_partial(f, argnums, args, require_static_args_hashable=False)
 
@@ -69,12 +66,10 @@ def map_over_chunks(fun, argnums=0):
 
 
 def _chunk_vmapped_function(vmapped_fun, chunk_size, argnums=0):
-
     if chunk_size is None:
         return vmapped_fun
 
     def out_fun(*args, **kwargs):
-
         f = lu.wrap_init(vmapped_fun, kwargs)
 
         f_partial, dyn_args = argnums_partial(f, argnums, args, require_static_args_hashable=False)
@@ -88,7 +83,6 @@ def _chunk_vmapped_function(vmapped_fun, chunk_size, argnums=0):
         y = unchunk(lax.map(lambda x: f_partial.call_wrapped(*x), bulk))
 
         if n_rest > 0:
-
             rest = _get_rest(dyn_args, n_bulk, n_rest)
             y_rest = f_partial.call_wrapped(*rest)
 
@@ -102,7 +96,6 @@ def _chunk_vmapped_function(vmapped_fun, chunk_size, argnums=0):
 def vmap_chunked(
     f: Callable, in_axes: Union[int, Sequence[int]] = 0, *, chunk_size: Optional[int] = None
 ):
-
     if isinstance(in_axes, int):
         in_axes = (in_axes,)
 

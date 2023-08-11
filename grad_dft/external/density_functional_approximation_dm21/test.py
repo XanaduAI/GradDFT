@@ -5,8 +5,8 @@ import tensorflow as tf
 from pyscf import gto, dft
 
 mol = gto.Mole()
-mol.atom = geometry_from_pubchem('water')
-mol.basis = 'cc-pvdz'
+mol.atom = geometry_from_pubchem("water")
+mol.basis = "cc-pvdz"
 mol.build()
 
 mf = dft.RKS(mol)
