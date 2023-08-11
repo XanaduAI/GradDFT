@@ -16,7 +16,6 @@ from chex import Array
 
 
 def _evaluate_nu_slow(mol: Mole, coords: Array, omega: float, hermi: int) -> Array:
-
     """Computes nu integrals for given coordinates using a slow loop."""
 
     nu = []
@@ -33,7 +32,6 @@ def _evaluate_nu_slow(mol: Mole, coords: Array, omega: float, hermi: int) -> Arr
 
 
 def _evaluate_nu_fast(mol: Mole, coords: Array, omega: float, hermi: int) -> Array:
-
     """Computes nu integrals for given coordinates using a fast loop within PySCF."""
 
     with mol.with_range_coulomb(omega=omega):
@@ -47,7 +45,6 @@ def _evaluate_nu_fast(mol: Mole, coords: Array, omega: float, hermi: int) -> Arr
 
 
 def _evaluate_nu(mol: Mole, coords: Array, omega: float, hermi: bool = True) -> Array:
-
     """Computes nu integrals for given coordinates.
     \nu_{bd}(r) = \int dr' (\chi_b(r') v(r, r') \chi_d(r')), for \chi the basis functions
     """
@@ -58,7 +55,6 @@ def _evaluate_nu(mol: Mole, coords: Array, omega: float, hermi: bool = True) -> 
         nu = _evaluate_nu_fast(mol, coords, omega, hermi=hermi)
 
     except TypeError:
-
         logger.info(
             mol,
             "Support for int1e_grids not found (requires libcint 4.4.1 and "
@@ -74,7 +70,6 @@ def _evaluate_nu(mol: Mole, coords: Array, omega: float, hermi: bool = True) -> 
 def _nu_chunk(
     mol: Mole, coords: Array, omega: float, chunk_size: int = 1000
 ) -> Generator[Tuple[int, int, Array], None, None]:
-
     """Yields chunks of nu integrals over the grid.
     Args:
       mol: pyscf Mole object.
@@ -100,7 +95,6 @@ def _nu_chunk(
     ncoords = len(coords)
 
     for chunk_index in range(0, ncoords, chunk_size):
-
         end_index = min(chunk_index + chunk_size, ncoords)
         coords_chunk = coords[chunk_index:end_index]
 
@@ -111,7 +105,6 @@ def _nu_chunk(
 
 @jax.jit
 def _compute_exx_block(nu: Array, e: Array) -> Tuple[Array, Array]:
-
     """Computes exx and fxx.
     Args:
       nu: batch of <i|v(r,r_k)|j> integrals, in format (k,i,j) where r_k is the
@@ -133,7 +126,6 @@ def _compute_exx_block(nu: Array, e: Array) -> Tuple[Array, Array]:
 def _compute_jk_block(
     nu: Array, fxx: Array, dm: Array, ao_value: Array, weights: Array
 ) -> Tuple[Array, Array]:
-
     """Computes J and K contributions from the given block of nu integrals."""
 
     batch_size = nu.shape[0]
@@ -151,7 +143,6 @@ def _compute_jk_block(
 
 
 class HFDensityResult(NamedTuple):
-
     r"""Container for results returned by get_hf_density.
     Note that the kernel used in all integrals is defined by the omega input
     argument.
@@ -192,7 +183,6 @@ def hf_density(
     chunk_size: int = 1000,
     weights: Optional[Array] = None,
 ) -> HFDensityResult:
-
     r"""Computes the (range-separated) HF energy density.
     Args:
       mol: PySCF molecule.
@@ -227,7 +217,6 @@ def hf_density(
     """
 
     if mol.cart:
-
         raise NotImplementedError(
             "Local HF exchange is not implmented for basis sets with Cartesian functions!"
         )
@@ -268,7 +257,6 @@ def hf_density(
     kb = jnp.zeros_like(dmb)
 
     for start, end, nu in _nu_chunk(mol, coords, omega, chunk_size=chunk_size):
-
         logger.info(mol, "Computing exx %s / %s ...", end, len(ea))
         exxa_block, fxxa_block = _compute_exx_block(nu, ea[start:end])
         exxa.extend(exxa_block)
@@ -283,7 +271,6 @@ def hf_density(
                 fxxb.extend(fxxb_block)
 
         if weights is not None:
-
             ja_block, ka_block = _compute_jk_block(
                 nu, fxxa_block, dma, ao[start:end], weights[start:end]
             )
@@ -292,7 +279,6 @@ def hf_density(
             ka += ka_block
 
             if not restricted:
-
                 jb_block, kb_block = _compute_jk_block(
                     nu, fxxb_block, dmb, ao[start:end], weights[start:end]
                 )
@@ -313,7 +299,6 @@ def hf_density(
         fxxb = jnp.stack(fxxb, axis=0)
 
     if weights is not None:
-
         return HFDensityResult(
             exx=(exxa, exxb),
             fxx=(fxxa, fxxb) if deriv == 1 else None,

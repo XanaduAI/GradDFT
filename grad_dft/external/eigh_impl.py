@@ -98,7 +98,8 @@ def eigh_jvp_rule(primals, tangents):
 
     # compute only the diagonal entries
     dv = jax.vmap(
-        lambda vi, wi: -wi.conj() @ db @ wi * vi + wi.conj() @ da @ wi, in_axes=(0, 1),
+        lambda vi, wi: -wi.conj() @ db @ wi * vi + wi.conj() @ da @ wi,
+        in_axes=(0, 1),
     )(v, w)
 
     dv = dv.real
