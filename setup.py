@@ -22,7 +22,7 @@ setup(
     packages=find_packages(),
     install_requires=requirements,
     extras_require={
-        "demos": [
+        "examples": [
             "openfermion>=1.5.1", "tqdm>=4.66.1", "torch>=2.0.1",
             "matplotlib>=3.7.2", "pandas>=2.0.3", "seaborn>=0.12.2"
         ],
