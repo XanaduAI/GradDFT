@@ -27,7 +27,7 @@ HF_molecule = molecule_from_pyscf(mf)
 # First a features method, which takes a molecule and returns an array of features
 # It computes what in the article appears as potential e_\theta(r), as well as the
 # input to the neural network to compute the density.
-def lsda_density(molecule: Molecule, clip_cte: float = 1e-27):
+def energy_densities(molecule: Molecule, clip_cte: float = 1e-27):
     r"""Auxiliary function to generate the features of LSDA."""
     # Molecule can compute the density matrix.
     rho = molecule.density()
@@ -41,11 +41,11 @@ def lsda_density(molecule: Molecule, clip_cte: float = 1e-27):
     return lda_e
 
 # Then we have to define a function that takes the output of features and returns the energy density.
-# Its first argument represents the instance of the functional. Note how we sum over the dimensions
-# feature in the LDA energy density that we computed above
+# We will use coefficients = lambda self, rho: jnp.array([[1.]]) that always returns coefficient 1
 
 # Overall, we have the functional
-LSDA = Functional(coefficients = lambda self, *_: jnp.array([[1.]]), energy_densities=lsda_density)
+coefficients = lambda self, rho: jnp.array([[1.]])
+LSDA = Functional(coefficients, energy_densities)
 params = freeze({'params': {}}) # Since the functional is not neural, we pass frozen dict for the parameters
 
 # We can compute the predicted energy using the following code:

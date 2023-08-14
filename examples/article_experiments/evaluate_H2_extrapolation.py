@@ -30,17 +30,17 @@ dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 #todo: Select here the file to evaluate
 
 # Select here the file you would like to evaluate your model on
-test_files = ["N2_dissociation.h5"]
+test_files = ["H2plus_dissociation.h5"]
 
 # Select here the folder where the checkpoints are stored
-ckpt_folder = "checkpoints/ckpts_N2_interpolation/"
+ckpt_folder = "checkpoints/ckpts_H2plus_extrapolation/"
 training_data_dirpath = os.path.join(dirpath, ckpt_folder) #os.path.normpath(dirpath + "/data/training/dissociation/")
 
 
 # Just for plotting, indicate the name of the file this model was trained on
-train_file = 'N2_interpolation_train.hdf5'
+train_file = 'H2plus_extrapolation_train.hdf5'
 control_files = [train_file]
-# alternatively, use "H2_interpolation.h5". You will have needed to execute in data_processing.py
+# alternatively, use "H2_extrapolation.h5". You will have needed to execute in data_processing.py
 #process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z')
 #process_dissociation(atom1 = 'H', atom2 = 'H', charge = 1, spin = 1, file = 'H2plus_dissociation.xlsx', energy_column_name='cc-pV5Z')
 
@@ -160,9 +160,9 @@ dissociation_N2_file = os.path.join(raw_data_folder, 'N2_dissociation.xlsx')
 dissociation_N2_df = pd.read_excel(dissociation_N2_file, header=0, index_col=0)
 
 #todo: Select here the file where original data is stored
-df = dissociation_N2_df
-image_file_name = 'dissociation_N2_inter.pdf'
-column = 'energy (Ha)' #'cc-pV5Z'
+df = dissociation_H2plus_df
+image_file_name = 'dissociation_H2plus_extrapolation.pdf'
+column = 'cc-pVQZ'
 
 def MAE(predictions: Dict, dissociation_df: pd.DataFrame):
     dissociation = dissociation_df[column].to_dict()
@@ -189,7 +189,7 @@ for m in molecules:
     trained_dict[d] = df.loc[d,column]
 
 
-fig = plt.figure(figsize=(10, 10))
+fig = plt.figure(figsize=(10, 8))
 ax = fig.add_subplot(111)
 
 predictions = collections.OrderedDict(sorted(predictions.items()))
@@ -197,41 +197,48 @@ x, y = [], []
 for k, v in predictions.items():
     x.append(k)
     y.append(v)
-ax.plot(x, y, '-', label='Model predictions', color='red')
+ax.plot(x, y, '--', label='Predictions', color='#00a8ff', linewidth=2.5)
 
-true_energies = {k: v for (k, v) in zip(df.index, df[column])}
-ax.plot(df.index, df[column], 'b-', label='Ground Truth')
-ax.plot(trained_dict.keys(), trained_dict.values(), 'o', label='Trained points', color='black')
+true_energies = {k: v for (k, v) in zip(df.index, df[column])} #todo
+ax.plot(df.index, df[column], '-', color = '#192a56', label='FCI', linewidth=2.5)
+ax.plot(trained_dict.keys(), trained_dict.values(), 'o', label='Training set', color='black')
 
-ax.set_ylabel(r'Energy (Ha)', fontsize=16)
-ax.set_xlabel(r'Distance ($\mathring{A}$)', fontsize=16)
+ax.set_ylabel(r'Energy (Ha)', fontsize=24)
+ax.set_xlabel(r'Interatomic distance ($\mathring{A}$)', fontsize=24)
 finaly = list(df[column])[-1]
 miny = min(df[column])
 maxy = finaly + (finaly - miny)/5
 miny -= (finaly - miny)/10
 #todo: change range as appropriate
-#ax.set_ybound(-0.65, -0.4) 
+ax.set_ybound(-0.63, -0.4) 
 #ax.set_ybound(-1.2, -0.85)
-ax.set_ybound(-109.63, -109.)
-t = ax.text(0.05, 0.9, r'(f) $N_2$ dissociation interpolation', transform=ax.transAxes, fontsize=24)
+#ax.set_ybound(-109.63, -109.)
+t = ax.text(0.15, 0.9, r'(a) $H_2^+$ extrapolation', transform=ax.transAxes, fontsize=24)
 t.set_bbox(dict(facecolor='white', alpha=1, linewidth=0))
 mae = MAE(predictions, df)
 
-#ax.set_title('H2 dissociation', loc='center')#todo: change title
-#ax.text(0.5, 0.9, r'$N_2$ dissociation', ha='center', va='center', transform=ax.transAxes, fontsize=16)
-ax.text(0.9, 0.2, r'Evaluation MAE: '+  f"{mae:.4e}"+ ' Ha', ha='right', va='bottom', transform=ax.transAxes, fontsize=18)
-ax.legend(fontsize="16")
-ax.tick_params(axis='both', which='major', labelsize=16)
+from matplotlib.ticker import MultipleLocator
+xminorLocator = MultipleLocator(0.1)
+ax.xaxis.set_minor_locator(xminorLocator)
+yminorLocator = MultipleLocator(0.025)
+ax.yaxis.set_minor_locator(yminorLocator)
+
+#ax.text(0.9, 0.3, r'MAE: '+  f"{mae:.1e}"+ r' Ha', ha='right', va='bottom', transform=ax.transAxes, fontsize=24)
+ax.legend(fontsize="24", loc = 'lower right')
+ax.tick_params(axis='both', which='major', labelsize=24, direction = 'in')
+ax.tick_params(axis='both', which='minor', direction = 'in')
 
 
 file = os.path.join(dirpath, ckpt_folder, image_file_name)
-fig.savefig(file, dpi = 200)
+plt.tight_layout()
+#plt.subplots_adjust(left = 0, right = 1, top = 1, bottom = 0)
+fig.savefig(file, dpi = 200, bbox_inches="tight") #bbox_inches='tight'
 plt.show()
 plt.close()
 
 for k in predictions.keys():
     print(k, predictions[k], df.loc[k,column])
 
-print('The MAE over all predictions in H2 dissociation interpolation is '+  str(MAE(predictions, df)))
+print('The MAE over all predictions in H2 dissociation extrapolation is '+  str(MAE(predictions, df)))
 
 

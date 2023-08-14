@@ -103,11 +103,12 @@ class Functional(nn.Module):
 
     coefficients: staticmethod
     energy_densities: staticmethod
+    coefficient_inputs: staticmethod = None
+
     nograd_densities: staticmethod = None
     densitygrads: staticmethod = None
     combine_densities: staticmethod = None
 
-    coefficient_inputs: staticmethod = None
     nograd_coefficient_inputs: staticmethod = None
     coefficient_input_grads: staticmethod = None
     combine_inputs: staticmethod = None
@@ -308,11 +309,12 @@ class NeuralFunctional(Functional):
 
     coefficients: staticmethod
     energy_densities: staticmethod
+    coefficient_inputs: staticmethod = None
+
     nograd_densities: staticmethod = None
     densitygrads: staticmethod = None
     combine_densities: staticmethod = None
 
-    coefficient_inputs: staticmethod = None
     nograd_coefficient_inputs: staticmethod = None
     coefficient_input_grads: staticmethod = None
     combine_inputs: staticmethod = None
