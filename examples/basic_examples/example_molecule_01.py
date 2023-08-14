@@ -102,7 +102,7 @@ print(name, name_ints)
 
 
 def grad_density(rdm1: Array, ao: Array, grad_ao: Array) -> Array:
-    return 2 * jnp.einsum("...ab,ra,rbj->...rj", rdm1, ao, grad_ao)
+    return 2 * jnp.einsum("...ab,ra,rbj->r...j", rdm1, ao, grad_ao)
 
 
 grad_density_0 = grad_density(HF_molecule.rdm1, HF_molecule.ao, HF_molecule.grad_ao)
@@ -117,7 +117,7 @@ def parallelized_density(rdm1: Array, ao: Array) -> Array:
 grad_density_ao = vmap(
     vmap(grad(parallelized_density, argnums=1), in_axes=[None, 0]), in_axes=[0, None]
 )(HF_molecule.rdm1, HF_molecule.ao)
-grad_density_1 = jnp.einsum("...rb,rbj->...rj", grad_density_ao, HF_molecule.grad_ao)
+grad_density_1 = jnp.einsum("...rb,rbj->r...j", grad_density_ao, HF_molecule.grad_ao)
 
 # We can check we get the same result
 print(
