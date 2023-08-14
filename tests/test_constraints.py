@@ -13,9 +13,9 @@
 # limitations under the License.
 
 from flax.core import freeze
-from popular_functionals import B3LYP, LYP
+from grad_dft.popular_functionals import B3LYP, LYP
 
-from interface.pyscf import molecule_from_pyscf
+from grad_dft.interface.pyscf import molecule_from_pyscf
 
 # This file aims to test some of the constraints implemented in constraints.py.
 
@@ -63,7 +63,7 @@ molecule2e = molecule_from_pyscf(mf, omegas=[0.0])
 
 params = freeze({"params": {}})
 
-from constraints import (
+from grad_dft.constraints import (
     constraint_c6,
     constraint_x4,
     constraint_x6,

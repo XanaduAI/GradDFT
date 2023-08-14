@@ -15,7 +15,7 @@
 import os
 import warnings
 
-from interface import molecule_from_pyscf
+from grad_dft.interface import molecule_from_pyscf
 
 # This only works on startup!
 from jax.config import config
@@ -33,15 +33,15 @@ model_path = os.path.normpath(dirpath + "/DM21_model")
 
 learning_rate = 1e-3
 
-from interface import molecule_from_pyscf
-from evaluate import make_scf_loop, make_orbital_optimizer
+from grad_dft.interface import molecule_from_pyscf
+from grad_dft.evaluate import make_scf_loop, make_orbital_optimizer
 from openfermion import geometry_from_pubchem
 
 from pyscf import gto, dft, cc, scf
 import numpy as np
-from utils.types import Hartree2kcalmol
+from grad_dft.utils.types import Hartree2kcalmol
 
-from popular_functionals import B3LYP
+from grad_dft.popular_functionals import B3LYP
 
 
 params = {"params": {}}
