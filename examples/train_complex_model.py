@@ -25,10 +25,10 @@ from optax import adam
 from tqdm import tqdm
 import os
 from orbax.checkpoint import PyTreeCheckpointer
-from molecule import Molecule
+from grad_dft.molecule import Molecule
 
-from train import make_train_kernel, molecule_predictor
-from functional import (
+from grad_dft.train import make_train_kernel, molecule_predictor
+from grad_dft.functional import (
     DispersionFunctional,
     NeuralFunctional,
     canonicalize_inputs,
@@ -39,7 +39,7 @@ from functional import (
     dm21_hfgrads_cinputs,
     dm21_hfgrads_densities,
 )
-from interface.pyscf import loader
+from grad_dft.interface.pyscf import loader
 
 from torch.utils.tensorboard import SummaryWriter
 import jax

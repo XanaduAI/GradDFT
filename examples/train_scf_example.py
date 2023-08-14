@@ -21,15 +21,15 @@ import numpy as np
 from optax import adam
 import tqdm
 
-from interface.pyscf import molecule_from_pyscf
-from interface.pyscf import loader
-from functional import NeuralFunctional, canonicalize_inputs, dm21_coefficient_inputs, densities
+from grad_dft.interface.pyscf import molecule_from_pyscf
+from grad_dft.interface.pyscf import loader
+from grad_dft.functional import NeuralFunctional, canonicalize_inputs, dm21_coefficient_inputs, densities
 from jax.nn import gelu
 from orbax.checkpoint import PyTreeCheckpointer
 from torch.utils.tensorboard import SummaryWriter
 
-from train import make_train_kernel, molecule_predictor
-from evaluate import make_jitted_scf_loop
+from grad_dft.train import make_train_kernel, molecule_predictor
+from grad_dft.evaluate import make_jitted_scf_loop
 
 from jax.config import config
 

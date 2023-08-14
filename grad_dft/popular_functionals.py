@@ -15,7 +15,7 @@
 import jax.numpy as jnp
 from grad_dft.molecule import Molecule
 from grad_dft.utils import Array
-from grad_dft.typing import Dict, List
+from typing import Dict, List
 from flax import linen as nn
 
 from grad_dft.functional import (
