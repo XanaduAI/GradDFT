@@ -1,3 +1,17 @@
+# Copyright 2023 Xanadu Quantum Technologies Inc.
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import json
 from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
@@ -12,9 +26,10 @@ import seaborn as sns
 from pyscf.data.elements import ELEMENTS, CONFIGURATION
 
 folder = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-folder = os.path.join(folder, 'checkpoint_dimers')
+folder = os.path.join(folder, "checkpoint_dimers")
 
-tms = ['Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn']
+tms = ["Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn"]
+
 
 def heatmap(data, row_labels, col_labels, molecules):
     """
@@ -40,18 +55,29 @@ def heatmap(data, row_labels, col_labels, molecules):
     """
     from matplotlib import pyplot as plt
 
-    plt.rcParams['savefig.pad_inches'] = 0
+    plt.rcParams["savefig.pad_inches"] = 0
 
     fig = plt.figure(figsize=(14, 10))
     ax = fig.add_subplot()
 
-    ax = sns.heatmap(data, cmap='jet', annot=False, linewidths = 0.5, vmax = 1,
-                    xticklabels=col_labels, yticklabels=row_labels)
-    
+    ax = sns.heatmap(
+        data,
+        cmap="jet",
+        annot=False,
+        linewidths=0.5,
+        vmax=1,
+        xticklabels=col_labels,
+        yticklabels=row_labels,
+    )
+
     for molecule in molecules:
-        a1, a2 = re.findall('[A-Z][^A-Z]*', molecule.split('_')[1])
-        ax.add_patch(Rectangle((atoms.index(a1), atoms.index(a2)), 1, 1, fill=False, edgecolor='gold', lw=2))
-        ax.add_patch(Rectangle((atoms.index(a2), atoms.index(a1)), 1, 1, fill=False, edgecolor='gold', lw=2))
+        a1, a2 = re.findall("[A-Z][^A-Z]*", molecule.split("_")[1])
+        ax.add_patch(
+            Rectangle((atoms.index(a1), atoms.index(a2)), 1, 1, fill=False, edgecolor="gold", lw=2)
+        )
+        ax.add_patch(
+            Rectangle((atoms.index(a2), atoms.index(a1)), 1, 1, fill=False, edgecolor="gold", lw=2)
+        )
 
     plt.autoscale(tight=True)
 
@@ -60,9 +86,10 @@ def heatmap(data, row_labels, col_labels, molecules):
 
     return fig, ax
 
-def annotate_heatmap(im, data=None, valfmt="{x:.2f}",
-                     textcolors=("black", "white"),
-                     threshold=None, **textkw):
+
+def annotate_heatmap(
+    im, data=None, valfmt="{x:.2f}", textcolors=("black", "white"), threshold=None, **textkw
+):
     """
     A function to annotate a heatmap.
 
@@ -95,12 +122,11 @@ def annotate_heatmap(im, data=None, valfmt="{x:.2f}",
     if threshold is not None:
         threshold = im.norm(threshold)
     else:
-        threshold = im.norm(data.max())/2.
+        threshold = im.norm(data.max()) / 2.0
 
     # Set default alignment to center, but allow it to be
     # overwritten by textkw.
-    kw = dict(horizontalalignment="center",
-            verticalalignment="center")
+    kw = dict(horizontalalignment="center", verticalalignment="center")
     kw.update(textkw)
 
     # Get the formatter in case a string is supplied
@@ -118,12 +144,15 @@ def annotate_heatmap(im, data=None, valfmt="{x:.2f}",
 
     return texts
 
+
 # From a dict of dicts, create a dataframe
 atoms = ELEMENTS[1:37]
-atoms.remove('He')
-atoms.remove('Ne')
-atoms.remove('Ar')
-atoms.remove('Kr')
+atoms.remove("He")
+atoms.remove("Ne")
+atoms.remove("Ar")
+atoms.remove("Kr")
+
+
 def dict_to_df(dictionary):
     result_dict = {}
     for a1 in atoms:
@@ -131,7 +160,7 @@ def dict_to_df(dictionary):
         for a2 in atoms:
             found = False
             for k, v in dictionary.items():
-                ka1, ka2 = re.findall('[A-Z][^A-Z]*', k)
+                ka1, ka2 = re.findall("[A-Z][^A-Z]*", k)
                 if (ka1 == a1 and ka2 == a2) or (ka1 == a2 and ka2 == a1):
                     a1_list.append(v)
                     found = True
@@ -139,15 +168,16 @@ def dict_to_df(dictionary):
                 a1_list.append(np.nan)
         result_dict[a1] = a1_list
     dataframe = pd.DataFrame(result_dict)
-    #print(dataframe.head())
+    # print(dataframe.head())
     return dataframe
 
+
 def average_error(prediction_dict, target_dict):
-    ''' Computes the average error between the predictions and the targets in dimers containing/not containing transition metals '''
+    """Computes the average error between the predictions and the targets in dimers containing/not containing transition metals"""
     mae_tms = []
     mae_no_tms = []
     for k in target_dict.keys():
-        a1, a2 = re.findall('[A-Z][^A-Z]*', k)
+        a1, a2 = re.findall("[A-Z][^A-Z]*", k)
         if a1 in tms or a2 in tms:
             mae_tms.append(abs(target_dict[k] - prediction_dict[k]))
         else:
@@ -156,19 +186,23 @@ def average_error(prediction_dict, target_dict):
 
 
 # read json
-data_file = os.path.join(folder, 'dimers_wB97X_V.hdf5') #todo: change the name of the data with the ground truth
+data_file = os.path.join(
+    folder, "dimers_wB97X_V.hdf5"
+)  # todo: change the name of the data with the ground truth
 targets_dict = {}
-with h5py.File(data_file, 'r') as f:
+with h5py.File(data_file, "r") as f:
     for fkey in f.keys():
-        key = fkey.split('_')[1]
-        targets_dict[key] = f[fkey]['energy'][()]
+        key = fkey.split("_")[1]
+        targets_dict[key] = f[fkey]["energy"][()]
     molecules = list(f.keys())
 molecules = []
 
 
 ########################## Predictions #################################
-predictions_json = os.path.join(folder, 'dimers_wB97X_V.json') #todo: change the name of the json with the predictions
-with open(predictions_json, 'r') as json_file:
+predictions_json = os.path.join(
+    folder, "dimers_wB97X_V.json"
+)  # todo: change the name of the json with the predictions
+with open(predictions_json, "r") as json_file:
     predictions_dict = json.load(json_file)
 
 diff_dict = {}
@@ -177,17 +211,22 @@ for k, v in targets_dict.items():
 results_df = dict_to_df(diff_dict)
 results_array = results_df.to_numpy()
 
-training_hdf5_file = 'dimers_wB97X_V.hdf5' #todo: change the name of the data the model was trained on
+training_hdf5_file = (
+    "dimers_wB97X_V.hdf5"  # todo: change the name of the data the model was trained on
+)
 data_file = os.path.join(folder, training_hdf5_file)
-with h5py.File(data_file, 'r') as f:
+with h5py.File(data_file, "r") as f:
     molecules = list(f.keys())
 
 # make heatmap
-fig, ax = heatmap(data = results_array, row_labels = atoms, col_labels = atoms, molecules=molecules)
+fig, ax = heatmap(data=results_array, row_labels=atoms, col_labels=atoms, molecules=molecules)
 
-file = os.path.join(folder, training_hdf5_file.split('.')[0] + '.pdf')
-fig.savefig(file, dpi = 300)
+file = os.path.join(folder, training_hdf5_file.split(".")[0] + ".pdf")
+fig.savefig(file, dpi=300)
 plt.close()
 
-print('When trained on non-transition metals, the MAE (Ha) for dimers containing / not-containing transition metals is: ', np.round(average_error(predictions_dict, targets_dict)[0],4), np.round(average_error(predictions_dict, targets_dict)[1],4))
-
+print(
+    "When trained on non-transition metals, the MAE (Ha) for dimers containing / not-containing transition metals is: ",
+    np.round(average_error(predictions_dict, targets_dict)[0], 4),
+    np.round(average_error(predictions_dict, targets_dict)[1], 4),
+)

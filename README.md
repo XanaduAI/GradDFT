@@ -1,4 +1,4 @@
-# Differentiable DFT
+# Grad-DFT
 
 Differentiable DFT is a Jax-based library for researchers to be able to quickly design and experiment with Machine-Learning-based (also called neural) functionals.
 
@@ -38,11 +38,36 @@ $$
 
 where $F_{x/c, \sigma}$ are the so-called inhomogeneous correction factors, composed of polynomials of a-dimensional derivatives of the electronic density, and $\epsilon_{x/c,\sigma}^{UEG}[\rho_\sigma]$ makes reference to the Uniform Electron Gas exchange/correlation electronic energy. (Range-separated) exact-exchange and dispersion components may also be introduced in the functional.
 
+
 ### Functionality, examples and tests
 
 Our software library comes with auxiliary function [make_scf_loop](https://github.com/XanaduAI/DiffDFT/blob/main/evaluate.py#L26), which generates a fully differentiable self-consistent loop as long as the functional does not contain Hartree-Fock features, as these require recomputing expensive atomic integrals. A Jax-jit compilable [make_training_scf_loop](https://github.com/XanaduAI/DiffDFT/blob/main/train.py#L288) is also available in this case.  Alternatively, the user may use [make_orbital_optimizer](https://github.com/XanaduAI/DiffDFT/blob/main/evaluate.py#L195) which implements Ref. [2] approach of direct molecular orbital optimizer.
 
 We also provide a number of regularization loss functions in [train.py](https://github.com/XanaduAI/DiffDFT/blob/main/train.py#L184), as well as an implementation of quite a few of the known constraints of the exact functional in [constraints.py](https://github.com/XanaduAI/DiffDFT/blob/main/constraints.py) [3]. The library also provides a number of [examples](https://github.com/XanaduAI/DiffDFT/tree/main/examples) of usage, as well as [tests](https://github.com/XanaduAI/DiffDFT/tree/main/tests) checking the implementation of the self-consistent loop, a our clone of DM21, and classical functionals such as B3LYP.
+
+## Install
+
+A core dependency of Grad-DFT is [PySCF](https://pyscf.org). To successfully install this package in the forthcoming installion with `pip`, please ensure that `cmake` is installed and that
+
+```bash
+which cmake
+```
+
+returns the correct path to the `cmake` binary. For instructions on installing `cmake`, visit https://cmake.org.
+
+Now, in a fresh [conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#activating-an-environment), navigate to the root directory of this repository and issue
+
+```bash
+pip install -e .
+```
+
+to install the base package. If you wish to run the examples in `~/examples`, you can run
+
+```bash
+pip install -e ".[examples]"
+```
+
+to install the additional dependencies.
 
 ## Bibliography
 

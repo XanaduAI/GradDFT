@@ -1,0 +1,7 @@
+jax>=0.4.14
+jaxlib>=0.4.14
+pyscf>=2.3.0
+attrs>=23.1.0
+flax>=0.7.2
+tensorflow>=2.13.0
+tensorflow-hub>=0.14.0
