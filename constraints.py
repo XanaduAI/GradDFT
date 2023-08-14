@@ -8,7 +8,7 @@ from molecule import Molecule, grad_density
 from popular_functionals import LSDA
 from jax.nn import relu
 
-from train import compute_features, molecule_predictor
+from train import molecule_predictor
 from utils.types import Array, PyTree, Scalar
 
 r"""
@@ -27,20 +27,14 @@ def constraints_x1_c1(functional: Functional, params: PyTree, molecule: Molecule
     """
 
     # Compute the input features
-    features = compute_features(functional, molecule)[0]
+    densities = functional.compute_densities(molecule)
+    cinputs = functional.compute_coefficient_inputs(molecule)
+    coefficients = functional.apply(params,cinputs)
 
-    # Mask the correlation features
-    featuresx = jnp.einsum('rf,f->rf', features, functional.exchange_mask, precision=precision)
-
-    # Compute the exchange-correlation energy at each point
-    ex = functional.apply(params, featuresx)
+    ex = jnp.einsum('rf,rf,f->r', coefficients, densities,functional.exchange_mask, precision=precision)
     Ex = functional._integrate(relu(ex), molecule.grid.weights)
 
-    # Mask the exchange features
-    featuresc = jnp.einsum('rf,f->rf', features, 1 - functional.exchange_mask, precision=precision)
-
-    # Compute the exchange-correlation energy at each point
-    ec = functional.apply(params, featuresc)
+    ec = jnp.einsum('rf,rf,f->r', coefficients, densities,1-functional.exchange_mask, precision=precision)
     Ec = functional._integrate(relu(ec), molecule.grid.weights)
 
     #return jnp.less_equal(ex, 0.), jnp.less_equal(ec, 0.)
@@ -56,13 +50,15 @@ def constraint_c2(functional: Functional, params: PyTree, molecule: Molecule, pr
     """
 
     # Compute the input features
-    features = compute_features(functional, molecule)[0]
+    densities = functional.compute_densities(molecule)
+    cinputs = functional.compute_coefficient_inputs(molecule)
+    coefficients = functional.apply(params,cinputs)
 
     # Mask the exchange features
-    featuresc = jnp.einsum('rf,f->rf', features, 1 - functional.exchange_mask, precision=precision)
+    ec = jnp.einsum('rf,rf,f->r', coefficients, densities,1-functional.exchange_mask, precision=precision)
 
     # Compute the exchange-correlation energy at each point
-    Ec = functional.apply_and_integrate(params, molecule, featuresc)
+    Ec = functional._integrate(ec, molecule.grid.weights)
 
     #return jnp.isclose(Ec, 0.)
 
@@ -81,30 +77,36 @@ def constraint_x2(functional: Functional, params: PyTree, molecule: Molecule, pr
     rdm1d = rdm1[1]
     rdm1d = jnp.stack([rdm1d, rdm1d], axis=0)
 
-    # Compute the input features
-    features = compute_features(functional, molecule)[0]
-    # Mask the correlation features
-    features = jnp.einsum('rf,f->rf', features, functional.exchange_mask, precision=precision)
-    # Compute the energy
-    Exc = functional.apply_and_integrate(params, molecule, features)
+    # Compute the input coefficient inputs and densities
+    densities = functional.compute_densities(molecule)
+    cinputs = functional.compute_coefficient_inputs(molecule)
+    # Apply the functional
+    coefficients = functional.apply(params,cinputs)
+    # Mask the exchange features
+    ex = jnp.einsum('rf,rf,f->r', coefficients, densities,functional.exchange_mask, precision=precision)
+    Exc = functional._integrate(ex, molecule.grid.weights)
 
     # Replace rdm1 with rdm1u
     molecule = molecule.replace(rdm1 = rdm1u)
-    # Compute the input features
-    featuresu = compute_features(functional, molecule)[0]
-    # Mask the correlation features
-    featuresu = jnp.einsum('rf,f->rf', featuresu, functional.exchange_mask, precision=precision)
-    # Compute the energy
-    Excu = functional.apply_and_integrate(params, molecule, featuresu)
+    # Compute the input coefficient inputs and densities
+    densities = functional.compute_densities(molecule)
+    cinputs = functional.compute_coefficient_inputs(molecule)
+    # Apply the functional
+    coefficients = functional.apply(params,cinputs)
+    # Mask the exchange features
+    ex = jnp.einsum('rf,rf,f->r', coefficients, densities,functional.exchange_mask, precision=precision)
+    Excu = functional._integrate(ex, molecule.grid.weights)
 
     # Replace rdm1 with rdm1d
     molecule = molecule.replace(rdm1 = rdm1d)
-    # Compute the input features
-    featuresd = compute_features(functional, molecule)[0]
-    # Mask the correlation features
-    featuresd = jnp.einsum('rf,f->rf', featuresd, functional.exchange_mask, precision=precision)
-    # Compute the energy
-    Excd = functional.apply_and_integrate(params, molecule, featuresd)
+    # Compute the input coefficient inputs and densities
+    densities = functional.compute_densities(molecule)
+    cinputs = functional.compute_coefficient_inputs(molecule)
+    # Apply the functional
+    coefficients = functional.apply(params,cinputs)
+    # Mask the exchange features
+    ex = jnp.einsum('rf,rf,f->r', coefficients, densities,functional.exchange_mask, precision=precision)
+    Excd = functional._integrate(ex, molecule.grid.weights)
 
     # Reinserting original rdm1 into molecule
     molecule = molecule.replace(rdm1 = rdm1)
