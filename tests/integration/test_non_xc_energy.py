@@ -37,7 +37,7 @@ CAO_EXP_BOND_LENGTH = 1.822
 
 SCF_ITERS = 200
 NUM_POINTS_CURVE = 10
-BOND_LENGTH_FRAC_CHANGE = 0.05
+BOND_LENGTH_FRAC_CHANGE = 0.1
 
 # Calculate free atom energies first
 atomic_species = ["H", "Li", "F", "Ca", "O"]
@@ -64,7 +64,33 @@ for i, species in enumerate(atomic_species):
     free_atom_energies_gdft[species] = E_gdft
     free_atom_errs.append(np.abs(E_pyscf - E_gdft))
 
-print(free_atom_errs)
+# Now diatomic molecules over bond lengths
+H2_geoms = ['''
+    H  0.0   -%.5f   0.0
+    H  0.0   %.5f    0.0 
+    ''' % (bl/2, bl/2) for bl in np.linspace(
+        (1 - BOND_LENGTH_FRAC_CHANGE)*H2_EXP_BOND_LENGTH,
+        (1 + BOND_LENGTH_FRAC_CHANGE)*H2_EXP_BOND_LENGTH, 
+        NUM_POINTS_CURVE
+    )
+]
+
+H2_traj = [
+    gto.M(
+        atom = geom, 
+        basis = 'sto-3g', 
+    ) for geom in H2_geoms
+]
+
+for geom in H2_traj:
+    mf = dft.RKS(geom)
+    mf.xc = "0.00*LDA" # Quick way to get zero XC contrib
+    E_pyscf = mf.kernel(max_cycle=SCF_ITERS)
+    molecule = molecule_from_pyscf(mf, scf_iteration=SCF_ITERS)
+    E_gdft = molecule.nonXC()
+    print(np.abs(E_pyscf - E_gdft))
     
+
     
+print(H2_geoms)
 # PySCF
