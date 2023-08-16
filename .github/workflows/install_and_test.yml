@@ -1,0 +1,30 @@
+name: Installing Grad-DFT and running tests
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install base dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install -e .
+      - name: Install extra example dependencies
+        run: |
+          pip install -e ".[examples]"
+      - name: Run integration tests
+        run: |
+          pytest -v tests/integration/test_non_xc_energy.py
+        
+          
