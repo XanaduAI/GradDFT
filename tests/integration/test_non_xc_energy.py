@@ -21,7 +21,6 @@ We do so by comparing the dissociation energies of three molecules
 from grad_dft.interface import molecule_from_pyscf
 
 import numpy as np
-from typing import Union
 
 from pyscf import gto
 from pyscf import dft
