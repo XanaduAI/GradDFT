@@ -14,6 +14,7 @@
 
 from dataclasses import dataclass
 import itertools
+import os
 from typing import Callable, Optional, List, Dict, Union
 from functools import partial
 import math
@@ -725,7 +726,7 @@ class DM21(NeuralFunctional):
 
     def generate_DM21_weights(
         self,
-        folder: str = "DM21_model",
+        folder: str = "models/DM21_model",
         num_layers_with_dm_parameters: int = 7,
         n_input_features: int = 11,
         rng=PRNGKey(0),
@@ -749,6 +750,9 @@ class DM21(NeuralFunctional):
         import tensorflow as tf
 
         tf.compat.v1.enable_eager_execution()
+
+        path = os.path.dirname(os.path.dirname(__file__))
+        folder = os.path.join(path, folder)
 
         variables = tf.saved_model.load(folder).variables
 
