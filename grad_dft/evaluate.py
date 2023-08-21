@@ -30,7 +30,7 @@ from grad_dft.external import Functional
 from grad_dft.utils import PyTree, Array, Scalar, Optimizer
 from grad_dft.functional import Functional
 
-from grad_dft.molecule import Molecule, eig, make_rdm1, orbital_grad
+from grad_dft.molecule import Molecule, eig, make_rdm1, orbital_grad, general_eigh
 from grad_dft.train import molecule_predictor
 from grad_dft.utils import PyTree, Array, Scalar
 from grad_dft.interface.pyscf import (
@@ -154,7 +154,7 @@ def make_scf_loop(
                 )
 
             # Diagonalize Fock matrix
-            mo_energy, mo_coeff = eig(fock, molecule.s1e)
+            mo_energy, mo_coeff = general_eigh(fock, molecule.s1e)
             molecule = molecule.replace(mo_coeff=mo_coeff)
             molecule = molecule.replace(mo_energy=mo_energy)
 
@@ -251,7 +251,7 @@ def make_scf_loop(
         if abs(predicted_e - old_e) * Hartree2kcalmol < e_conv and norm_gorb < g_conv:
             # We perform an extra diagonalization to remove the level shift
             # Solve eigenvalue problem
-            mo_energy, mo_coeff = eig(fock, molecule.s1e)
+            mo_energy, mo_coeff = general_eigh(fock, molecule.s1e)
             molecule = molecule.replace(mo_coeff=mo_coeff)
             molecule = molecule.replace(mo_energy=mo_energy)
 
@@ -541,7 +541,7 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
             fock, diis_data = diis.run(new_data, diis_data, cycle)
 
             # Diagonalize Fock matrix
-            mo_energy, mo_coeff = eig(fock, molecule.s1e)
+            mo_energy, mo_coeff = general_eigh(fock, molecule.s1e)
             molecule = molecule.replace(mo_coeff=mo_coeff)
             molecule = molecule.replace(mo_energy=mo_energy)
 
