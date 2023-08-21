@@ -570,6 +570,14 @@ def eig(h, x):
     e1, c1 = eigh2d(h[1], x)
     return jnp.stack((e0, e1), axis=0), jnp.stack((c0, c1), axis=0)
 
+def general_eigh(A, B):
+    L = jnp.linalg.cholesky(B)
+    L_inv = jnp.linalg.inv(L)
+    C = L_inv @ A @ L_inv.T
+    eigenvalues, eigenvectors_transformed = jnp.linalg.eigh(C)
+    eigenvectors_original = L_inv.T @ eigenvectors_transformed
+    return eigenvalues, eigenvectors_original
+
 
 ######################################################################
 
