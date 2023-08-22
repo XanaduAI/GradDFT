@@ -113,7 +113,6 @@ def make_simple_scf_loop(
 
         predicted_e, fock = predict_molecule(params, molecule, *args)
         fock = abs_clip(fock, 1e-20)
-        # fock = jnp.clip(fock, a_min=1e-27)
         
         for cycle in range(max_cycles):
             # Convergence criterion is energy difference (default 1) kcal/mol and norm of gradient of orbitals < g_conv

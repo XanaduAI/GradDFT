@@ -570,12 +570,18 @@ def eig(h, x):
     e1, c1 = eigh2d(h[1], x)
     return jnp.stack((e0, e1), axis=0), jnp.stack((c0, c1), axis=0)
 
+def abs_clip(arr, threshold):
+    return jnp.where(jnp.abs(arr) > threshold, arr, 0)
+
 def general_eigh(A, B):
     L = jnp.linalg.cholesky(B)
     L_inv = jnp.linalg.inv(L)
     C = L_inv @ A @ L_inv.T
+    C = abs_clip(C, 1e-20)
     eigenvalues, eigenvectors_transformed = jnp.linalg.eigh(C)
     eigenvectors_original = L_inv.T @ eigenvectors_transformed
+    eigenvectors_original = abs_clip(eigenvectors_original, 1e-20)
+    eigenvalues = abs_clip(eigenvalues, 1e-20)
     return eigenvalues, eigenvectors_original
 
 
