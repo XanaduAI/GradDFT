@@ -21,6 +21,8 @@ from flax import struct
 import optax
 from jax.lax import stop_gradient, cond, fori_loop
 
+import sys
+
 from typing import Callable, Tuple, Sequence, Optional
 from functools import partial, reduce
 import time
@@ -41,6 +43,9 @@ from grad_dft.interface.pyscf import (
 )
 from grad_dft.utils.types import Hartree2kcalmol
 
+def abs_clip(arr, threshold):
+    return jnp.where(jnp.abs(arr) > threshold, arr, 0)
+
 
 ######## Test kernel ########
 
@@ -57,6 +62,144 @@ def make_test_kernel(tx: optax.GradientTransformation, loss: Callable) -> Callab
 
 
 ######## Test scf loop and orbital optimizers ########
+
+def make_simple_scf_loop(
+    functional: Functional,
+    mixing_factor: float = 0.4,
+    chunk_size: int = 1024,
+    max_cycles: int = 50,
+    start_cycle: int = 0,
+    e_conv: float = 1e-5,
+    g_conv: float = 1e-5,
+    verbose: int = 0,
+    **kwargs,
+) -> Callable:
+    r"""
+    Creates an scf_iterator object that can be called to implement a self-consistent loop.
+
+    Main parameters
+    ---------------
+    functional: Functional
+
+    verbose: int
+        Controls the level of printout
+
+    Returns
+    ---------
+    float
+    """
+
+    predict_molecule = molecule_predictor(functional, chunk_size=chunk_size, **kwargs)
+
+    def scf_iterator(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Scalar]:
+        r"""
+        Implements a scf loop for a Molecule and a functional implicitly defined predict_molecule with
+        parameters params
+
+        Parameters
+        ----------
+        params: PyTree
+        molecule: Molecule
+        *args: Arguments to be passed to predict_molecule function
+        """
+
+        # Needed to be able to update the chi tensor
+        mol = mol_from_Molecule(molecule)
+        _, mf = process_mol(
+            mol, compute_energy=False, grid_level=int(molecule.grid_level), training=False
+        )
+
+        nelectron = molecule.atom_index.sum() - molecule.charge
+
+        predicted_e, fock = predict_molecule(params, molecule, *args)
+        fock = abs_clip(fock, 1e-20)
+        # fock = jnp.clip(fock, a_min=1e-27)
+        
+        for cycle in range(max_cycles):
+            # Convergence criterion is energy difference (default 1) kcal/mol and norm of gradient of orbitals < g_conv
+            start_time = time.time()
+            old_e = predicted_e
+
+            # Diagonalize Fock matrix
+            overlap = abs_clip(molecule.s1e, 1e-20)
+            mo_energy, mo_coeff = general_eigh(fock, overlap)
+            molecule = molecule.replace(mo_coeff=mo_coeff)
+            molecule = molecule.replace(mo_energy=mo_energy)
+
+            # Update the molecular occupation
+            mo_occ = molecule.get_occ()
+            if verbose > 2:
+                print(
+                    f"Cycle {cycle} took {time.time() - start_time:.1e} seconds to compute and diagonalize Fock matrix"
+                )
+
+            # Update the density matrix
+            if cycle == 0:
+                rdm1 = molecule.make_rdm1()
+                old_rdm1 = rdm1
+            else:
+                rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*molecule.make_rdm1()
+                old_rdm1 = rdm1
+            
+            rdm1 = abs_clip(rdm1, 1e-20)
+            molecule = molecule.replace(rdm1=rdm1)
+
+            computed_charge = jnp.einsum(
+                "r,ra,rb,sab->", molecule.grid.weights, molecule.ao, molecule.ao, molecule.rdm1
+            )
+            assert jnp.isclose(
+                nelectron, computed_charge, atol=1e-3
+            ), "Total charge is not conserved"
+
+            # Update the chi matrix
+            if molecule.omegas:
+                chi_start_time = time.time()
+                chi = generate_chi_tensor(
+                    molecule.rdm1,
+                    molecule.ao,
+                    molecule.grid.coords,
+                    mf.mol,
+                    omegas=molecule.omegas,
+                    chunk_size=chunk_size,
+                    *args,
+                )
+                molecule = molecule.replace(chi=chi)
+                if verbose > 2:
+                    print(
+                        f"Cycle {cycle} took {time.time() - chi_start_time:.1e} seconds to compute chi matrix"
+                    )
+
+            exc_start_time = time.time()
+            predicted_e, fock = predict_molecule(params, molecule, *args)
+            fock = abs_clip(fock, 1e-20)
+            
+            exc_time = time.time()
+
+            if verbose > 2:
+                print(
+                    f"Cycle {cycle} took {exc_time - exc_start_time:.1e} seconds to compute exc and vhf"
+                )
+
+            # Compute the norm of the gradient
+            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+
+            if verbose > 1:
+                print(
+                    f"cycle: {cycle}, energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}, seconds: {time.time() - start_time:.1e}"
+                )
+            if verbose > 2:
+                print(
+                    f"       relative energy difference: {abs((predicted_e - old_e)/predicted_e):.5e}"
+                )
+
+        if verbose > 1:
+            print(
+                f"cycle: {cycle}, predicted energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}"
+            )
+
+        return predicted_e
+
+    return scf_iterator
 
 
 def make_scf_loop(
