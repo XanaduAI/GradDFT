@@ -26,6 +26,8 @@ from grad_dft.utils import Scalar, Array, PyTree
 from grad_dft.functional import DispersionFunctional, Functional
 from grad_dft.molecule import Molecule, coulomb_potential, symmetrize_rdm1
 
+def abs_clip(arr, threshold):
+    return jnp.where(jnp.abs(arr) > threshold, arr, 0)
 
 def molecule_predictor(
     functional: Functional,
@@ -134,7 +136,10 @@ def molecule_predictor(
         """
 
         energy, fock = energy_and_grads(params, molecule.rdm1, molecule, *args)
+        fock = abs_clip(fock, 1e-20)
         fock = 1 / 2 * (fock + fock.transpose(0, 2, 1))
+        fock = abs_clip(fock, 1e-20)
+        
 
         # Compute the features that should be autodifferentiated
         if functional.energy_densities and functional.densitygrads:
@@ -177,21 +182,25 @@ def molecule_predictor(
                 functional, params, molecule, nograd_densities, cinputs, grad_densities
             )
             fock += vxc_expl + vxc_expl.transpose(0, 2, 1)  # Sum over omega
+            fock = abs_clip(fock, 1e-20)
 
         if functional.coefficient_input_grads:
             vxc_expl = functional.coefficient_input_grads(
                 functional, params, molecule, nograd_cinputs, grad_cinputs, densities
             )
             fock += vxc_expl + vxc_expl.transpose(0, 2, 1)  # Sum over omega
+            fock = abs_clip(fock, 1e-20)
 
         if functional.is_xc:
             rdm1 = symmetrize_rdm1(molecule.rdm1)
             fock += coulomb_potential(rdm1, molecule.rep_tensor)
+            fock = abs_clip(fock, 1e-20)
             # fock = cond(jnp.isclose(molecule.spin, 0), # Condition
             #                lambda x: x, # Truefn branch
             #                lambda x: jnp.stack([x.sum(axis = 0)/2., x.sum(axis = 0)/2.], axis=0), # Falsefn branch
             #                fock) # Argument
             fock = fock + jnp.stack([molecule.h1e, molecule.h1e], axis=0)
+            fock = abs_clip(fock, 1e-20)
 
         return energy, fock
 

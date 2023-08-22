@@ -36,6 +36,9 @@ from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 from grad_dft.utils import Scalar, Array, PyTree, DType, default_dtype
 from grad_dft.molecule import Grid, Molecule
 
+def abs_clip(arr, threshold):
+    return jnp.where(jnp.abs(arr) > threshold, arr, 0)
+
 
 @dataclass
 class Functional(nn.Module):
