@@ -32,7 +32,7 @@ from grad_dft.external import Functional
 from grad_dft.utils import PyTree, Array, Scalar, Optimizer
 from grad_dft.functional import Functional
 
-from grad_dft.molecule import Molecule, eig, make_rdm1, orbital_grad, general_eigh
+from grad_dft.molecule import Molecule, make_rdm1, orbital_grad, general_eigh
 from grad_dft.train import molecule_predictor
 from grad_dft.utils import PyTree, Array, Scalar
 from grad_dft.interface.pyscf import (
@@ -44,7 +44,7 @@ from grad_dft.interface.pyscf import (
 from grad_dft.utils.types import Hartree2kcalmol
 
 def abs_clip(arr, threshold):
-    return jnp.where(jnp.abs(arr) > threshold, arr, 0)
+    return jnp.where(jnp.abs(arr) > threshold, arr, 0.0)
 
 
 ######## Test kernel ########
@@ -103,27 +103,26 @@ def make_simple_scf_loop(
         *args: Arguments to be passed to predict_molecule function
         """
 
-        # Needed to be able to update the chi tensor
-        mol = mol_from_Molecule(molecule)
-        _, mf = process_mol(
-            mol, compute_energy=False, grid_level=int(molecule.grid_level), training=False
-        )
-
         nelectron = molecule.atom_index.sum() - molecule.charge
 
-        predicted_e, fock = predict_molecule(params, molecule, *args)
-        fock = abs_clip(fock, 1e-20)
-        
+        # predicted_e, fock = predict_molecule(params, molecule, *args)
+        # fock = abs_clip(fock, 1e-20)
+        # fock = molecule.fock
+        old_e = 100000 # we should set the energy in a molecule object really
         for cycle in range(max_cycles):
             # Convergence criterion is energy difference (default 1) kcal/mol and norm of gradient of orbitals < g_conv
             start_time = time.time()
-            old_e = predicted_e
-
-            # Diagonalize Fock matrix
-            overlap = abs_clip(molecule.s1e, 1e-20)
-            mo_energy, mo_coeff = general_eigh(fock, overlap)
-            molecule = molecule.replace(mo_coeff=mo_coeff)
-            molecule = molecule.replace(mo_energy=mo_energy)
+            # old_e = molecule.energy
+            if cycle == 0:
+                mo_energy = molecule.mo_energy
+                mo_coeff = molecule.mo_coeff
+                fock = molecule.fock
+            else:
+                # Diagonalize Fock matrix
+                overlap = abs_clip(molecule.s1e, 1e-20)
+                mo_energy, mo_coeff = general_eigh(fock, overlap)
+                molecule = molecule.replace(mo_coeff=mo_coeff)
+                molecule = molecule.replace(mo_energy=mo_energy)
 
             # Update the molecular occupation
             mo_occ = molecule.get_occ()
@@ -134,14 +133,13 @@ def make_simple_scf_loop(
 
             # Update the density matrix
             if cycle == 0:
-                rdm1 = molecule.make_rdm1()
-                old_rdm1 = rdm1
+                old_rdm1 = molecule.make_rdm1()
             else:
-                rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*molecule.make_rdm1()
+                rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*abs_clip(molecule.make_rdm1(), 1e-20)
+                rdm1 = abs_clip(rdm1, 1e-20)
+                molecule = molecule.replace(rdm1=rdm1)
                 old_rdm1 = rdm1
             
-            rdm1 = abs_clip(rdm1, 1e-20)
-            molecule = molecule.replace(rdm1=rdm1)
 
             computed_charge = jnp.einsum(
                 "r,ra,rb,sab->", molecule.grid.weights, molecule.ao, molecule.ao, molecule.rdm1
@@ -150,25 +148,8 @@ def make_simple_scf_loop(
                 nelectron, computed_charge, atol=1e-3
             ), "Total charge is not conserved"
 
-            # Update the chi matrix
-            if molecule.omegas:
-                chi_start_time = time.time()
-                chi = generate_chi_tensor(
-                    molecule.rdm1,
-                    molecule.ao,
-                    molecule.grid.coords,
-                    mf.mol,
-                    omegas=molecule.omegas,
-                    chunk_size=chunk_size,
-                    *args,
-                )
-                molecule = molecule.replace(chi=chi)
-                if verbose > 2:
-                    print(
-                        f"Cycle {cycle} took {time.time() - chi_start_time:.1e} seconds to compute chi matrix"
-                    )
-
             exc_start_time = time.time()
+
             predicted_e, fock = predict_molecule(params, molecule, *args)
             fock = abs_clip(fock, 1e-20)
             
@@ -184,12 +165,13 @@ def make_simple_scf_loop(
 
             if verbose > 1:
                 print(
-                    f"cycle: {cycle}, energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}, seconds: {time.time() - start_time:.1e}"
+                    f"cycle: {cycle}, energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, seconds: {time.time() - start_time:.1e}"
                 )
             if verbose > 2:
                 print(
                     f"       relative energy difference: {abs((predicted_e - old_e)/predicted_e):.5e}"
                 )
+            old_e = predicted_e
 
         if verbose > 1:
             print(
@@ -719,6 +701,7 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
         state = loop_body(0, state)
         molecule, fock, predicted_e, _, _, _ = final_state
 
+   
         return predicted_e, fock, molecule.rdm1
 
     return scf_jitted_iterator

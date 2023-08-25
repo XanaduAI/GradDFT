@@ -19,6 +19,7 @@ from functools import partial
 from grad_dft.external.eigh_impl import eigh2d
 
 from jax import numpy as jnp
+from jax import scipy as jsp
 from jax.lax import Precision
 from jax import vmap, grad
 from jax.lax import fori_loop, cond
@@ -579,6 +580,7 @@ def general_eigh(A, B):
     C = L_inv @ A @ L_inv.T
     C = abs_clip(C, 1e-20)
     eigenvalues, eigenvectors_transformed = jnp.linalg.eigh(C)
+    # eigenvalues, eigenvectors_transformed = jsp.linalg.eigh(C)
     eigenvectors_original = L_inv.T @ eigenvectors_transformed
     eigenvectors_original = abs_clip(eigenvectors_original, 1e-20)
     eigenvalues = abs_clip(eigenvalues, 1e-20)
@@ -634,6 +636,7 @@ def nonXC(
 @partial(jax.jit)
 def symmetrize_rdm1(rdm1):
     dm = rdm1.sum(axis=0)
+    dm = abs_clip(dm, 1e-20)
     rdm1 = jnp.stack([dm, dm], axis=0) / 2.0
     return rdm1
 
@@ -643,12 +646,14 @@ def two_body_energy(rdm1, rep_tensor, precision=Precision.HIGHEST):
     v_coul = 2 * jnp.einsum(
         "pqrt,srt->spq", rep_tensor, rdm1, precision=precision
     )  # The 2 is to compensate for the /2 in the dm definition
+    v_coul = abs_clip(v_coul, 1e-20)
     coulomb2e_energy = jnp.einsum("sji,sij->", rdm1, v_coul, precision=precision) / 2.0
     return coulomb2e_energy
 
 
 @partial(jax.jit, static_argnames=["precision"])
 def one_body_energy(rdm1, h1e, precision=Precision.HIGHEST):
+    h1e = abs_clip(h1e, 1e-20)
     h1e_energy = jnp.einsum("sij,ji->", rdm1, h1e, precision=precision)
     return h1e_energy
 

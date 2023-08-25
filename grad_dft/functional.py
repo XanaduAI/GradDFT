@@ -275,6 +275,7 @@ class Functional(nn.Module):
         energy = self.apply_and_integrate(params, molecule.grid, cinputs, densities, **kwargs)
 
         if self.is_xc:
+            # energy += molecule.nonXC()
             energy += stop_gradient(molecule.nonXC())
 
         return energy
