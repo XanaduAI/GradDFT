@@ -36,6 +36,11 @@ from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 from grad_dft.utils import Scalar, Array, PyTree, DType, default_dtype
 from grad_dft.molecule import Grid, Molecule
 
+import sys
+
+def abs_clip(arr, threshold):
+    return jnp.where(jnp.abs(arr) > threshold, arr, 0)
+
 
 @dataclass
 class Functional(nn.Module):
@@ -173,7 +178,7 @@ class Functional(nn.Module):
 
         elif self.nograd_densities:
             densities = stop_gradient(self.nograd_densities(molecule, *args, **kwargs))
-
+        densities = abs_clip(densities, 1e-20)
         return densities
 
     def compute_coefficient_inputs(self, molecule: Molecule, *args, **kwargs):
@@ -235,6 +240,7 @@ class Functional(nn.Module):
 
         coefficients = self.apply(params, coefficient_inputs, **kwargs)
         xc_energy_density = jnp.einsum("rf,rf->r", coefficients, densities)
+        xc_energy_density = abs_clip(xc_energy_density, 1e-20)
         return self._integrate(xc_energy_density, grid.weights)
 
     def energy(self, params: PyTree, molecule: Molecule, *args, **kwargs):
@@ -262,11 +268,14 @@ class Functional(nn.Module):
         """
 
         densities = self.compute_densities(molecule, *args, **kwargs)
+        # print(densities)
+        # sys.exit()
         cinputs = self.compute_coefficient_inputs(molecule, *args)
 
         energy = self.apply_and_integrate(params, molecule.grid, cinputs, densities, **kwargs)
 
         if self.is_xc:
+            # energy += molecule.nonXC()
             energy += stop_gradient(molecule.nonXC())
 
         return energy
@@ -297,7 +306,7 @@ class Functional(nn.Module):
         Array
         """
 
-        return jnp.einsum("r,r...->...", gridweights, energy_density, precision=precision)
+        return jnp.einsum("r,r...->...", abs_clip(gridweights, 1e-20), abs_clip(energy_density, 1e-20), precision=precision)
 
 
 @dataclass
