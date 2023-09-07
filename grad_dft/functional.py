@@ -32,14 +32,12 @@ from flax.training import train_state, checkpoints
 from flax.training.train_state import TrainState
 from optax import GradientTransformation
 from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
+from grad_dft.molecule import abs_clip
 
 from grad_dft.utils import Scalar, Array, PyTree, DType, default_dtype
 from grad_dft.molecule import Grid, Molecule
 
 import sys
-
-def abs_clip(arr, threshold):
-    return jnp.where(jnp.abs(arr) > threshold, arr, 0)
 
 
 @dataclass

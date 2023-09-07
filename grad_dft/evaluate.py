@@ -32,7 +32,7 @@ from grad_dft.external import Functional
 from grad_dft.utils import PyTree, Array, Scalar, Optimizer
 from grad_dft.functional import Functional
 
-from grad_dft.molecule import Molecule, make_rdm1, orbital_grad, general_eigh
+from grad_dft.molecule import Molecule, abs_clip, make_rdm1, orbital_grad, general_eigh
 from grad_dft.train import molecule_predictor
 from grad_dft.utils import PyTree, Array, Scalar
 from grad_dft.interface.pyscf import (
@@ -42,9 +42,6 @@ from grad_dft.interface.pyscf import (
     mol_from_Molecule,
 )
 from grad_dft.utils.types import Hartree2kcalmol
-
-def abs_clip(arr, threshold):
-    return jnp.where(jnp.abs(arr) > threshold, arr, 0.0)
 
 
 ######## Test kernel ########

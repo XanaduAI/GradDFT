@@ -323,7 +323,7 @@ B3LYP = Functional(
     nograd_densities=b3lyp_nograd_densities,
     densitygrads=b3lyp_hfgrads,
     combine_densities=b3lyp_combine,
-    exchange_mask=jnp.array([[1, 1, 0, 0, 1]]),
+    exchange_mask=jnp.array([1, 1, 0, 0, 1]),
 )
 
 PW92 = Functional(coefficients=lambda self, *_: jnp.array([[1.0]]), energy_densities=pw92_densities)

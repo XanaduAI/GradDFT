@@ -24,10 +24,7 @@ from optax import OptState, GradientTransformation, apply_updates
 
 from grad_dft.utils import Scalar, Array, PyTree
 from grad_dft.functional import DispersionFunctional, Functional
-from grad_dft.molecule import Molecule, coulomb_potential, symmetrize_rdm1
-
-def abs_clip(arr, threshold):
-    return jnp.where(jnp.abs(arr) > threshold, arr, 0)
+from grad_dft.molecule import Molecule, abs_clip, coulomb_potential, symmetrize_rdm1
 
 def molecule_predictor(
     functional: Functional,
