@@ -16,7 +16,7 @@ from typing import Optional, Union, Sequence, Tuple, NamedTuple
 from dataclasses import fields
 from grad_dft.utils import Array, Scalar, PyTree, vmap_chunked
 from functools import partial
-from grad_dft.external.eigh_impl import eigh2d
+from grad_dft.utils.eigenproblem import safe_general_eigh
 
 from jax import numpy as jnp
 from jax import scipy as jsp
