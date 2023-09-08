@@ -125,7 +125,7 @@ to install the additional dependencies.
 ```
 @article{graddft,
   title={Grad-DFT: a software library for machine learning density functional theory},
-  author={Casares, Pablo Antonio Moreno and Baker Jack, and Medvidovi{\'c}, Matija and Dos Reis, Roberto, and Arrazola, Juan Miguel},
+  author={Casares, Pablo Antonio Moreno and Baker, Jack and Medvidovi{\'c}, Matija and Dos Reis, Roberto, and Arrazola, Juan Miguel},
   journal={arXiv preprint [number]},
   year={2023}
 }
