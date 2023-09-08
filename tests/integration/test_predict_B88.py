@@ -15,6 +15,8 @@
 import os
 import warnings
 
+import pytest
+
 from grad_dft.interface import molecule_from_pyscf
 
 # This only works on startup!
@@ -68,7 +70,11 @@ functional = B88
 grid = mf.grids
 
 
-def test_predict(mf, energy):
+@pytest.mark.parametrize("mol", [mol])
+def test_predict(mol):
+    mf = dft.UKS(mol)
+    mf.max_cycle = 0
+    energy = mf.kernel()
     ## Load the molecule, RKS
     warnings.warn("Remember to set the grid level to 3 in the config file!")
 
@@ -115,7 +121,11 @@ energy = mf.kernel()
 grid = mf.grids
 
 
-def test_predict(mf, energy):
+@pytest.mark.parametrize("mol", [mol])
+def test_predict(mol):
+    mf = dft.UKS(mol)
+    mf.max_cycle = 0
+    energy = mf.kernel()
     ## Load the molecule, UKS
     warnings.warn("Remember to set the grid level to 3 in the config file!")
 
