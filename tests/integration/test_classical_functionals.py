@@ -14,6 +14,7 @@
 
 from flax.core import freeze
 from jax import numpy as jnp
+import pytest
 from grad_dft.popular_functionals import B3LYP, B88, LSDA, LYP, VWN, PW92
 
 from grad_dft.interface.pyscf import molecule_from_pyscf
@@ -25,6 +26,7 @@ from grad_dft.interface.pyscf import molecule_from_pyscf
 from jax import config
 
 from grad_dft.utils.types import Hartree2kcalmol
+from openfermion import geometry_from_pubchem
 
 config.update("jax_enable_x64", True)
 
@@ -40,87 +42,100 @@ grids.build()
 
 params = freeze({"params": {}})
 
+mols = [
+    gto.M(atom="H 0 0 0; F 0 0 1.1"),
+    gto.M(atom=geometry_from_pubchem("water"), basis="def2-tzvp"),
+    gto.M(atom="Li 0 0 0", spin = 1, basis="def2-tzvp")
+]
+
 #### LSDA ####
 
-mf = dft.UKS(mol)
-mf.grids = grids
-mf.xc = "LDA"
-ground_truth_energy = mf.kernel()
+@pytest.mark.parametrize("mol", mols)
+def test_lda(mol):
+    mf = dft.UKS(mol)
+    mf.grids = grids
+    mf.xc = "LDA" # LDA is the same as LDA_X.
+    ground_truth_energy = mf.kernel()
 
-molecule = molecule_from_pyscf(mf, omegas=[])
-predict_molecule = molecule_predictor(LSDA)
-predicted_e, fock = predict_molecule(params, molecule)
+    molecule = molecule_from_pyscf(mf, omegas=[])
+    predict_molecule = molecule_predictor(LSDA)
+    predicted_e, fock = predict_molecule(params, molecule)
 
-lsdadiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(lsdadiff, 0, atol=1e-3)
+    lsdadiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
+    assert jnp.allclose(lsdadiff, 0, atol=1e-3)
 
 ##### B88 ####
+@pytest.mark.parametrize("mol", mols)
+def test_lda(mol):
+    mf = dft.UKS(mol)
+    mf.grids = grids
+    mf.xc = "B88"
+    ground_truth_energy = mf.kernel()
 
-mf = dft.UKS(mol)
-mf.grids = grids
-mf.xc = "B88"
-ground_truth_energy = mf.kernel()
+    molecule = molecule_from_pyscf(mf, omegas=[])
+    predict_molecule = molecule_predictor(B88)
+    predicted_e, fock = predict_molecule(params, molecule)
 
-molecule = molecule_from_pyscf(mf, omegas=[])
-predict_molecule = molecule_predictor(B88)
-predicted_e, fock = predict_molecule(params, molecule)
-
-b88diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(b88diff, 0, atol=1e-3)
+    b88diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
+    assert jnp.allclose(b88diff, 0, atol=1e-3)
 
 ##### VWN ####
+@pytest.mark.parametrize("mol", mols)
+def test_lda(mol):
+    mf = dft.UKS(mol)
+    mf.grids = grids
+    mf.xc = "LDA_C_VWN"
+    ground_truth_energy = mf.kernel()
 
-mf = dft.UKS(mol)
-mf.grids = grids
-mf.xc = "LDA_C_VWN"
-ground_truth_energy = mf.kernel()
+    molecule = molecule_from_pyscf(mf, omegas=[])
+    predict_molecule = molecule_predictor(VWN)
+    predicted_e, fock = predict_molecule(params, molecule)
 
-molecule = molecule_from_pyscf(mf, omegas=[])
-predict_molecule = molecule_predictor(VWN)
-predicted_e, fock = predict_molecule(params, molecule)
-
-vwndiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(vwndiff, 0, atol=1e-3)
+    vwndiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
+    assert jnp.allclose(vwndiff, 0, atol=1e-3)
 
 ##### LYP ####
+@pytest.mark.parametrize("mol", mols)
+def test_lda(mol):
+    mf = dft.UKS(mol)
+    mf.grids = grids
+    mf.xc = "GGA_C_LYP"
+    ground_truth_energy = mf.kernel()
 
-mf = dft.UKS(mol)
-mf.grids = grids
-mf.xc = "GGA_C_LYP"
-ground_truth_energy = mf.kernel()
+    molecule = molecule_from_pyscf(mf, omegas=[])
+    predict_molecule = molecule_predictor(LYP)
+    predicted_e, fock = predict_molecule(params, molecule)
 
-molecule = molecule_from_pyscf(mf, omegas=[])
-predict_molecule = molecule_predictor(LYP)
-predicted_e, fock = predict_molecule(params, molecule)
-
-lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(lypdiff, 0, atol=1e-3)
+    lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
+    assert jnp.allclose(lypdiff, 0, atol=1e-3)
 
 #### B3LYP ####
+@pytest.mark.parametrize("mol", mols)
+def test_lda(mol):
+    mf = dft.UKS(mol)
+    mf.grids = grids
+    mf.xc = "b3lyp"
+    ground_truth_energy = mf.kernel()
 
-mf = dft.UKS(mol)
-mf.grids = grids
-mf.xc = "b3lyp"
-ground_truth_energy = mf.kernel()
+    molecule = molecule_from_pyscf(mf, omegas=[0.0])
+    predict_molecule = molecule_predictor(B3LYP)
+    predicted_e, fock = predict_molecule(params, molecule)
 
-molecule = molecule_from_pyscf(mf, omegas=[0.0])
-predict_molecule = molecule_predictor(B3LYP)
-predicted_e, fock = predict_molecule(params, molecule)
-
-b3lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(b3lypdiff, 0, atol=1e-3)
+    b3lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
+    assert jnp.allclose(b3lypdiff, 0, atol=1e-3)
 
 
 #### PW92 ####
+@pytest.mark.parametrize("mol", mols)
+def test_lda(mol):
+    mf = dft.UKS(mol)
+    mf.grids = grids
+    mf.xc = "LDA_C_PW"
+    ground_truth_energy = mf.kernel()
 
-mf = dft.UKS(mol)
-mf.grids = grids
-mf.xc = "LDA_C_PW"
-ground_truth_energy = mf.kernel()
+    molecule = molecule_from_pyscf(mf, omegas=[])
+    predict_molecule = molecule_predictor(PW92)
+    predicted_e, fock = predict_molecule(params, molecule)
 
-molecule = molecule_from_pyscf(mf, omegas=[])
-predict_molecule = molecule_predictor(PW92)
-predicted_e, fock = predict_molecule(params, molecule)
-
-pw92diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(pw92diff, 0, atol=1e-3)
+    pw92diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
+    assert jnp.allclose(pw92diff, 0, atol=1e-3)
