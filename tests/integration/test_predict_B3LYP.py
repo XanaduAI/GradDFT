@@ -85,7 +85,7 @@ def test_predict(mf, energy):
     e_XND = iterator(params, molecule)
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e1)
+    assert np.allclose(kcalmoldiff, 0, atol=1)
 
 
 ##################
@@ -125,7 +125,7 @@ def test_predict(mf, energy):
     e_DM = mf.kernel()
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e1)
+    assert np.allclose(kcalmoldiff, 0, atol=1)
 
 
 ##################

@@ -14,10 +14,10 @@
 
 from jax.random import PRNGKey
 from jax.lax import stop_gradient
-from evaluate import make_scf_loop
+from grad_dft.evaluate import make_scf_loop
 
-from interface.pyscf import molecule_from_pyscf
-from functional import DM21
+from grad_dft.interface.pyscf import molecule_from_pyscf
+from grad_dft.functional import DM21
 
 # In this example we aim to explain how we can implement the self-consistent loop
 # with the DM21 functional.
@@ -57,7 +57,7 @@ nograd_cinputs = stop_gradient(functional.nograd_coefficient_inputs(molecule))
 coefficient_inputs = functional.combine_inputs(grad_cinputs, nograd_cinputs)
 
 # And then we compute the energy
-predicted_energy = functional.apply_and_integrate(
+predicted_energy = functional.xc_energy(
     params, molecule.grid, coefficient_inputs, densities
 )
 predicted_energy += molecule.nonXC()

@@ -281,6 +281,7 @@ def make_scf_loop(
 
             # Update the molecular occupation
             mo_occ = molecule.get_occ()
+            molecule = molecule.replace(mo_occ=mo_occ)
             if verbose > 2:
                 print(
                     f"Cycle {cycle} took {time.time() - start_time:.1e} seconds to compute and diagonalize Fock matrix"
@@ -668,6 +669,7 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
 
             # Update the molecular occupation
             mo_occ = molecule.get_occ()
+            molecule = molecule.replace(mo_occ=mo_occ)
 
             # Update the density matrix
             rdm1 = molecule.make_rdm1()

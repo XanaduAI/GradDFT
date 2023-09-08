@@ -52,7 +52,7 @@ predict_molecule = molecule_predictor(LSDA)
 predicted_e, fock = predict_molecule(params, molecule)
 
 lsdadiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(lsdadiff, 0, atol=1e1)
+assert jnp.allclose(lsdadiff, 0, atol=1e-3)
 
 ##### B88 ####
 
@@ -66,7 +66,7 @@ predict_molecule = molecule_predictor(B88)
 predicted_e, fock = predict_molecule(params, molecule)
 
 b88diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(b88diff, 0, atol=1e1)
+assert jnp.allclose(b88diff, 0, atol=1e-3)
 
 ##### VWN ####
 
@@ -80,7 +80,7 @@ predict_molecule = molecule_predictor(VWN)
 predicted_e, fock = predict_molecule(params, molecule)
 
 vwndiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(vwndiff, 0, atol=1e1)
+assert jnp.allclose(vwndiff, 0, atol=1e-3)
 
 ##### LYP ####
 
@@ -94,7 +94,7 @@ predict_molecule = molecule_predictor(LYP)
 predicted_e, fock = predict_molecule(params, molecule)
 
 lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(lypdiff, 0, atol=1e1)
+assert jnp.allclose(lypdiff, 0, atol=1e-3)
 
 #### B3LYP ####
 
@@ -108,7 +108,7 @@ predict_molecule = molecule_predictor(B3LYP)
 predicted_e, fock = predict_molecule(params, molecule)
 
 b3lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(b3lypdiff, 0, atol=1e1)
+assert jnp.allclose(b3lypdiff, 0, atol=1e-3)
 
 
 #### PW92 ####
@@ -123,4 +123,4 @@ predict_molecule = molecule_predictor(PW92)
 predicted_e, fock = predict_molecule(params, molecule)
 
 pw92diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-assert jnp.allclose(pw92diff, 0, atol=1e1)
+assert jnp.allclose(pw92diff, 0, atol=1e-3)

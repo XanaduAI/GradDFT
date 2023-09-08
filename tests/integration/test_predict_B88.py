@@ -86,13 +86,13 @@ def test_predict(mf, energy):
     e_DM = mf.kernel()
     mf.max_cycle = 2
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e1)
+    assert np.allclose(kcalmoldiff, 0, atol=1e-5)
 
     # Testing the training scf loop too.
     iterator = make_jitted_scf_loop(functional, cycles=10)
     e_XND_jit, _, _ = iterator(params, molecule)
     kcalmoldiff = (e_XND - e_XND_jit) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e1)
+    assert np.allclose(kcalmoldiff, 0, atol=1e-5)
 
 
 ##################
@@ -132,14 +132,14 @@ def test_predict(mf, energy):
     iterator = make_jitted_scf_loop(functional, cycles=50)
     e_XND_jit, _, _ = iterator(params, molecule)
     kcalmoldiff = (e_XND - e_XND_jit) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e1)
+    assert np.allclose(kcalmoldiff, 0, atol=1e-5)
 
     mf = dft.UKS(mol)
     mf.xc = "B88"
     mf.max_cycle = 50
     e_DM = mf.kernel()
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e1)  # This is unstable
+    assert np.allclose(kcalmoldiff, 0, atol=1e-5)  # This is unstable
 
 
 ##################

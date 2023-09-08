@@ -16,14 +16,14 @@ from jax.random import PRNGKey
 from optax import adam, apply_updates
 from jax.lax import stop_gradient
 
-from interface.pyscf import molecule_from_pyscf
-from functional import DM21, default_loss
+from grad_dft.interface.pyscf import molecule_from_pyscf
+from grad_dft.functional import DM21, default_loss
+from grad_dft.train import molecule_predictor
 
 # In this example we aim to explain how we can train the DM21 functional.
 
 # First we define a molecule, using pyscf:
 from pyscf import gto, dft
-from train import molecule_predictor
 
 mol = gto.M(atom="H 0 0 0; F 0 0 1.1")
 
@@ -58,7 +58,7 @@ nograd_cinputs = stop_gradient(functional.nograd_coefficient_inputs(molecule))
 coefficient_inputs = functional.combine_inputs(grad_cinputs, nograd_cinputs)
 
 # We can use this features to compute the energy by parts
-energy = functional.apply_and_integrate(params, molecule.grid, coefficient_inputs, densities)
+energy = functional.xc_energy(params, molecule.grid, coefficient_inputs, densities)
 energy += molecule.nonXC()
 
 # Or alternatively, we can use an already prepared function that does everything for us

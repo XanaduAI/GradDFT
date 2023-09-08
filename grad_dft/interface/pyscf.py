@@ -313,7 +313,7 @@ def loader(
                         args[key] = jnp.array([ord(char) for char in str(value[()])])
                     elif key in ["energy"]:
                         args[key] = jnp.float32(value) if training else jnp.float64(value)
-                    elif key in ["scf_iteration", "spin", "charge"]:
+                    elif key in ["scf_iteration", "spin", "charge", "mo_occ"]:
                         args[key] = jnp.int32(value)
                     elif key in ["grad_n_ao"]:
                         args[key] = {int(k): jnp.asarray(v) for k, v in value.items()}

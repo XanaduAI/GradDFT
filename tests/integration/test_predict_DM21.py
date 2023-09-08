@@ -86,7 +86,7 @@ def test_predict(mf, energy):
     e_DM = mf.kernel()
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e1)
+    assert np.allclose(kcalmoldiff, 0, atol=1)
 
 
 ##################
@@ -126,7 +126,7 @@ def test_predict(mf, energy):
     e_DM = mf.kernel()
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e1)
+    assert np.allclose(kcalmoldiff, 0, atol=1)
 
 
 ##################
@@ -162,7 +162,7 @@ def test_rks():
     e_XND = iterator(params, molecule)
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e1)
+    assert np.allclose(kcalmoldiff, 0, atol=1)
 
 
 def test_uks():
@@ -192,12 +192,12 @@ def test_uks():
     e_XND = iterator(params, molecule)
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e1)
+    assert np.allclose(kcalmoldiff, 0, atol=1)
 
 
 ##################
-# test_rks()
-# test_uks()
+test_rks()
+test_uks()
 
 
 molecule_name = "CoC"
@@ -214,4 +214,4 @@ energy = mf.kernel()
 
 grid = mf.grids
 
-# test_predict(mf, energy)
+test_predict(mf, energy)

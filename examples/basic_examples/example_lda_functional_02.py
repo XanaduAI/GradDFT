@@ -80,7 +80,7 @@ densities = LSDA.compute_densities(molecule=HF_molecule)
 # Then we compute the coefficient inputs
 cinputs = LSDA.compute_coefficient_inputs(molecule=HF_molecule)
 # Finally we compute the exchange-correlation energy
-predicted_energy_2 = LSDA.apply_and_integrate(params, HF_molecule.grid, cinputs, densities)
+predicted_energy_2 = LSDA.xc_energy(params, HF_molecule.grid, cinputs, densities)
 # And add the non-exchange-correlation energy component
 predicted_energy_2 += stop_gradient(HF_molecule.nonXC())
 

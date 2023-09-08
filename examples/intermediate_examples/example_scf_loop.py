@@ -14,10 +14,10 @@
 
 from jax import numpy as jnp
 from optax import adam
-from evaluate import make_scf_loop
+from grad_dft.evaluate import make_scf_loop
 
-from interface.pyscf import molecule_from_pyscf
-from functional import (
+from grad_dft.interface.pyscf import molecule_from_pyscf
+from grad_dft.functional import (
     NeuralFunctional,
     canonicalize_inputs,
     dm21_coefficient_inputs,

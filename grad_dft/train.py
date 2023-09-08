@@ -12,17 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Optional, Tuple
+from typing import Callable, Tuple
 from functools import partial
+from jaxtyping import Array, Float, PyTree
 
-from jax import jit, numpy as jnp, vmap
+from jax import numpy as jnp, vmap
 from jax import value_and_grad
 from jax.profiler import annotate_function
-from jax.lax import stop_gradient, cond, fori_loop
-from flax import struct
+from jax.lax import stop_gradient
 from optax import OptState, GradientTransformation, apply_updates
 
-from grad_dft.utils import Scalar, Array, PyTree
+from grad_dft.utils import Scalar
 from grad_dft.functional import DispersionFunctional, Functional
 from grad_dft.molecule import Molecule, abs_clip, coulomb_potential, symmetrize_rdm1
 
@@ -221,7 +221,7 @@ def make_train_kernel(tx: GradientTransformation, loss: Callable) -> Callable:
 ##################### Regularization #####################
 
 
-def fock_grad_regularization(molecule: Molecule, F: Array) -> Scalar:
+def fock_grad_regularization(molecule: Molecule, F: Float[Array, "spin ao ao"]) -> Scalar:
     """Calculates the Fock alternative regularization term for a `Molecule` given a Fock matrix.
 
     Parameters
@@ -241,7 +241,7 @@ def fock_grad_regularization(molecule: Molecule, F: Array) -> Scalar:
     )
 
 
-def dm21_grad_regularization(molecule: Molecule, F: Array) -> Scalar:
+def dm21_grad_regularization(molecule: Molecule, F: Float[Array, "spin ao ao"]) -> Scalar:
     """Calculates the default gradient regularization term for a `Molecule` given a Fock matrix.
 
     Parameters
@@ -283,7 +283,7 @@ def dm21_grad_regularization(molecule: Molecule, F: Array) -> Scalar:
     return dE**2
 
 
-def orbital_grad_regularization(molecule: Molecule, F: Array) -> Scalar:
+def orbital_grad_regularization(molecule: Molecule, F: Float[Array, "spin ao ao"]) -> Scalar:
     """Deprecated"""
 
     #  Calculate the gradient regularization term
@@ -294,7 +294,9 @@ def orbital_grad_regularization(molecule: Molecule, F: Array) -> Scalar:
     return dE**2
 
 
-def get_grad(mo_coeff, mo_occ, F):
+def get_grad(mo_coeff: Float[Array, "spin ao ao"], 
+            mo_occ: Float[Array, "spin ao"],
+            F: Float[Array, "spin ao ao"]):
     """RHF orbital gradients
 
     Args:

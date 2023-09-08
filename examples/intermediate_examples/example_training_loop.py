@@ -16,8 +16,9 @@ from jax.random import split, PRNGKey
 from jax import numpy as jnp
 from optax import adam, apply_updates
 
-from interface.pyscf import molecule_from_pyscf
-from functional import (
+from grad_dft.interface.pyscf import molecule_from_pyscf
+from grad_dft.train import molecule_predictor
+from grad_dft.functional import (
     NeuralFunctional,
     canonicalize_inputs,
     default_loss,
@@ -32,7 +33,6 @@ from jax.lax import stop_gradient
 
 # First we define a molecule, using pyscf:
 from pyscf import gto, dft
-from train import molecule_predictor
 
 mol = gto.M(atom="H 0 0 0; F 0 0 1.1")
 
@@ -101,7 +101,7 @@ densities = functional.energy_densities(molecule)
 # We now generated the inputs to the coefficients nn
 coefficient_inputs = functional.coefficient_inputs(molecule)
 # We can use this features to compute the energy by parts
-predicted_energy = functional.apply_and_integrate(
+predicted_energy = functional.xc_energy(
     params, molecule.grid, coefficient_inputs, densities
 )
 predicted_energy += molecule.nonXC()

@@ -754,12 +754,12 @@ def constraint_xc4(
     """
     cinputs = functional.compute_coefficient_inputs(molecule2e)
     densities = functional.compute_densities(molecule2e)
-    Exc = functional.apply_and_integrate(params, molecule2e.grid, cinputs, densities)
+    Exc = functional.xc_energy(params, molecule2e.grid, cinputs, densities)
 
     lda_functional = LSDA
     lda_cinputs = lda_functional.compute_coefficient_inputs(molecule2e)
     lda_densities = lda_functional.compute_densities(molecule2e)
-    Exc_lda = lda_functional.apply_and_integrate(params, molecule2e.grid, lda_cinputs, lda_densities)
+    Exc_lda = lda_functional.xc_energy(params, molecule2e.grid, lda_cinputs, lda_densities)
 
     # return jnp.greater_equal(Exc, 1.671*Ex_lda)
     return (relu(1.671 * Exc_lda - Exc)) ** 2
