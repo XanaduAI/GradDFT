@@ -8,4 +8,3 @@ from grad_dft.external.density_functional_approximation_dm21.density_functional_
 from grad_dft.external.density_functional_approximation_dm21.density_functional_approximation_dm21.neural_numint import (
     _SystemState,
 )
-from grad_dft.external.eigh_impl import eigh2d
