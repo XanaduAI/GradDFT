@@ -62,11 +62,6 @@ mf2 = scf.RHF(mol)
 mf2.kernel()
 mycc = cc.CCSD(mf2).run()
 ccsd_energy = mycc.e_tot
-mf = dft.RKS(mol)
-mf.max_cycle = 0
-mf.kernel()
-
-grid = mf.grids
 
 
 @pytest.mark.parametrize("mol", [mol])
@@ -96,7 +91,7 @@ def test_predict(mol):
 
 
 ##################
-test_predict(mf, energy=ccsd_energy)
+test_predict(mol)
 
 
 ###################### Open shell ############################
@@ -140,7 +135,7 @@ def test_predict(mol):
 
 
 ##################
-test_predict(mf, energy=ccsd_energy)
+test_predict(mol)
 
 
 ###################### Check against DM21 tests ############################
@@ -224,4 +219,4 @@ energy = mf.kernel()
 
 grid = mf.grids
 
-test_predict(mf, energy)
+test_predict(mol)

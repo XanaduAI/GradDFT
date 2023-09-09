@@ -26,7 +26,7 @@ from jax.nn import sigmoid, gelu, elu
 from jax.nn.initializers import zeros, he_normal
 from jax.random import normal, PRNGKey
 
-from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float, Int
+from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float
 
 from flax import linen as nn
 from flax.core import freeze, unfreeze

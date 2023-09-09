@@ -14,17 +14,16 @@
 
 from typing import Callable, Tuple
 from functools import partial
-from jaxtyping import Array, Float, PyTree
+from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float
 
-from jax import numpy as jnp, vmap
+from jax import grad, numpy as jnp, vmap
 from jax import value_and_grad
 from jax.profiler import annotate_function
 from jax.lax import stop_gradient
 from optax import OptState, GradientTransformation, apply_updates
 
-from grad_dft.utils import Scalar
 from grad_dft.functional import DispersionFunctional, Functional
-from grad_dft.molecule import Molecule, abs_clip, coulomb_potential, symmetrize_rdm1
+from grad_dft.molecule import Molecule, abs_clip, coulomb_energy, coulomb_potential, nonXC, one_body_energy, symmetrize_rdm1
 
 def molecule_predictor(
     functional: Functional,
@@ -79,7 +78,7 @@ def molecule_predictor(
 
     @partial(value_and_grad, argnums=1)
     def energy_and_grads(
-        params: PyTree, rdm1: Array, molecule: Molecule, *args, **functional_kwargs
+        params: PyTree, rdm1: Float[Array, "spin orbitals orbitals"], molecule: Molecule, *args, **functional_kwargs
     ) -> Scalar:
         r"""
         Computes the energy and gradients with respect to the density matrix
@@ -88,9 +87,8 @@ def molecule_predictor(
         ----------
         params: Pytree
             Functional parameters
-        rdm1: Array
+        rdm1: Float[Array, "spin orbitals orbitals"]
             The reduced density matrix.
-            Expected shape: (n_grid_points, n_orbitals, n_orbitals)
         molecule: Molecule
             the molecule
 

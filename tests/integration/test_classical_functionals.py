@@ -42,8 +42,10 @@ grids.build()
 
 params = freeze({"params": {}})
 
+mol = gto.M(atom="H 0 0 0; F 0 0 1.1")
+
 mols = [
-    gto.M(atom="H 0 0 0; F 0 0 1.1"),
+    mol,
     gto.M(atom=geometry_from_pubchem("water"), basis="def2-tzvp"),
     gto.M(atom="Li 0 0 0", spin = 1, basis="def2-tzvp")
 ]
@@ -64,9 +66,11 @@ def test_lda(mol):
     lsdadiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(lsdadiff, 0, atol=1e-3)
 
+test_lda(mol)
+
 ##### B88 ####
 @pytest.mark.parametrize("mol", mols)
-def test_lda(mol):
+def test_b88(mol):
     mf = dft.UKS(mol)
     mf.grids = grids
     mf.xc = "B88"
@@ -79,9 +83,11 @@ def test_lda(mol):
     b88diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(b88diff, 0, atol=1e-3)
 
+test_b88(mol)
+
 ##### VWN ####
 @pytest.mark.parametrize("mol", mols)
-def test_lda(mol):
+def test_vwn(mol):
     mf = dft.UKS(mol)
     mf.grids = grids
     mf.xc = "LDA_C_VWN"
@@ -94,9 +100,11 @@ def test_lda(mol):
     vwndiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(vwndiff, 0, atol=1e-3)
 
+test_vwn(mol)
+
 ##### LYP ####
 @pytest.mark.parametrize("mol", mols)
-def test_lda(mol):
+def test_lyp(mol):
     mf = dft.UKS(mol)
     mf.grids = grids
     mf.xc = "GGA_C_LYP"
@@ -109,9 +117,11 @@ def test_lda(mol):
     lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(lypdiff, 0, atol=1e-3)
 
+test_lyp(mol)
+
 #### B3LYP ####
 @pytest.mark.parametrize("mol", mols)
-def test_lda(mol):
+def test_b3lyp(mol):
     mf = dft.UKS(mol)
     mf.grids = grids
     mf.xc = "b3lyp"
@@ -124,10 +134,11 @@ def test_lda(mol):
     b3lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(b3lypdiff, 0, atol=1e-3)
 
+test_b3lyp(mol)
 
 #### PW92 ####
 @pytest.mark.parametrize("mol", mols)
-def test_lda(mol):
+def test_pw92(mol):
     mf = dft.UKS(mol)
     mf.grids = grids
     mf.xc = "LDA_C_PW"
@@ -139,3 +150,5 @@ def test_lda(mol):
 
     pw92diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(pw92diff, 0, atol=1e-3)
+
+test_pw92(mol)

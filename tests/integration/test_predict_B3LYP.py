@@ -73,7 +73,7 @@ def test_predict(mol):
     mf.max_cycle = 0
     energy = mf.kernel()
     ## Load the molecule, RKS
-    warnings.warn("Remember to set the grid level to 3 in the config file!")
+    #warnings.warn("Remember to set the grid level to 3 in the config file!")
 
     molecule = molecule_from_pyscf(mf, energy=energy, omegas=[0.0], scf_iteration=0)
 
@@ -94,7 +94,7 @@ def test_predict(mol):
 
 
 ##################
-test_predict(mf, energy=ccsd_energy)
+test_predict(mol)
 
 
 ###################### Open shell ############################
@@ -138,4 +138,4 @@ def test_predict(mol):
 
 
 ##################
-test_predict(mf, energy=ccsd_energy)
+test_predict(mol)

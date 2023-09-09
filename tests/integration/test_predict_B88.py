@@ -102,7 +102,7 @@ def test_predict(mol):
 
 
 ##################
-test_predict(mf, energy=ccsd_energy)
+test_predict(mol)
 
 
 ###################### Open shell ############################
@@ -153,4 +153,4 @@ def test_predict(mol):
 
 
 ##################
-test_predict(mf, energy=ccsd_energy)
+test_predict(mol)
