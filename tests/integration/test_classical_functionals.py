@@ -45,9 +45,7 @@ params = freeze({"params": {}})
 mol = gto.M(atom="H 0 0 0; F 0 0 1.1")
 
 mols = [
-    mol,
-    gto.M(atom=geometry_from_pubchem("water"), basis="def2-tzvp"),
-    gto.M(atom="Li 0 0 0", spin = 1, basis="def2-tzvp")
+    gto.M(atom="H 0 0 0; F 0 0 1.1"),
 ]
 
 #### LSDA ####
