@@ -6,3 +6,4 @@ flax>=0.7.2
 tensorflow>=2.13.0
 tensorflow-hub>=0.14.0
 jaxtyping
+pytest

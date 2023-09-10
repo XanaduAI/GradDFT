@@ -595,7 +595,7 @@ def dm21_densities(
 
     return localfeatures
 
-@typechecked
+#@typechecked
 def dm21_combine_cinputs(
     cinputs: Float[Array, "grid cinputs_whf"] , 
     ehf: Float[Array, "omega spin grid"]
@@ -620,7 +620,7 @@ def dm21_combine_cinputs(
     return jnp.concatenate([cinputs, ehf[:, 0].T, ehf[:, 1].T], axis=1)
 
 
-@typechecked
+#@typechecked
 def dm21_combine_densities(
     densities: Float[Array, "grid densities_whf"], 
     ehf: Float[Array, "omega spin grid"]
@@ -647,7 +647,7 @@ def dm21_combine_densities(
     )
 
 
-@typechecked
+#@typechecked
 def dm21_hfgrads_densities(
     functional: nn.Module,
     params: PyTree,

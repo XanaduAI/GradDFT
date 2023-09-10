@@ -39,7 +39,7 @@ def lsda_x_e(rho: Float[Array, "grid spin"], clip_cte):
 
     return lda_e
 
-@typechecked
+#@typechecked
 def b88_x_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin dimension"], clip_cte: float = 1e-27) -> Float[Array, "grid"]:
     r"""
     B88 exchange functional
@@ -82,7 +82,7 @@ def b88_x_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin di
 
     return b88_e
 
-@typechecked
+#@typechecked
 def pw92_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-27) -> Float[Array, "grid"]:
     r"""
     Eq 10 in
@@ -110,7 +110,7 @@ def pw92_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-27) -> Float[A
 
     return e_tilde
 
-@typechecked
+#@typechecked
 def vwn_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-27) -> Float[Array, "grid"]:
     r"""
     VWN correlation functional
@@ -158,7 +158,7 @@ def vwn_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-27) -> Float[Ar
     # We have to integrate e_tilde = e * n as per eq 2.1 in original LYP article
     return e_tilde
 
-@typechecked
+#@typechecked
 def lyp_c_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin dimension"], grad2rho: Float[Array, "grid spin"], clip_cte=1e-27) -> Float[Array, "grid"]:
     r"""
     LYP correlation functional
@@ -208,14 +208,14 @@ def lyp_c_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin di
         rho.sum(axis=1) > clip_cte, gamma / (1 + d * rhom1_3) * (rho.sum(axis=1) + sum_), 0.0
     )
 
-@typechecked
+#@typechecked
 def lsda_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__) -> Float[Array, "grid densities"]:
     r"""Auxiliary function to generate the features of LSDA."""
     rho = molecule.density()
     lda_e = lsda_x_e(rho, clip_cte)
     return jnp.expand_dims(lda_e, axis=1)
 
-@typechecked
+#@typechecked
 def b88_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__) -> Float[Array, "grid densities"]:
     r"""Auxiliary function to generate the features of B88 functional."""
     rho = molecule.density()
@@ -225,21 +225,21 @@ def b88_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__) -> Float[
     # assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
     return jnp.stack((lda_e, b88_e), axis=1)
 
-@typechecked
+#@typechecked
 def vwn_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__) -> Float[Array, "grid densities"]:
     r"""Auxiliary function to generate the features of VWN functional."""
     rho = molecule.density()
     vwn_e = vwn_c_e(rho, clip_cte)
     return jnp.expand_dims(vwn_e, axis=1)
 
-@typechecked
+#@typechecked
 def pw92_densities(molecule: Molecule, clip_cte: float = 1e-27, *_, **__) -> Float[Array, "grid densities"]:
     r"""Auxiliary function to generate the features of PW92 functional."""
     rho = molecule.density()
     pw92_e = pw92_c_e(rho, clip_cte)
     return jnp.expand_dims(pw92_e, axis=1)
 
-@typechecked
+#@typechecked
 def lyp_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__) -> Float[Array, "grid densities"]:
     r"""Auxiliary function to generate the features of LYP functional."""
     rho = molecule.density()
@@ -248,7 +248,7 @@ def lyp_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__) -> Float[
     lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
     return jnp.expand_dims(lyp_e, axis=1)
 
-@typechecked
+#@typechecked
 def b3lyp_exhf_densities(molecule: Molecule, clip_cte: float = 1e-27, *_, **__) -> Float[Array, "grid densities"]:
     r"""
     Auxiliary function to generate the non Hartree-Fock features of B3LYP functional
@@ -271,14 +271,14 @@ def b3lyp_exhf_densities(molecule: Molecule, clip_cte: float = 1e-27, *_, **__) 
 
     return jnp.stack((lda_e, b88_e, vwn_e, lyp_e), axis=1)
 
-@typechecked #todo: specifying the grid dimensions as Float[Array, "grid densities+1"] fails
+#@typechecked #todo: specifying the grid dimensions as Float[Array, "grid densities+1"] fails
 def b3lyp_combine(features: Float[Array, "grid densities"], ehf: Float[Array, "omega spin grid"]) -> Array:
     ehfs = jnp.sum(ehf, axis=(0, 1))
     ehfs = jnp.expand_dims(ehfs, axis=1)
     result = jnp.concatenate([features, ehfs], axis=1)
     return result
 
-@typechecked
+#@typechecked
 def b3lyp_coefficients(instance: nn.Module, *args):
     r"""
     The dot product between the features and the weights in B3LYP.
@@ -288,7 +288,7 @@ def b3lyp_coefficients(instance: nn.Module, *args):
     ac = 0.81
     return jnp.array([[1 - a0, ax, 1 - ac, ac, a0]])
 
-@typechecked
+#@typechecked
 def b3lyp_nograd_densities(molecule: Molecule, *_, **__) -> Float[Array, "omega spin grid"]:
     r"""
     The gradient of the HF energy with respect to the reduced density matrix.
@@ -297,7 +297,7 @@ def b3lyp_nograd_densities(molecule: Molecule, *_, **__) -> Float[Array, "omega 
     # assert not jnp.isnan(ehf).any() and not jnp.isinf(ehf).any()
     return ehf
 
-@typechecked
+#@typechecked
 def b3lyp_hfgrads(
     functional: nn.Module,
     params: PyTree,

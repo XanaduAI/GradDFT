@@ -279,7 +279,7 @@ class Molecule:
 
 #######################################################################
 
-@typechecked
+#@typechecked
 def orbital_grad(
         mo_coeff: Float[Array, "spin orbitals orbitals"],
         mo_occ: Float[Array, "spin orbitals"],
@@ -319,7 +319,7 @@ def orbital_grad(
 
 ##########################################################
 
-@typechecked
+#@typechecked
 @partial(jax.jit, static_argnames="precision")
 def density(rdm1: Float[Array, "spin orbitals orbitals"], 
             ao: Float[Array, "grid orbitals"], 
@@ -344,7 +344,7 @@ def density(rdm1: Float[Array, "spin orbitals orbitals"],
 
     return jnp.einsum("...ab,ra,rb->r...", rdm1, ao, ao, precision=precision)
 
-@typechecked
+#@typechecked
 @partial(jax.jit, static_argnames="precision")
 def grad_density(
     rdm1: Float[Array, "spin orbitals orbitals"], 
@@ -374,7 +374,7 @@ def grad_density(
 
     return 2 * jnp.einsum("...ab,ra,rbj->r...j", rdm1, ao, grad_ao, precision=precision)
 
-@typechecked
+#@typechecked
 @partial(jax.jit, static_argnames="precision")
 def lapl_density(
     rdm1: Float[Array, "spin orbitals orbitals"], 
@@ -407,7 +407,7 @@ def lapl_density(
         "...ab,raj,rbj->r...", rdm1, grad_ao, grad_ao, precision=precision
     ) + 2 * jnp.einsum("...ab,ra,rbi->r...", rdm1, ao, grad_2_ao, precision=precision)
 
-@typechecked
+#@typechecked
 @partial(jax.jit, static_argnames="precision")
 def kinetic_density(
     rdm1: Float[Array, "spin orbitals orbitals"], 
@@ -434,7 +434,7 @@ def kinetic_density(
 
     return 0.5 * jnp.einsum("...ab,raj,rbj->r...", rdm1, grad_ao, grad_ao, precision=precision)
 
-@typechecked
+#@typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def HF_energy_density(
     rdm1: Float[Array, "spin orbitals orbitals"],
@@ -472,7 +472,7 @@ def HF_energy_density(
     )
     return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
 
-@typechecked
+#@typechecked
 def HF_density_grad_2_Fock(
     grid: Grid,
     functional: nn.Module,
@@ -543,7 +543,7 @@ def HF_density_grad_2_Fock(
 
     return (jax.jit(chunked_jvp)(chi.transpose(3, 0, 1, 2), gr, ao)).transpose(1, 2, 3, 0)
 
-@typechecked
+#@typechecked
 def HF_coefficient_input_grad_2_Fock(
     grid: Grid,
     functional: nn.Module,
@@ -620,7 +620,7 @@ def abs_clip(arr, threshold):
 
 ######################################################################
 
-@typechecked
+#@typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def nonXC(
     rdm1: Float[Array, "spin orbitals orbitals"],
@@ -658,7 +658,7 @@ def nonXC(
 
     return nuclear_repulsion + h1e_energy + coulomb2e_energy
 
-@typechecked
+#@typechecked
 @partial(jax.jit)
 def symmetrize_rdm1(rdm1: Float[Array, "spin orbitals orbitals"]) -> Float[Array, "spin orbitals orbitals"]:
     r"""A function that symmetrizes and clips the reduced density matrix.
@@ -676,7 +676,7 @@ def symmetrize_rdm1(rdm1: Float[Array, "spin orbitals orbitals"]) -> Float[Array
     dm = abs_clip(dm, 1e-20)
     return jnp.stack([dm, dm], axis=0) / 2.0
 
-@typechecked
+#@typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def coulomb_energy(
     rdm1: Float[Array, "spin orbitals orbitals"],
@@ -701,7 +701,7 @@ def coulomb_energy(
     coulomb2e_energy = jnp.einsum("sji,sij->", rdm1, v_coul, precision=precision) / 2.0
     return coulomb2e_energy
 
-@typechecked
+#@typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def one_body_energy(
     rdm1: Float[Array, "spin orbitals orbitals"],
@@ -725,7 +725,7 @@ def one_body_energy(
     h1e_energy = jnp.einsum("sij,ji->", rdm1, h1e, precision=precision)
     return h1e_energy
 
-@typechecked
+#@typechecked
 def coulomb_potential(
     rdm1: Float[Array, "spin orbitals orbitals"],
     rep_tensor: Float[Array, "orbitals orbitals orbitals orbitals"],
@@ -752,7 +752,7 @@ def coulomb_potential(
     # The 2 is to compensate for the /2 in the dm definition
     return 2 * jnp.einsum("pqrt,srt->spq", rep_tensor, rdm1, precision=precision)
 
-@typechecked
+#@typechecked
 def make_rdm1(
     mo_coeff: Float[Array, "spin orbitals orbitals"],
     mo_occ: Float[Array, "spin orbitals"]
@@ -784,7 +784,7 @@ def make_rdm1(
 
     return jnp.einsum("sij,sj,skj -> sik", mo_coeff, mo_occ, mo_coeff.conj())
 
-#@typechecked #todo Exception Do not use `isinstance(x, jaxtyping.Int)`. If you want to check just the dtype of an array, then use `jaxtyping.Int[jnp.ndarray, "..."]`.
+##@typechecked #todo Exception Do not use `isinstance(x, jaxtyping.Int)`. If you want to check just the dtype of an array, then use `jaxtyping.Int[jnp.ndarray, "..."]`.
 def get_occ(
     mo_energies: Float[Array, "spin orbitals"],
     nelecs: Int[Array, "spin"],
