@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Tuple
+from typing import Callable, Optional, Tuple
 from functools import partial
 from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float
 
@@ -27,7 +27,7 @@ from grad_dft.molecule import Molecule, abs_clip, coulomb_energy, coulomb_potent
 
 def molecule_predictor(
     functional: Functional,
-    nlc_functional: DispersionFunctional = None,
+    nlc_functional: Optional[DispersionFunctional] = None,
     **kwargs,
 ) -> Callable:
     r"""Generate a function that predicts the energy
