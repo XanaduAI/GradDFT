@@ -59,7 +59,7 @@ def test_Harries_LDA(mol):
     Harries_e = Harris_predict(params, molecule)
 
     diff = (Harries_e - predicted_e) * Hartree2kcalmol
-    assert jnp.allclose(diff, 0, atol=1e2)
+    assert jnp.allclose(diff, 0, atol=1e2) and jnp.less_equal(diff, 0)
 
 
 @pytest.mark.parametrize("mol", mols)
@@ -76,5 +76,5 @@ def test_Harries_B88(mol):
     Harries_e = Harris_predict(params, molecule)
 
     diff = (Harries_e - predicted_e) * Hartree2kcalmol
-    assert jnp.allclose(diff, 0, atol=1e2)
+    assert jnp.allclose(diff, 0, atol=1e2) and jnp.less_equal(diff, 0)
 
