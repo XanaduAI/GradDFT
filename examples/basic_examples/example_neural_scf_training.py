@@ -15,21 +15,26 @@
 from functools import partial
 from jax import numpy as jnp, value_and_grad
 from jax.random import split, PRNGKey
-from optax import adam, apply_updates
-from tqdm import tqdm
-from grad_dft.evaluate import (
-    make_jitted_orbital_optimizer,
-    make_orbital_optimizer,
-    make_scf_loop,
-    make_jitted_scf_loop,
-)
-from grad_dft.train import molecule_predictor
-from grad_dft.functional import NeuralFunctional, default_loss
-from grad_dft.interface import molecule_from_pyscf
-from grad_dft.molecule import Molecule
 from jax.nn import sigmoid, gelu
 from flax import linen as nn
 from jax import config
+from optax import adam, apply_updates
+from tqdm import tqdm
+
+from jaxtyping import install_import_hook
+
+
+with install_import_hook("grad_dft", "typeguard.typechecked"):
+    from grad_dft.molecule import Molecule
+    from grad_dft.evaluate import (
+        make_jitted_orbital_optimizer,
+        make_orbital_optimizer,
+        make_scf_loop,
+        make_jitted_scf_loop,
+    )
+    from grad_dft.train import molecule_predictor
+    from grad_dft.functional import NeuralFunctional, default_loss
+    from grad_dft.interface import molecule_from_pyscf
 
 config.update("jax_enable_x64", True)
 config.update('jax_debug_nans', True)
@@ -44,7 +49,7 @@ clip_by_global_norm(1e-5)
 from pyscf import gto, dft
 
 # Define the geometry of the molecule
-mol = gto.M(atom=[["H", (0, 0, 0)], ["H", (0, 0, 1)]], basis="def2-tzvp", charge=0, spin=0)
+mol = gto.M(atom=[["F", (0, 0, 0)], ["H", (0, 0, 1)]], basis="def2-tzvp", charge=0, spin=0)
 mf = dft.UKS(mol)
 ground_truth_energy = mf.kernel()
 
@@ -163,13 +168,13 @@ opt_state = tx.init(params)
 
 # Create the scf iterator
 HH_molecule = molecule_from_pyscf(mf)
-scf_iterator = make_scf_loop(neuralfunctional, verbose=2, max_cycles=5)
+scf_iterator = make_scf_loop(neuralfunctional, verbose=2, max_cycles=1)
 energy = scf_iterator(params, HH_molecule)
 print("Energy from the scf loop:", energy)
 
 # We can alternatively use the jit-ed version of the scf loop
 HH_molecule = molecule_from_pyscf(mf)
-scf_iterator = make_jitted_scf_loop(neuralfunctional, cycles=5)
+scf_iterator = make_jitted_scf_loop(neuralfunctional, cycles=1)
 jitted_energy, _, _ = scf_iterator(params, HH_molecule)
 print("Energy from the jitted scf loop:", jitted_energy)
 

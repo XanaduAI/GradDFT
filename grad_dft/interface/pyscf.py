@@ -636,7 +636,7 @@ def process_mol(
     training: bool = False,
     max_cycle: Optional[int] = None,
     xc_functional="b3lyp",
-) -> Tuple[float, Union[dft.RKS, dft.UKS]]:
+) -> Tuple[Optional[float], Union[dft.RKS, dft.UKS]]:
     if compute_energy:
         if mol.multiplicity == 1:
             mf2 = scf.RHF(mol)

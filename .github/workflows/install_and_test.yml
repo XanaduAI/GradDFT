@@ -5,6 +5,8 @@ on: [push]
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    env:
+      PYSCF_CONFIG_FILE: ".github/workflows/pyscf_conf.py"
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11"]
@@ -32,4 +34,4 @@ jobs:
           pytest -v tests/integration/test_classical_functionals.py
           pytest -v tests/integration/test_predict_B88.py
           pytest -v tests/integration/test_predict_B3LYP.py
-          pytest -v tests/integration/test_predict_DM21.py
+

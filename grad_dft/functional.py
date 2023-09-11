@@ -34,7 +34,6 @@ from flax.training import train_state, checkpoints
 from flax.training.train_state import TrainState
 from optax import GradientTransformation
 from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
-from typeguard import typechecked
 from grad_dft.molecule import abs_clip
 
 from grad_dft.utils import Scalar, Array, PyTree, DType, default_dtype
@@ -287,31 +286,29 @@ class Functional(nn.Module):
 
     def _integrate(
         self,
-        energy_density: Float[Array, "grid energy_density"],
-        gridweights: Float[Array, "grid gridweights"],
+        energy_density: Float[Array, "grid"],
+        gridweights: Float[Array, "grid"],
         precision: Optional[Precision] = Precision.HIGHEST,
-    ) -> Float[Array, "energy_density"]:
+    ) -> Scalar:
         r"""
         Helper function that performs grid quadrature (integration)
                                 in a differentiable way (using jax.numpy).
 
         Parameters
         ----------
-        energy_density : Array
+        energy_density : Float[Array, "grid"]
             energy_density to integrate.
-            Expected shape: (n_grid, ...)
-        gridweights: Array
+        gridweights: Float[Array, "grid"]
             gridweights.
-            Expected shape: (n_grid)
         precision : Precision, optional
             The precision to use for the computation, by default Precision.HIGHEST
 
         Returns
         -------
-        Array
+        Scalar
         """
 
-        return jnp.einsum("r,r...->...", abs_clip(gridweights, 1e-20), abs_clip(energy_density, 1e-20), precision=precision)
+        return jnp.einsum("r,r->", abs_clip(gridweights, 1e-20), abs_clip(energy_density, 1e-20), precision=precision)
 
 
 @dataclass
@@ -429,7 +426,7 @@ class NeuralFunctional(Functional):
         ckpt_dir: str = "ckpts",
         step: Optional[int] = None,
         orbax_checkpointer: Checkpointer = PyTreeCheckpointer(),
-    ) -> PyTree:
+    ) -> TrainState:
         r"""
         A convenience function to load the network parameters from disk.
 
@@ -595,7 +592,6 @@ def dm21_densities(
 
     return localfeatures
 
-#@typechecked
 def dm21_combine_cinputs(
     cinputs: Float[Array, "grid cinputs_whf"] , 
     ehf: Float[Array, "omega spin grid"]
@@ -620,7 +616,6 @@ def dm21_combine_cinputs(
     return jnp.concatenate([cinputs, ehf[:, 0].T, ehf[:, 1].T], axis=1)
 
 
-#@typechecked
 def dm21_combine_densities(
     densities: Float[Array, "grid densities_whf"], 
     ehf: Float[Array, "omega spin grid"]
@@ -647,7 +642,6 @@ def dm21_combine_densities(
     )
 
 
-#@typechecked
 def dm21_hfgrads_densities(
     functional: nn.Module,
     params: PyTree,
@@ -709,7 +703,7 @@ class DM21(NeuralFunctional):
 
     activation: Callable = elu
     squash_offset: float = 1e-4
-    layer_widths: Array = jnp.array([256, 256, 256, 256, 256, 256])
+    layer_widths = [256, 256, 256, 256, 256, 256]
     local_features: int = 3
     sigmoid_scale_factor: float = 2.0
 

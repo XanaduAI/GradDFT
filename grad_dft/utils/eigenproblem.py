@@ -15,7 +15,9 @@
 import jax
 import jax.numpy as jnp
 from jax import custom_vjp
-from .types import Array, Scalar
+from jaxtyping import Array, Float, Scalar
+from typing import Tuple
+#from .types import Array, Scalar
 
 # Probably don't alter these unless you know what you're doing
 DEGEN_TOL = 1e-6
@@ -127,7 +129,10 @@ def safe_general_eigh(A: Array, B: Array) -> tuple[Array, Array]:
     return eigenvalues, eigenvectors_original
 
 
-def safe_fock_solver(fock: tuple[Array, Array], overlap: Array) -> tuple[Array, Array]:
+def safe_fock_solver(
+    fock: Float[Array, 'spin orbitals orbitals'], 
+    overlap: Float[Array, 'orbitals orbitals']
+) -> (Float[Array, 'spin orbitals'], Float[Array, 'spin orbitals orbitals']):
     """Get the eigenenergies and molecular orbital coefficients for the
         up and down fock spin matrices.
     Args:

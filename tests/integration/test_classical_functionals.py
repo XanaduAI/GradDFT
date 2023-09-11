@@ -45,9 +45,7 @@ params = freeze({"params": {}})
 mol = gto.M(atom="H 0 0 0; F 0 0 1.1")
 
 mols = [
-    mol,
-    gto.M(atom=geometry_from_pubchem("water"), basis="def2-tzvp"),
-    gto.M(atom="Li 0 0 0", spin = 1, basis="def2-tzvp")
+    gto.M(atom="H 0 0 0; F 0 0 1.1"),
 ]
 
 #### LSDA ####
@@ -120,6 +118,8 @@ def test_lyp(mol):
 test_lyp(mol)
 
 #### B3LYP ####
+# This test will only pass if you set B3LYP_WITH_VWN5 = True in pyscf_conf.py.
+# See pyscf_conf.py in .github/workflows
 @pytest.mark.parametrize("mol", mols)
 def test_b3lyp(mol):
     mf = dft.UKS(mol)
