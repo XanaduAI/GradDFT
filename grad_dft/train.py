@@ -244,12 +244,13 @@ def Harris_energy_predictor(
 
         energy = jnp.einsum("sr,sr->", molecule.mo_occ, molecule.mo_energy)
 
-        energy -= coulomb_energy(molecule.rdm1, molecule.rep_tensor)/2.
-        energy += molecule.nuclear_repulsion
+        coulomb_e = -coulomb_energy(molecule.rdm1, molecule.rep_tensor)
 
         xc_energy, xcfock = xc_energy_and_grads(params, molecule.rdm1, molecule, *args, **kwargs)
 
-        return energy + xc_energy - jnp.einsum("sij,sij->", molecule.rdm1, xcfock)
+        return energy + xc_energy - jnp.einsum("sij,sij->", molecule.rdm1, xcfock) + coulomb_e + molecule.nuclear_repulsion
+
+    return Harris_energy
 
 
 
