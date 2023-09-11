@@ -105,7 +105,7 @@ def pw92_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-27) -> Float[A
 
     e_tilde = correlation_polarization_correction(e_PF, rho, clip_cte)
 
-    return e_tilde
+    return e_tilde * rho.sum(axis = 1)
 
 def vwn_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-27) -> Float[Array, "grid"]:
     r"""
@@ -151,8 +151,8 @@ def vwn_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-27) -> Float[Ar
 
     e_tilde = correlation_polarization_correction(e_PF, rho, clip_cte)
 
-    # We have to integrate e_tilde = e * n as per eq 2.1 in original LYP article
-    return e_tilde
+    # We have to integrate e = e_tilde * n as per eq 2.1 in original VWN article
+    return e_tilde * rho.sum(axis = 1)
 
 def lyp_c_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin dimension"], grad2rho: Float[Array, "grid spin"], clip_cte=1e-27) -> Float[Array, "grid"]:
     r"""

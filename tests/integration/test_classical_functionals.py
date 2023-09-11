@@ -42,14 +42,15 @@ grids.build()
 
 params = freeze({"params": {}})
 
-mol = gto.M(atom="H 0 0 0; F 0 0 1.1")
+mol = gto.M(atom="H 0 0 0; F 0 0 1.1", basis = "def2-tzvp")
+mol = gto.M(atom="Li 0 0 0", spin = 1, basis = "def2-tzvp")
 
 mols = [
-    gto.M(atom="H 0 0 0; F 0 0 1.1"),
+    gto.M(atom="H 0 0 0; F 0 0 1.1", basis = "def2-tzvp"),
+    gto.M(atom="Li 0 0 0", spin = 1, basis = "def2-tzvp"),
 ]
 
 #### LSDA ####
-
 @pytest.mark.parametrize("mol", mols)
 def test_lda(mol):
     mf = dft.UKS(mol)
@@ -62,6 +63,8 @@ def test_lda(mol):
     predicted_e, fock = predict_molecule(params, molecule)
 
     lsdadiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
+
+    assert not jnp.isnan(fock).any()
     assert jnp.allclose(lsdadiff, 0, atol=1e-3)
 
 ##### B88 ####
@@ -77,8 +80,9 @@ def test_b88(mol):
     predicted_e, fock = predict_molecule(params, molecule)
 
     b88diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-    assert jnp.allclose(b88diff, 0, atol=1e-3)
 
+    assert not jnp.isnan(fock).any()
+    assert jnp.allclose(b88diff, 0, atol=1e-3)
 
 ##### VWN ####
 @pytest.mark.parametrize("mol", mols)
@@ -93,8 +97,9 @@ def test_vwn(mol):
     predicted_e, fock = predict_molecule(params, molecule)
 
     vwndiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-    assert jnp.allclose(vwndiff, 0, atol=1e-3)
-
+    
+    assert not jnp.isnan(fock).any()
+    assert jnp.allclose(vwndiff, 0, atol=1)
 
 ##### LYP ####
 @pytest.mark.parametrize("mol", mols)
@@ -109,8 +114,9 @@ def test_lyp(mol):
     predicted_e, fock = predict_molecule(params, molecule)
 
     lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-    assert jnp.allclose(lypdiff, 0, atol=1e-3)
 
+    assert not jnp.isnan(fock).any()
+    assert jnp.allclose(lypdiff, 0, atol=1)
 
 #### B3LYP ####
 # This test will only pass if you set B3LYP_WITH_VWN5 = True in pyscf_conf.py.
@@ -127,7 +133,9 @@ def test_b3lyp(mol):
     predicted_e, fock = predict_molecule(params, molecule)
 
     b3lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
-    assert jnp.allclose(b3lypdiff, 0, atol=1e-3)
+
+    assert not jnp.isnan(fock).any()
+    assert jnp.allclose(b3lypdiff, 0, atol=1)
 
 
 #### PW92 ####
@@ -143,4 +151,6 @@ def test_pw92(mol):
     predicted_e, fock = predict_molecule(params, molecule)
 
     pw92diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
+
+    assert not jnp.isnan(fock).any()
     assert jnp.allclose(pw92diff, 0, atol=1e-3)
