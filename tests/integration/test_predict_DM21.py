@@ -135,7 +135,7 @@ def test_predict(mol):
 
 
 ##################
-test_predict(mol)
+# test_predict(mol)
 
 
 ###################### Check against DM21 tests ############################
@@ -201,8 +201,8 @@ def test_uks():
 
 
 ##################
-test_rks()
-test_uks()
+# test_rks()
+# test_uks()
 
 
 molecule_name = "CoC"
@@ -219,4 +219,4 @@ energy = mf.kernel()
 
 grid = mf.grids
 
-test_predict(mol)
+# test_predict(mol)

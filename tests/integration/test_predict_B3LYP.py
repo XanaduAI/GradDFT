@@ -48,7 +48,8 @@ from grad_dft.popular_functionals import B3LYP
 
 params = {"params": {}}
 
-
+# These tests will only pass if you set B3LYP_WITH_VWN5 = True in pyscf_conf.py.
+# See pyscf_conf.py in .github/workflows
 ###################### Closed shell ############################
 
 molecule_name = "water"
@@ -94,7 +95,7 @@ def test_predict(mol):
 
 
 ##################
-test_predict(mol)
+# test_predict(mol)
 
 
 ###################### Open shell ############################
@@ -138,4 +139,4 @@ def test_predict(mol):
 
 
 ##################
-test_predict(mol)
+# test_predict(mol)
