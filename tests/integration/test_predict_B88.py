@@ -71,8 +71,8 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
 
     mf = dft.UKS(mol)
     mf.xc = "B88"
-    e_DM = mf.kernel()
     mf.max_cycle = 25
+    e_DM = mf.kernel()
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol=1e-6)
 
