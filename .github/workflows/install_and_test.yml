@@ -23,6 +23,9 @@ jobs:
       - name: Install extra example dependencies
         run: |
           pip install -e ".[examples]"
+      - name: Set environment variables for tests
+        run: |
+            PYSCF_CONFIG_FILE=".github/workflows/pyscf_conf.py"
       - name: Run unit tests
         run: |
             pytest -v tests/unit/test_eigenproblem.py

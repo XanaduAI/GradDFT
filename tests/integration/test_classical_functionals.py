@@ -118,6 +118,8 @@ def test_lyp(mol):
 test_lyp(mol)
 
 #### B3LYP ####
+# This test will only pass if you set B3LYP_WITH_VWN5 = True in pyscf_conf.py.
+# See pyscf_conf.py in .github/workflows
 @pytest.mark.parametrize("mol", mols)
 def test_b3lyp(mol):
     mf = dft.UKS(mol)
