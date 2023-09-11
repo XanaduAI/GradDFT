@@ -64,8 +64,6 @@ def test_lda(mol):
     lsdadiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(lsdadiff, 0, atol=1e-3)
 
-test_lda(mol)
-
 ##### B88 ####
 @pytest.mark.parametrize("mol", mols)
 def test_b88(mol):
@@ -81,7 +79,6 @@ def test_b88(mol):
     b88diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(b88diff, 0, atol=1e-3)
 
-test_b88(mol)
 
 ##### VWN ####
 @pytest.mark.parametrize("mol", mols)
@@ -98,7 +95,6 @@ def test_vwn(mol):
     vwndiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(vwndiff, 0, atol=1e-3)
 
-test_vwn(mol)
 
 ##### LYP ####
 @pytest.mark.parametrize("mol", mols)
@@ -115,7 +111,6 @@ def test_lyp(mol):
     lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(lypdiff, 0, atol=1e-3)
 
-test_lyp(mol)
 
 #### B3LYP ####
 # This test will only pass if you set B3LYP_WITH_VWN5 = True in pyscf_conf.py.
@@ -134,7 +129,6 @@ def test_b3lyp(mol):
     b3lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(b3lypdiff, 0, atol=1e-3)
 
-test_b3lyp(mol)
 
 #### PW92 ####
 @pytest.mark.parametrize("mol", mols)
@@ -150,5 +144,3 @@ def test_pw92(mol):
 
     pw92diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     assert jnp.allclose(pw92diff, 0, atol=1e-3)
-
-test_pw92(mol)
