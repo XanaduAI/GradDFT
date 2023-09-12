@@ -28,20 +28,22 @@ from functools import partial, reduce
 import time
 from scipy.optimize import bisect
 
-from grad_dft.external import Functional
-from grad_dft.utils import PyTree, Array, Scalar, Optimizer
 from grad_dft.functional import Functional
 
 from grad_dft.molecule import Molecule, abs_clip, make_rdm1, orbital_grad
 from grad_dft.train import molecule_predictor
-from grad_dft.utils import PyTree, Array, Scalar, safe_fock_solver
 from grad_dft.interface.pyscf import (
     generate_chi_tensor,
     mol_from_Molecule,
     process_mol,
     mol_from_Molecule,
 )
+
+from grad_dft.external import Functional
+from grad_dft.utils import Optimizer, safe_fock_solver
 from grad_dft.utils.types import Hartree2kcalmol
+
+from jaxtyping import PyTree, Array, Scalar
 
 
 ######## Test kernel ########

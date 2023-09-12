@@ -29,7 +29,7 @@ import pyscf.data.elements as elements
 
 # from qdft.reaction import Reaction, make_reaction, get_grad
 from grad_dft.molecule import Grid, Molecule, Reaction, make_reaction
-from grad_dft.utils import DType, default_dtype
+from grad_dft.utils import DType, default_dtype, DensityFunctional, HartreeFock
 from jax.tree_util import tree_map
 from grad_dft.external import NeuralNumInt
 from grad_dft.external import Functional as ExternalFunctional
@@ -37,7 +37,6 @@ from grad_dft.external import Functional as ExternalFunctional
 import h5py
 from pyscf import cc, dft, scf
 
-from grad_dft.utils import DensityFunctional, HartreeFock
 from jaxtyping import Array, Scalar, Int
 from grad_dft.external import _nu_chunk
 
@@ -322,7 +321,7 @@ def loader(
                         # select the indices from the omegas array and load the corresponding chi matrix
                         if config_omegas is None:
                             args[key] = jnp.asarray(value)
-                        elif config_omegas == []:
+                        elif list(config_omegas) == []:
                             args[key] = None
                         else:
                             omegas = list(group["omegas"])
