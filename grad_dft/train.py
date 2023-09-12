@@ -201,6 +201,58 @@ def molecule_predictor(
 
     return predict
 
+def Harris_energy_predictor(
+    functional: Functional,
+    nlc_functional: DispersionFunctional = None,
+    **kwargs
+):
+    @partial(value_and_grad, argnums=1)
+    def xc_energy_and_grads(
+        params: PyTree, rdm1: Float[Array, "spin orbitals orbitals"], molecule: Molecule, *args, **kwargs
+    ) -> Scalar:
+        molecule = molecule.replace(rdm1 = rdm1)
+        densities = functional.compute_densities(molecule, *args, **kwargs)
+        cinputs = functional.compute_coefficient_inputs(molecule, *args)
+        return functional.xc_energy(params, molecule.grid, cinputs, densities, **kwargs)
+
+
+    def Harris_energy(
+        params: PyTree,
+        molecule: Molecule,
+        *args,
+        **kwargs,
+    ) -> Scalar:
+        r"""
+        Computes the Harris functional, which is the functional evaluated at the
+        ground state density of the molecule.
+
+        Parameters
+        ----------
+        params : PyTree
+            Parameters of the functional.
+        molecule : Molecule
+            Molecule to compute the Harris functional for.
+        *args
+            Other arguments to compute_densities or compute_coefficient_inputs.
+        **kwargs
+            Other key word arguments to densities and self.xc_energy.
+
+        Returns
+        -------
+        Scalar
+        """
+
+        energy = jnp.einsum("sr,sr->", molecule.mo_occ, molecule.mo_energy)
+
+        coulomb_e = -coulomb_energy(molecule.rdm1, molecule.rep_tensor)
+
+        xc_energy, xcfock = xc_energy_and_grads(params, molecule.rdm1, molecule, *args, **kwargs)
+
+        return energy + xc_energy - jnp.einsum("sij,sij->", molecule.rdm1, xcfock) + coulomb_e + molecule.nuclear_repulsion
+
+    return Harris_energy
+
+
 
 def make_train_kernel(tx: GradientTransformation, loss: Callable) -> Callable:
     def kernel(
