@@ -12,3 +12,5 @@ from grad_dft.interface.pyscf import molecule_from_pyscf
 omegas = jnp.array([0., 0.4])
 molecule = molecule_from_pyscf(mf, omegas = omegas)
 ```
+
+The `test_constraints.py` file executes an example showing that constraints run. However, note that they have not been tested thoroughly.
