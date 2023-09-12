@@ -37,7 +37,7 @@ from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 from typeguard import typechecked
 from grad_dft.molecule import abs_clip
 
-from grad_dft.utils import Scalar, Array, PyTree, DType, default_dtype
+from grad_dft.utils import DType, default_dtype
 from grad_dft.molecule import Grid, Molecule
 
 import sys

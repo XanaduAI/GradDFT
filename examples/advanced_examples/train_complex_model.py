@@ -51,9 +51,9 @@ config.update("jax_disable_jit", True)
 # In this example we explain how to replicate the experiments that train
 # the functional in some points of the dissociation curve of H2 or H2^+.
 
-dirpath = os.path.dirname(os.path.dirname(__file__))
+dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 training_data_dirpath = os.path.normpath(dirpath + "/data/training/dissociation/")
-training_files = ["H2_extrapolation_train.h5"]
+training_files = ["H2_dissociation_omegas.h5"]
 # alternatively, use "H2plus_extrapolation.h5". You will have needed to execute in data_processing.py
 # distances = [0.5, 0.75, 1, 1.25, 1.5]
 # process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
@@ -160,7 +160,7 @@ def combine_densities(densities, ehf):
     return jnp.concatenate((densities, ehf), axis=1)
 
 
-omegas = [0.0, 0.4]
+omegas = jnp.array([0.0, 0.4])
 functional = NeuralFunctional(
     coefficients=nn_coefficients,
     energy_densities=partial(densities, functional_type="MGGA"),

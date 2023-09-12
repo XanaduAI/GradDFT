@@ -29,7 +29,7 @@ from jax import jacrev
 import numpy as np
 
 from grad_dft.utils.eigenproblem import safe_eigh
-from grad_dft.utils import Array, Scalar
+from jaxtyping import Array, Scalar
 
 import pytest
 
