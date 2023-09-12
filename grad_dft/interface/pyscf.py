@@ -108,7 +108,7 @@ def molecule_from_pyscf(
         chi = None
     spin = mf.mol.spin
     charge = mf.mol.charge
-
+    num_elec = jnp.sum(mo_occ)
     grid_level = mf.grids.level
 
     return Molecule(
@@ -124,6 +124,7 @@ def molecule_from_pyscf(
         vj,
         mo_coeff,
         mo_occ,
+        num_elec,
         mo_energy,
         mf_e_tot,
         s1e,

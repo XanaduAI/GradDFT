@@ -19,7 +19,7 @@ from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float
 from jax import grad, numpy as jnp, vmap
 from jax import value_and_grad
 from jax.profiler import annotate_function
-from jax.lax import stop_gradient
+from jax.lax import stop_gradient, fori_loop, cond
 from optax import OptState, GradientTransformation, apply_updates
 
 from grad_dft.functional import DispersionFunctional, Functional
@@ -320,3 +320,46 @@ def get_grad(mo_coeff: Float[Array, "spin ao ao"],
     C_vir = vmap(jnp.where, in_axes=(None, 1, None), out_axes=1)(mo_occ == 0, mo_coeff, 0)
 
     return jnp.einsum("sab,sac,scd->bd", C_vir.conj(), F, C_occ)
+
+##################### Loss Functions #####################
+
+@partial(value_and_grad, has_aux=True)
+def mse_energy_loss(params: PyTree, molecule_predictor: Callable,
+                    molecules: list[Molecule], truth_energies: Float[Array, "energy"], elec_num_norm: Scalar=True
+    ) -> Scalar:
+    r"""
+    Computes the default loss function, here MSE, between predicted and true energy.
+    
+    This loss function does not yet support parallel execution for the loss contributions
+    and instead implemented a simple for loop.
+
+    Parameters
+    ----------
+    params: PyTree
+        functional parameters (weights)
+    molecule_predict: Callable.
+        Use molecule_predict = molecule_predictor(functional) to generate it.
+    molecule: Molecule
+    trueenergy: float
+
+    Returns
+    ----------
+    """
+    
+    def unnorm_sum():
+        def increment_loss(i, energy_sum):
+            E_predict, _ = molecule_predictor(params, molecules[i])
+            energy_sum += (E_predict - truth_energies[i])**2
+        return fori_loop(0, len(molecules), increment_loss, 0)
+            
+    def norm_sum():
+        def increment_loss_norm(i, energy_sum):
+            E_predict, _ = molecule_predictor(params, molecules[i])
+            energy_sum += ((E_predict - truth_energies[i])/molecules[i].num_elec)**2
+        return fori_loop(0, len(molecules), increment_loss_norm, 0)
+    
+    energy_sum = cond(elec_num_norm, norm_sum, unnorm_sum)
+
+    cost_value = energy_sum/len(molecules)
+
+    return cost_value
