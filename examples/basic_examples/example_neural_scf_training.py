@@ -24,17 +24,16 @@ from tqdm import tqdm
 from jaxtyping import install_import_hook
 
 
-with install_import_hook("grad_dft", "typeguard.typechecked"):
-    from grad_dft.molecule import Molecule
-    from grad_dft.evaluate import (
-        make_jitted_orbital_optimizer,
-        make_orbital_optimizer,
-        make_scf_loop,
-        make_jitted_scf_loop,
-    )
-    from grad_dft.train import molecule_predictor
-    from grad_dft.functional import NeuralFunctional, default_loss
-    from grad_dft.interface import molecule_from_pyscf
+from grad_dft.molecule import Molecule
+from grad_dft.evaluate import (
+    make_jitted_orbital_optimizer,
+    make_orbital_optimizer,
+    make_scf_loop,
+    make_jitted_scf_loop,
+)
+from grad_dft.train import molecule_predictor
+from grad_dft.functional import NeuralFunctional, default_loss
+from grad_dft.interface import molecule_from_pyscf
 
 config.update("jax_enable_x64", True)
 config.update('jax_debug_nans', True)

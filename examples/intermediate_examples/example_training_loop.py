@@ -26,7 +26,6 @@ from grad_dft.functional import (
     dm21_densities,
 )
 from jax.nn import gelu
-from jax.lax import stop_gradient
 
 # In this example we aim to explain how we can implement the self-consistent loop
 # with a simple functional that does not contain Hartree-Fock components.
@@ -120,7 +119,7 @@ tx = adam(learning_rate=learning_rate, b1=momentum)
 opt_state = tx.init(params)
 
 # and implement the optimization loop
-n_epochs = 35
+n_epochs = 20
 molecule_predict = molecule_predictor(functional)
 for iteration in range(n_epochs):
     (cost_value, predicted_energy), grads = default_loss(

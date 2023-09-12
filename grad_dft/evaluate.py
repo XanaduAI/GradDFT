@@ -48,6 +48,21 @@ from grad_dft.utils.types import Hartree2kcalmol
 
 
 def make_test_kernel(tx: optax.GradientTransformation, loss: Callable) -> Callable:
+    r"""
+    Creates a kernel object that can be called to evaluate the loss and other metrics.
+
+    Parameters
+    ----------
+    tx: optax.GradientTransformation
+        A gradient transformation object.
+    loss: Callable
+        A loss function.
+
+    Returns
+    -------
+    Callable
+    """
+
     def kernel(
         params: PyTree, system: Molecule, ground_truth_energy: float, *args
     ) -> Tuple[PyTree, optax.OptState, Scalar, Scalar]:
@@ -789,7 +804,6 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
         state = loop_body(0, state)
         molecule, fock, predicted_e, _, _, _ = final_state
 
-   
         return predicted_e, fock, molecule.rdm1
 
     return scf_jitted_iterator
@@ -800,17 +814,17 @@ class JittableDiis:
     r"""DIIS extrapolation, intended for training of the resulting energy of a scf loop.
     If you are looking for a more flexible, not differentiable DIIS, see evaluate.py DIIS class
     The implemented CDIIS computes the Fock matrix as a linear combination of the previous Fock matrices, with
-    ::math::
+    .. math::
         F_{DIIS} = \sum_i x_i F_i,
 
     where the coefficients are determined by minimizing the error vector
-    ::math::
+    .. math::
         e_i = A^T (F_i D_i S - S D_i F_i) A,
 
     with F_i the Fock matrix at iteration i, D_i the density matrix at iteration i,
     and S the overlap matrix. The error vector is then used to compute the
     coefficients as
-    ::math::
+    .. math::
         B = \begin{pmatrix}
             <e_1|e_1> & <e_1|e_2> & \cdots & <e_1|e_n> & -1 \\
             <e_2|e_1> & <e_2|e_2> & \cdots & <e_2|e_n> & -1 \\
@@ -819,7 +833,7 @@ class JittableDiis:
             -1 & -1 & \cdots & -1 & 0
         \end{pmatrix},
 
-    ::math::
+    .. math::
         x = \begin{pmatrix}
             x_1 \\
             x_2 \\
@@ -829,7 +843,7 @@ class JittableDiis:
         \end{pmatrix}
     
     and
-    ::math::
+    .. math::
         C= \begin{pmatrix}
             0 \\
             0 \\
@@ -840,7 +854,7 @@ class JittableDiis:
 
     where n is the number of stored Fock matrices. The coefficients are then
     computed as
-    ::math::
+    .. math::
         x = B^{-1} C.
 
     Diis attributes:
@@ -967,17 +981,17 @@ class JittableDiis:
 class Diis:
     r"""DIIS extrapolation, with different variants. The vanilla DIIS computes
     the Fock matrix as a linear combination of the previous Fock matrices, with
-    ::math::
+    .. math::
         F_{DIIS} = \sum_i x_i F_i,
 
     where the coefficients are determined by minimizing the error vector
-    ::math::
+    .. math::
         e_i = A^T (F_i D_i S - S D_i F_i) A,
 
     with F_i the Fock matrix at iteration i, D_i the density matrix at iteration i,
     and S the overlap matrix. The error vector is then used to compute the
     coefficients as
-    ::math::
+    .. math::
         B = \begin{pmatrix}
             <e_1|e_1> & <e_1|e_2> & \cdots & <e_1|e_n> & -1 \\
             <e_2|e_1> & <e_2|e_2> & \cdots & <e_2|e_n> & -1 \\
@@ -986,7 +1000,7 @@ class Diis:
             -1 & -1 & \cdots & -1 & 0
         \end{pmatrix},
 
-    ::math::
+    .. math::
         x = \begin{pmatrix}
             x_1 \\
             x_2 \\
@@ -996,7 +1010,7 @@ class Diis:
         \end{pmatrix}
     
     and
-    ::math::
+    .. math::
         C= \begin{pmatrix}
             0 \\
             0 \\
@@ -1007,7 +1021,7 @@ class Diis:
 
     where n is the number of stored Fock matrices. The coefficients are then
     computed as
-    ::math::
+    .. math::
         x = B^{-1} C.
 
     Diis attributes:
@@ -1211,17 +1225,17 @@ def level_shift(s, d, f, factor):
     Apply level shift :math:`\Delta` to virtual orbitals
 
     .. math::
-       :nowrap:
+        :nowrap:
 
-       \begin{align}
-         FC &= SCE \\
-         F &= F + SC \Lambda C^\dagger S \\
-         \Lambda_{ij} &=
-         \begin{cases}
-            \delta_{ij}\Delta & i \in \text{virtual} \\
-            0 & \text{otherwise}
-         \end{cases}
-       \end{align}
+        \begin{align}
+            FC &= SCE \\
+            F &= F + SC \Lambda C^\dagger S \\
+            \Lambda_{ij} &=
+            \begin{cases}
+                \delta_{ij}\Delta & i \in \text{virtual} \\
+                0 & \text{otherwise}
+            \end{cases}
+        \end{align}
 
     Returns:
         New Fock matrix, 2D ndarray

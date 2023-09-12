@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 from jax import numpy as jnp
 from optax import adam
 from grad_dft.evaluate import make_scf_loop
@@ -30,6 +31,8 @@ from jax.nn import gelu
 
 # First we define a molecule, using pyscf:
 from pyscf import gto, dft
+
+warnings.warn('--- This example should be executed after intermediate_examples/example_training_loop.py ---')
 
 mol = gto.M(atom="H 0 0 0; F 0 0 1.1")
 
@@ -89,7 +92,7 @@ functional = NeuralFunctional(
 learning_rate = 1e-5
 momentum = 0.9
 tx = adam(learning_rate=learning_rate, b1=momentum)
-step = 35
+step = 20
 train_state = functional.load_checkpoint(
     tx, ckpt_dir="ckpts/checkpoint_" + str(step) + "/", step=step
 )
