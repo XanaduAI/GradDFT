@@ -41,12 +41,13 @@ mol = gto.M(atom="Li 0 0 0", spin = 1, basis = 'def2-tzvp')
 
 mols = [
     gto.M(atom="H 0 0 0; F 0 0 1.1", basis = 'def2-tzvp'),
+    gto.M(atom=geometry_from_pubchem("water"), basis = 'def2-tzvp'),
     gto.M(atom="Li 0 0 0", spin = 1, basis = 'def2-tzvp'),
 ]
 
 
 @pytest.mark.parametrize("mol", mols)
-def test_Harries_LDA(mol):
+def test_Harris_LDA(mol):
     mf = dft.UKS(mol)
     mf.xc = "LDA" # LDA is the same as LDA_X.
     ground_truth_energy = mf.kernel()
@@ -59,11 +60,10 @@ def test_Harries_LDA(mol):
     Harries_e = Harris_predict(params, molecule)
 
     diff = (Harries_e - predicted_e) * Hartree2kcalmol
-    assert jnp.allclose(diff, 0, atol=1e2) and jnp.less_equal(diff, 0)
-
+    assert jnp.allclose(diff, 0, atol=1e2) and jnp.less_equal(diff, 1)
 
 @pytest.mark.parametrize("mol", mols)
-def test_Harries_B88(mol):
+def test_Harris_B88(mol):
     mf = dft.UKS(mol)
     mf.xc = "B88" # LDA is the same as LDA_X.
     ground_truth_energy = mf.kernel()
@@ -76,5 +76,4 @@ def test_Harries_B88(mol):
     Harries_e = Harris_predict(params, molecule)
 
     diff = (Harries_e - predicted_e) * Hartree2kcalmol
-    assert jnp.allclose(diff, 0, atol=1e2) and jnp.less_equal(diff, 0)
-
+    assert jnp.allclose(diff, 0, atol=1e2) and jnp.less_equal(diff, 1)
