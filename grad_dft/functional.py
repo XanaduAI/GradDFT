@@ -26,7 +26,7 @@ from jax.nn import sigmoid, gelu, elu
 from jax.nn.initializers import zeros, he_normal
 from jax.random import normal, PRNGKey
 
-from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float
+from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float, jaxtyped
 
 from flax import linen as nn
 from flax.core import freeze, unfreeze
@@ -34,6 +34,7 @@ from flax.training import train_state, checkpoints
 from flax.training.train_state import TrainState
 from optax import GradientTransformation
 from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
+from typeguard import typechecked
 from grad_dft.molecule import abs_clip
 
 from grad_dft.utils import Scalar, Array, PyTree, DType, default_dtype
@@ -641,7 +642,8 @@ def dm21_combine_densities(
         [densities] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1
     )
 
-
+@jaxtyped
+@typechecked
 def dm21_hfgrads_densities(
     functional: nn.Module,
     params: PyTree,
@@ -651,6 +653,32 @@ def dm21_hfgrads_densities(
     densities_wout_hf: Float[Array, "grid densities_whf"],
     omegas: Float[Array, "omega"] = jnp.array([0.0, 0.4]),
 ) -> Float[Array, "spin orbitals orbitals"]:
+    r"""
+    Calculate the Hartree-Fock matrix contribution due to the partial derivative
+    with respect to the Hartree Fock energy density.
+
+    Parameters
+    ----------
+    functional: nn.Module
+        The functional to calculate the Hartree-Fock matrix contribution for.
+    params: PyTree
+        The parameters of the functional.
+    molecule: Molecule
+        The molecule to calculate the Hartree-Fock matrix contribution for.
+    ehf: Float[Array, "omega spin grid"]
+        The Hartree-Fock energy density.
+    coefficient_inputs: Float[Array, "grid cinputs"]
+        The inputs to the neural network.
+    densities_wout_hf: Float[Array, "grid densities_whf"]
+        The rest of the local energy densities that get dot-multiplied by the output of a neural network
+        in a functional of the form similar to DM21.
+    omegas: Float[Array, "omega"]
+        The omegas to calculate the Hartree-Fock matrix contribution for.
+
+    Returns
+    ----------
+    Float[Array, "spin orbitals orbitals"]
+    """
     vxc_hf = molecule.HF_density_grad_2_Fock(
         functional, params, omegas, ehf, coefficient_inputs, densities_wout_hf
     )
@@ -666,6 +694,31 @@ def dm21_hfgrads_cinputs(
     densities: Float[Array, "grid densities"],
     omegas: Float[Array, "omega"] = jnp.array([0.0, 0.4]),
 ) -> Float[Array, "spin orbitals orbitals"]:
+    r"""
+    Calculate the Hartree-Fock matrix contribution due to the partial derivative
+    with respect to the Hartree Fock coefficient input.
+
+    Parameters
+    ----------
+    functional: nn.Module
+        The functional to calculate the Hartree-Fock matrix contribution for.
+    params: PyTree
+        The parameters of the functional.
+    molecule: Molecule
+        The molecule to calculate the Hartree-Fock matrix contribution for.
+    ehf: Float[Array, "omega spin grid"]
+        The Hartree-Fock energy density.
+    cinputs_wout_hf: Float[Array, "grid cinputs_whf"]
+        The rest of the inputs to the neural network.
+    densities: Float[Array, "grid densities"]
+        The local energy densities that get dot-multiplied by the output of a neural network.
+    omegas: Float[Array, "omega"]
+        The omegas to calculate the Hartree-Fock matrix contribution for.
+
+    Returns
+    ----------
+    Float[Array, "spin orbitals orbitals"]
+    """
     vxc_hf = molecule.HF_coefficient_input_grad_2_Fock(
         functional, params, omegas, ehf, cinputs_wout_hf, densities
     )

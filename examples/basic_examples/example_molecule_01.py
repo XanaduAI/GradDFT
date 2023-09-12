@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from functools import partial
 import os
 from jax import grad, vmap, numpy as jnp
-import jax
 from tqdm import tqdm
 
 from grad_dft.interface import molecule_from_pyscf, loader

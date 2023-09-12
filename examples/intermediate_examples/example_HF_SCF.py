@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 from jax.random import PRNGKey
 from jax.lax import stop_gradient
+from optax import adam
 from grad_dft.evaluate import make_scf_loop
 
 from grad_dft.interface.pyscf import molecule_from_pyscf
@@ -24,6 +26,8 @@ from grad_dft.functional import DM21
 
 # First we define a molecule, using pyscf:
 from pyscf import gto, dft
+
+warnings.warn('--- This example should be executed after intermediate_examples/example_HF_training.py ---')
 
 mol = gto.M(atom="H 0 0 0; F 0 0 1.1")
 
@@ -43,6 +47,18 @@ molecule = molecule_from_pyscf(mf, omegas=[0.0, 0.4])
 
 functional = DM21()
 params = functional.generate_DM21_weights()
+
+# We can also load the params from the previous example
+learning_rate = 1e-5
+momentum = 0.9
+tx = adam(learning_rate=learning_rate, b1=momentum)
+step = 15
+train_state = functional.load_checkpoint(
+    tx, ckpt_dir="ckpts/checkpoint_" + str(step) + "/", step=step
+)
+params = train_state.params
+tx = train_state.tx
+opt_state = tx.init(params)
 
 key = PRNGKey(42)  # Jax-style random seed
 

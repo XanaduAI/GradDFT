@@ -15,7 +15,8 @@
 import jax.numpy as jnp
 from typing import Optional
 from flax import linen as nn
-from jaxtyping import Array, Float, PyTree
+from jaxtyping import Array, Float, PyTree, jaxtyped
+from typeguard import typechecked
 
 from grad_dft.molecule import Molecule
 from grad_dft.functional import (
@@ -25,8 +26,18 @@ from grad_dft.functional import (
 )
 
 
-def lsda_x_e(rho: Float[Array, "grid spin"], clip_cte):
-    # Eq 2.72 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+def lsda_x_e(rho: Float[Array, "grid spin"], clip_cte) -> Float[Array, "grid"]:
+    r"""
+    Eq 2.72 in from Time-Dependent Density-Functional Theory, from Carsten A. Ullrich
+
+    Parameters
+    ----------
+    rho : Float[Array, "grid spin"]
+
+    Returns
+    -------
+    Float[Array, "grid"]
+    """
     rho = jnp.clip(rho, a_min=clip_cte)
     lda_es = (
         -3.0
@@ -43,6 +54,17 @@ def b88_x_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin di
     B88 exchange functional
     See eq 8 in https://journals.aps.org/pra/abstract/10.1103/PhysRevA.38.3098
     See also https://github.com/ElectronicStructureLibrary/libxc/blob/4bd0e1e36347c6d0a4e378a2c8d891ae43f8c951/maple/gga_exc/gga_x_b88.mpl#L22
+
+    Parameters
+    ----------
+    rho : Float[Array, "grid spin"]
+    grad_rho : Float[Array, "grid spin dimension"]
+    clip_cte : float, optional
+        small clip to prevent numerical instabilities.
+
+    Returns
+    -------
+    Float[Array, "grid"]
     """
 
     beta = 0.0042
@@ -84,6 +106,15 @@ def pw92_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-27) -> Float[A
     r"""
     Eq 10 in
     https://journals.aps.org/prb/abstract/10.1103/PhysRevB.45.13244
+
+    Parameters
+    ----------
+    rho : Float[Array, "grid spin"]
+    clip_cte : float, optional
+        small clip to prevent numerical instabilities.
+
+    Returns
+    -------
     """
 
     A_ = jnp.array([[0.031091, 0.015545]])
@@ -113,6 +144,15 @@ def vwn_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-27) -> Float[Ar
     See original paper eq 4.4 in https://cdnsciencepub.com/doi/abs/10.1139/p80-159
     See also text after eq 8.9.6.1 in https://www.theoretical-physics.com/dev/quantum/dft.html
 
+    Parameters
+    ----------
+    rho : Float[Array, "grid spin"]
+    clip_cte : float, optional
+        small clip to prevent numerical instabilities.
+
+    Returns
+    -------
+    Float[Array, "grid"]
     """
 
     A = jnp.array([[0.0621814, 0.0621814 / 2]])
@@ -154,11 +194,25 @@ def vwn_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-27) -> Float[Ar
     # We have to integrate e = e_tilde * n as per eq 2.1 in original VWN article
     return e_tilde * rho.sum(axis = 1)
 
-def lyp_c_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin dimension"], grad2rho: Float[Array, "grid spin"], clip_cte=1e-27) -> Float[Array, "grid"]:
+def lyp_c_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin 3"], grad2rho: Float[Array, "grid spin"], clip_cte=1e-27) -> Float[Array, "grid"]:
     r"""
     LYP correlation functional
     See eq 22 in
     https://journals.aps.org/prb/pdf/10.1103/PhysRevB.37.785
+
+    Parameters
+    ----------
+    rho : Float[Array, "grid spin"]
+    grad_rho : Float[Array, "grid spin 3"]
+        The vector of the three components of the gradient of the density.
+    grad2rho : Float[Array, "grid spin"]
+        The laplacian of the density.
+    clip_cte : float, optional
+        small clip to prevent numerical instabilities.
+
+    Returns
+    -------
+    Float[Array, "grid"]
     """
 
     a = 0.04918
@@ -191,7 +245,7 @@ def lyp_c_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin di
     exp_factor = jnp.where(rho.sum(axis=1) > 0, jnp.exp(-c * rho.sum(axis=1) ** (-1 / 3)), 0)
     # assert not jnp.isnan(exp_factor).any() and not jnp.isinf(exp_factor).any()
 
-    rhom1_3 = (rho.sum(axis=1)) ** (-1 / 3.0)
+    rhom1_3 = (rho.sum(axis=1)) ** (-1 / 3)
     rho8_3 = (rho ** (8 / 3.0)).sum(axis=1)
     rhom5_3 = (rho.sum(axis=1)) ** (-5 / 3)
 
@@ -260,8 +314,13 @@ def b3lyp_exhf_densities(molecule: Molecule, clip_cte: float = 1e-27, *_, **__) 
 
     return jnp.stack((lda_e, b88_e, vwn_e, lyp_e), axis=1)
 
-#todo: specifying the grid dimensions as Float[Array, "grid densities+1"] fails
-def b3lyp_combine(features: Float[Array, "grid densities"], ehf: Float[Array, "omega spin grid"]) -> Array:
+@jaxtyped
+@typechecked
+def b3lyp_combine(features: Float[Array, "grid densities"], ehf: Float[Array, "omega spin grid"]) -> Float[Array, "grid densities+1"]:
+    r"""
+    Auxiliary function to combine the non Hartree-Fock features of B3LYP functional
+    with the Hartree-Fock features.
+    """
     ehfs = jnp.sum(ehf, axis=(0, 1))
     ehfs = jnp.expand_dims(ehfs, axis=1)
     result = jnp.concatenate([features, ehfs], axis=1)

@@ -72,7 +72,7 @@ tx = adam(learning_rate=learning_rate, b1=momentum)
 opt_state = tx.init(params)
 
 # and implement the optimization loop
-n_epochs = 35
+n_epochs = 15
 molecule_predict = molecule_predictor(functional)
 for iteration in range(n_epochs):
     # Here we use a default loss without regularizer, but it is easy to adapt it.

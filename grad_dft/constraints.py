@@ -38,7 +38,7 @@ def constraints_x1_c1(
     functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST
 ):
     r"""
-    ::math::
+    .. math::
         \epsilon_x[n] < 0 (x1)
         \epsilon_c[n] < 0 (c1)
     """
@@ -63,7 +63,7 @@ def constraint_c2(
 ):
     r"""
     Assumin there is a single electron in the molecule,
-    ::math::
+    .. math::
         \epsilon_c[n] = 0.
 
     Assumes molecule has a single electron.
@@ -89,7 +89,7 @@ def constraint_x2(
     functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST
 ):
     r"""
-    ::math::
+    .. math::
         E_x[n]  = \frac{1}{2}(E_x[2n_\uparrow] + E_x[2n_\downarrow])
     """
 
@@ -146,18 +146,18 @@ def constraints_x3_c3_c4(
     precision=Precision.HIGHEST,
 ):
     r"""
-    ::math::
+    .. math::
         E_x[n_\gamma]  = \gamma E_x[n], (x3) \\
         E_c[n_\gamma]  > \gamma E_c[n], (c3)  & \gamma > 1\\
         E_c[n_\gamma]  < \gamma E_c[n], (c4)  & \gamma < 1\\
 
     where :math: `\gamma` is a constant, and
-    ::math::
+    .. math::
         n_\gamma(r) = \gamma^3 n(\gamma r)
 
     Instead of working with :math: `r` it is better to work with the scaled coordinates :math: `u = \gamma r`.
     Then, we have
-    ::math::
+    .. math::
         dr = du/\gamma^3\\
         \psi(u) = \gamma^{3/2} \psi(r)\\
         \nabla \psi(u) = \gamma^{3/2+1} \nabla \psi(r)\\
@@ -289,11 +289,11 @@ def constraint_x4(
     upper_bound=1e-5,
 ):
     r"""
-    ::math::
+    .. math::
         E_x[n] \approx \frac{-3}{2}(\frac{3}{4\pi})^{1/3}\int dr [1 + \frac{10}{81}s^2 + \frac{146}{2025}q^2 - \frac{146}{2025}\frac{2}{5}qs^2 + 0 s^4 + O(|\nabla^6 \rho|)] \rho(r)^{4/3}\\
         
     where
-    ::math::
+    .. math::
         s = |\nabla \rho| / (2k_f \rho^{4/3})
         q = \nabla^2 \rho / (2k_f^2 \rho^{5/3})
     """
@@ -380,7 +380,7 @@ def constraint_x5(
     multiplier2=1e7,
 ):
     r"""
-    ::math::
+    .. math::
         lim_{s\rightarrow \infty}F_x(s, ...) \propto s^{-1/2}
     """
 
@@ -527,7 +527,7 @@ def constraint_x6(
     functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST
 ):
     r"""
-    ::math::
+    .. math::
         E_x[\rho/2, \rho/2] \geq E_{xc}[\rho/2, \rho/2] \geq 1.804 E_x^{LSDA}[\rho]
     """
 
@@ -566,7 +566,7 @@ def constraint_x7(
 ):
     r"""
     For a two electron system:
-    ::math::
+    .. math::
         F_x[s, \alpha = 0] \geq 1.174
     """
 
@@ -632,7 +632,7 @@ def constraint_c6(
 ):
     r"""
     For a two electron system:
-    ::math::
+    .. math::
         E_c[s \rightarrow 0] = 0
     """
 
@@ -691,7 +691,7 @@ def constraint_xc2(
     functional: Functional, params: PyTree, molecule: Molecule, gamma: Scalar = 1e-7, precision=Precision.HIGHEST
 ):
     r"""
-    ::math::
+    .. math::
         \lim_{\gamma \rightarrow 0} E_{xc}[n_\gamma^\uparrow, n_\gamma^\downarrow] = E_{xc}[n_\gamma]
     """
 
@@ -749,7 +749,7 @@ def constraint_xc4(
 ):
     r"""
     For a two electron system:
-    ::math::
+    .. math::
         E_{xc}[n2] \geq 1.671 E_{xc}^{LDA}[n2]
     """
     cinputs = functional.compute_coefficient_inputs(molecule2e)
@@ -774,7 +774,7 @@ def constraints_fractional_charge_spin(
     mol=None,
 ):
     r"""
-    ::math::
+    .. math::
         E_U[\gamma \rho_1 + (1-\gamma) \rho_2]  = \gamma E_U[\rho_1] + (1-\gamma) E_U[\rho_2]
 
     Assumes gamma is between 0 and 1.
