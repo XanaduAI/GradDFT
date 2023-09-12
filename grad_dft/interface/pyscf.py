@@ -37,7 +37,8 @@ from grad_dft.external import Functional as ExternalFunctional
 import h5py
 from pyscf import cc, dft, scf
 
-from grad_dft.utils import Array, Scalar, DensityFunctional, HartreeFock
+from grad_dft.utils import DensityFunctional, HartreeFock
+from jaxtyping import Array, Scalar, Int
 from grad_dft.external import _nu_chunk
 
 
@@ -53,12 +54,12 @@ def grid_from_pyscf(grids: Grids, dtype: Optional[DType] = None) -> Grid:
 def molecule_from_pyscf(
     mf: DensityFunctional,
     dtype: Optional[DType] = None,
-    omegas: Optional[List] = [],
+    omegas: Optional[Array] = None,
     energy: Optional[Scalar] = None,
-    name: Optional[str] = None,
-    scf_iteration: int = 50,
-    chunk_size: Optional[int] = 1024,
-    grad_order: Optional[int] = 2,
+    name: Optional[Array] = None,
+    scf_iteration: Scalar = jnp.int32(50),
+    chunk_size: Optional[Scalar] = jnp.int32(1024),
+    grad_order: Optional[Scalar] = jnp.int32(2),
 ) -> Molecule:
     # mf, grids = _maybe_run_kernel(mf, grids)
     grid = grid_from_pyscf(mf.grids, dtype=dtype)
@@ -106,10 +107,10 @@ def molecule_from_pyscf(
         # omegas = to_device_arrays(omegas, dtype=dtype)
     else:
         chi = None
-    spin = mf.mol.spin
-    charge = mf.mol.charge
+    spin = jnp.int32(mf.mol.spin)
+    charge = jnp.int32(mf.mol.charge)
 
-    grid_level = mf.grids.level
+    grid_level = jnp.int32(mf.grids.level)
 
     return Molecule(
         grid,
@@ -485,6 +486,8 @@ def to_device_arrays(*arrays, dtype: Optional[DType] = None):
             for k, v in array.items():
                 array[k] = jnp.asarray(v)
             out.append(array)
+        elif isinstance(array, Scalar):
+            out.append(array)
         else:
             out.append(jnp.asarray(array))
 
@@ -514,7 +517,7 @@ def _maybe_run_kernel(mf: HartreeFock, grids: Optional[Grids] = None):
 def ao_grads(mol: Mole, coords: Array, order=2) -> Dict:
     r"""Function to compute nth order atomic orbital grads, for n > 1.
 
-    ::math::
+    .. math::
             \nabla^n \psi
 
     Parameters
@@ -526,7 +529,7 @@ def ao_grads(mol: Mole, coords: Array, order=2) -> Dict:
     Dict
     For each order n > 1, result[n] is an array of shape
     (n_grid, n_ao, 3) where the third coordinate indicates
-    ::math::
+    .. math::
         \frac{\partial^n \psi}{\partial x_i^n}
 
     for :math:`x_i` is one of the usual cartesian coordinates x, y or z.
@@ -549,8 +552,8 @@ def ao_grads(mol: Mole, coords: Array, order=2) -> Dict:
 def _package_outputs(
     mf: DensityFunctional,
     grids: Optional[Grids] = None,
-    scf_iteration: int = 50,
-    grad_order: int = 2,
+    scf_iteration: Scalar = jnp.int32(50),
+    grad_order: Scalar = jnp.int32(2),
 ):
     ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=1)  # , non0tab=grids.non0tab)
     if scf_iteration != 0:
@@ -589,7 +592,7 @@ def _package_outputs(
     # grad_grad_ao = compute_grad2_ao(ao_)
     # grad_grad_ao = reshape_grad2ao(ao_.transpose(1,2,0))
 
-    grad_n_ao = ao_grads(mf.mol, mf.grids.coords, order=grad_order)
+    grad_n_ao = ao_grads(mf.mol, jnp.array(mf.grids.coords), order=grad_order)
 
     # h1e_energy = np.einsum("sij,ji->", dm, h1e)
     vj = 2 * mf.get_j(

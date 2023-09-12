@@ -203,13 +203,51 @@ def molecule_predictor(
 
 def Harris_energy_predictor(
     functional: Functional,
-    nlc_functional: DispersionFunctional = None,
     **kwargs
 ):
+    r""""
+    Generate a function that predicts the Harris energy, according to the function
+    
+    .. math::
+        E_{\rm Harris}[n_0] = \sum_i \epsilon_i - \int \mathrm{d}r^3 v_{\rm xc}[n_0](r) n_0(r) - \tfrac{1}{2} \int \mathrm{d}r^3 v_{\rm H}[n_0](r) n_0(r) + E_{\rm xc}[n_0
+
+    Parameters
+    ----------
+    functional : Functional
+        The functional to use for the Harris energy.
+    **kwargs
+        Other keyword arguments to the functional.
+
+    Returns
+    -------
+    Callable
+    """
     @partial(value_and_grad, argnums=1)
     def xc_energy_and_grads(
-        params: PyTree, rdm1: Float[Array, "spin orbitals orbitals"], molecule: Molecule, *args, **kwargs
+        params: PyTree, 
+        rdm1: Float[Array, "spin orbitals orbitals"], 
+        molecule: Molecule, 
+        *args, 
+        **kwargs
     ) -> Scalar:
+        r"""
+        Computes the energy and gradients with respect to the density matrix.
+
+        Parameters
+        ----------
+        params: Pytree
+            Functional parameters
+        rdm1: Float[Array, "spin orbitals orbitals"]
+            The reduced density matrix.
+        molecule: Molecule
+            the molecule
+        *args
+        **kwargs
+
+        Returns
+        -----------
+        Tuple[Scalar, Float[Array, "spin orbitals orbitals"]]
+        """
         molecule = molecule.replace(rdm1 = rdm1)
         densities = functional.compute_densities(molecule, *args, **kwargs)
         cinputs = functional.compute_coefficient_inputs(molecule, *args)
@@ -255,10 +293,46 @@ def Harris_energy_predictor(
 
 
 def make_train_kernel(tx: GradientTransformation, loss: Callable) -> Callable:
+    r"""Generate a training kernel for a given optimizer and loss function.
+
+    Parameters
+    ----------
+    tx : GradientTransformation
+        An optax gradient transformation.
+    loss : Callable
+        A loss function that takes in the parameters, a `Molecule` object, and the ground truth energy
+        and returns a tuple of the loss value and the gradients.
+
+    Returns
+    -------
+    Callable
+    """
+
     def kernel(
-        params: PyTree, opt_state: OptState, system: Molecule, ground_truth_energy: float, *args
+        params: PyTree, opt_state: OptState, molecule: Molecule, ground_truth_energy: float, *args
     ) -> Tuple[PyTree, OptState, Scalar, Scalar]:
-        (cost_value, predictedenergy), grads = loss(params, system, ground_truth_energy)
+        r""""
+        The training kernel updating the parameters according to the loss
+        function and the optimizer.
+
+        Parameters
+        ----------
+        params : PyTree
+            The parameters of the functional.
+        opt_state : OptState
+            The optimizer state.
+        molecule : Molecule
+            The molecule.
+        ground_truth_energy : float
+            The ground truth energy.
+        *args
+
+        Returns
+        -------
+        Tuple[PyTree, OptState, Scalar, Scalar]
+            The updated parameters, optimizer state, loss value, and predicted energy.
+        """
+        (cost_value, predictedenergy), grads = loss(params, molecule, ground_truth_energy)
 
         updates, opt_state = tx.update(grads, opt_state, params)
         params = apply_updates(params, updates)
@@ -349,17 +423,21 @@ def get_grad(mo_coeff: Float[Array, "spin ao ao"],
             F: Float[Array, "spin ao ao"]):
     """RHF orbital gradients
 
-    Args:
-        mo_coeff: 2D ndarray
-            Orbital coefficients
-        mo_occ: 1D ndarray
-            Orbital occupancy
-        F: 2D ndarray
-            Fock matrix in AO representation
+    Parameters
+    ----------
+    mo_coeff: 2D ndarray
+        Orbital coefficients
+    mo_occ: 1D ndarray
+        Orbital occupancy
+    F: 2D ndarray
+        Fock matrix in AO representation
 
     Returns:
-        Gradients in MO representation.  It's a num_occ*num_vir vector.
+    --------
+    Gradients in MO representation.  It's a num_occ*num_vir vector.
 
+    Notes:
+    ------
     # Similar to pyscf/scf/hf.py:
     occidx = mo_occ > 0
     viridx = ~occidx
