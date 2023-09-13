@@ -213,6 +213,17 @@ def lyp_c_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin 3"
     Returns
     -------
     Float[Array, "grid"]
+
+    Notes:
+    ------
+    Libxc implementation:
+    https://github.com/ElectronicStructureLibrary/libxc/blob/master/maple/gga_exc/gga_c_lyp.mpl
+
+    
+    Important: This implementation uses the original LYP functional definition
+    in C. Lee, W. Yang, and R. G. Parr., Phys. Rev. B 37, 785 (1988) (doi: 10.1103/PhysRevB.37.785)
+    instead of the one in libxc: B. Miehlich, A. Savin, H. Stoll, and H. Preuss., Chem. Phys. Lett. 157, 200 (1989) (doi: 10.1016/0009-2614(89)87234-3)
+    This sometimes gives rise to <1 kcal/mol differences in spin-polarized systems.
     """
 
     a = 0.04918
@@ -242,19 +253,19 @@ def lyp_c_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin 3"
     rho_grad2rho = (rho * grad2rho).sum(axis=1)
     # assert not jnp.isnan(rho_grad2rho).any() and not jnp.isinf(rho_grad2rho).any()
 
-    exp_factor = jnp.where(rho.sum(axis=1) > 0, jnp.exp(-c * rho.sum(axis=1) ** (-1 / 3)), 0)
-    # assert not jnp.isnan(exp_factor).any() and not jnp.isinf(exp_factor).any()
-
     rhom1_3 = (rho.sum(axis=1)) ** (-1 / 3)
-    rho8_3 = (rho ** (8 / 3.0)).sum(axis=1)
+    rho8_3 = (rho ** (8 / 3)).sum(axis=1)
     rhom5_3 = (rho.sum(axis=1)) ** (-5 / 3)
 
-    par = 2 ** (2 / 3) * CF * (rho8_3) - rhos_ts + rho_t / 9 + rho_grad2rho / 18
+    exp_factor = jnp.where(rho.sum(axis=1) > 0, jnp.exp(-c * rhom1_3), 0)
+    # assert not jnp.isnan(exp_factor).any() and not jnp.isinf(exp_factor).any()
 
-    sum_ = jnp.where(rho.sum(axis=1) > clip_cte, 2 * b * rhom5_3 * par * exp_factor, 0.0)
+    parenthesis = 2 ** (2 / 3) * CF * (rho8_3) - rhos_ts + rho_t / 9 + rho_grad2rho / 18
+
+    braket_m_rho = jnp.where(rho.sum(axis=1) > clip_cte, 2 * b * rhom5_3 * parenthesis * exp_factor, 0.0)
 
     return -a * jnp.where(
-        rho.sum(axis=1) > clip_cte, gamma / (1 + d * rhom1_3) * (rho.sum(axis=1) + sum_), 0.0
+        rho.sum(axis=1) > clip_cte, gamma / (1 + d * rhom1_3) * (rho.sum(axis=1) + braket_m_rho), 0.0
     )
 
 def lsda_density(molecule: Molecule, clip_cte: float = 1e-27, *_, **__) -> Float[Array, "grid densities"]:

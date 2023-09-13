@@ -37,7 +37,7 @@ from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 from typeguard import typechecked
 from grad_dft.molecule import abs_clip
 
-from grad_dft.utils import Scalar, Array, PyTree, DType, default_dtype
+from grad_dft.utils import DType, default_dtype
 from grad_dft.molecule import Grid, Molecule
 
 import sys
@@ -179,7 +179,7 @@ class Functional(nn.Module):
 
         elif self.nograd_densities:
             densities = stop_gradient(self.nograd_densities(molecule, *args, **kwargs))
-        densities = abs_clip(densities, 1e-20)
+        densities = abs_clip(densities, 1e-20) #todo: investigate if we can lower this
         return densities
 
     def compute_coefficient_inputs(self, molecule: Molecule, *args, **kwargs):
@@ -309,6 +309,7 @@ class Functional(nn.Module):
         Scalar
         """
 
+        #todo: study if we can lower this clipping constants
         return jnp.einsum("r,r->", abs_clip(gridweights, 1e-20), abs_clip(energy_density, 1e-20), precision=precision)
 
 
@@ -684,7 +685,8 @@ def dm21_hfgrads_densities(
     )
     return vxc_hf.sum(axis=0)  # Sum over omega
 
-
+@jaxtyped
+@typechecked
 def dm21_hfgrads_cinputs(
     functional: nn.Module,
     params: PyTree,
