@@ -179,7 +179,7 @@ class Functional(nn.Module):
 
         elif self.nograd_densities:
             densities = stop_gradient(self.nograd_densities(molecule, *args, **kwargs))
-        densities = abs_clip(densities, 1e-20)
+        densities = abs_clip(densities, 1e-20) #todo: investigate if we can lower this
         return densities
 
     def compute_coefficient_inputs(self, molecule: Molecule, *args, **kwargs):
@@ -309,6 +309,7 @@ class Functional(nn.Module):
         Scalar
         """
 
+        #todo: study if we can lower this clipping constants
         return jnp.einsum("r,r->", abs_clip(gridweights, 1e-20), abs_clip(energy_density, 1e-20), precision=precision)
 
 
@@ -684,7 +685,8 @@ def dm21_hfgrads_densities(
     )
     return vxc_hf.sum(axis=0)  # Sum over omega
 
-
+@jaxtyped
+@typechecked
 def dm21_hfgrads_cinputs(
     functional: nn.Module,
     params: PyTree,
@@ -955,24 +957,27 @@ def _canonicalize_fxc(fxc: Functional) -> Callable:
 ################ Spin polarization correction functions ################
 
 
-def exchange_polarization_correction(e_PF, rho):
+def exchange_polarization_correction(
+    e_PF: Float[Array, "spin grid"], 
+    rho: Float[Array, "spin grid"]
+) -> Float[Array, "grid"]:
     r"""Spin polarization correction to an exchange functional using eq 2.71 from
     Carsten A. Ullrich, "Time-Dependent Density-Functional Theory".
 
     Parameters
     ----------
     e_PF:
-        Array, shape (2, n_grid)
+        Float[Array, "spin grid"]
         The paramagnetic/ferromagnetic energy contributions on the grid, to be combined.
 
     rho:
-        Array, shape (2, n_grid)
+        Float[Array, "spin grid"]
         The electronic density of each spin polarization at each grid point.
 
     Returns
     ----------
     e_tilde
-        Array, shape (n_grid)
+        Float[Array, "grid"]
         The ready to be integrated electronic energy density.
     """
     zeta = (rho[:, 0] - rho[:, 1]) / rho.sum(axis=1)
@@ -984,18 +989,20 @@ def exchange_polarization_correction(e_PF, rho):
     return e_PF[:, 0] + (e_PF[:, 1] - e_PF[:, 0]) * fzeta(zeta)
 
 
-def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float = 1e-27):
+def correlation_polarization_correction(
+    e_tilde_PF: Float[Array, "spin grid"], 
+    rho: Float[Array, "spin grid"], 
+    clip_cte: float = 1e-27
+) -> Float[Array, "grid"]:
     r"""Spin polarization correction to a correlation functional using eq 2.75 from
     Carsten A. Ullrich, "Time-Dependent Density-Functional Theory".
 
     Parameters
     ----------
-    e_PF:
-        Array, shape (2, n_grid)
+    e_tilde_PF: Float[Array, "spin grid"]
         The paramagnetic/ferromagnetic energy contributions on the grid, to be combined.
 
-    rho:
-        Array, shape (2, n_grid)
+    rho: Float[Array, "spin grid"]
         The electronic density of each spin polarization at each grid point.
 
     clip_cte:
@@ -1004,12 +1011,9 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
 
     Returns
     ----------
-    e_tilde
-        Array, shape (n_grid)
+    e_tilde: Float[Array, "grid"]
         The ready to be integrated electronic energy density.
     """
-
-    e_tilde_PF = jnp.einsum("rs,r->rs", e_PF, rho.sum(axis=1))
 
     log_rho = jnp.log2(jnp.clip(rho.sum(axis=1), a_min=clip_cte))
     # assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
@@ -1038,8 +1042,8 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
     alphac = 2 * A_ * (1 + ars) * jnp.log(1 + (1 / (2 * A_)) / (brs_1_2 + brs + brs_3_2 + brs2))
     # assert not jnp.isnan(alphac).any() and not jnp.isinf(alphac).any()
 
-    fz = jnp.round(fzeta(zeta), int(math.log10(clip_cte)))
-    z4 = jnp.round(2 ** (4 * jnp.log2(jnp.clip(zeta, a_min=clip_cte))), int(math.log10(clip_cte)))
+    fz = fzeta(zeta) #jnp.round(fzeta(zeta), int(math.log10(clip_cte)))
+    z4 = zeta**4 #jnp.round(2 ** (4 * jnp.log2(jnp.clip(zeta, a_min=clip_cte))), int(math.log10(clip_cte)))
 
     e_tilde = (
         e_tilde_PF[:, 0]
