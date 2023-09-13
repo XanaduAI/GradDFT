@@ -23,7 +23,16 @@ from jax.lax import stop_gradient, fori_loop, cond
 from optax import OptState, GradientTransformation, apply_updates
 
 from grad_dft.functional import DispersionFunctional, Functional
-from grad_dft.molecule import Molecule, abs_clip, coulomb_energy, coulomb_potential, nonXC, one_body_energy, symmetrize_rdm1
+from grad_dft.molecule import (
+    Molecule,
+    abs_clip,
+    coulomb_energy,
+    coulomb_potential,
+    nonXC,
+    one_body_energy,
+    symmetrize_rdm1,
+)
+
 
 def molecule_predictor(
     functional: Functional,
@@ -78,7 +87,11 @@ def molecule_predictor(
 
     @partial(value_and_grad, argnums=1)
     def energy_and_grads(
-        params: PyTree, rdm1: Float[Array, "spin orbitals orbitals"], molecule: Molecule, *args, **functional_kwargs
+        params: PyTree,
+        rdm1: Float[Array, "spin orbitals orbitals"],
+        molecule: Molecule,
+        *args,
+        **functional_kwargs,
     ) -> Scalar:
         r"""
         Computes the energy and gradients with respect to the density matrix
@@ -134,7 +147,6 @@ def molecule_predictor(
         fock = abs_clip(fock, 1e-20)
         fock = 1 / 2 * (fock + fock.transpose(0, 2, 1))
         fock = abs_clip(fock, 1e-20)
-        
 
         # Compute the features that should be autodifferentiated
         if functional.energy_densities and functional.densitygrads:
@@ -292,9 +304,11 @@ def orbital_grad_regularization(molecule: Molecule, F: Float[Array, "spin ao ao"
     return dE**2
 
 
-def get_grad(mo_coeff: Float[Array, "spin ao ao"], 
-            mo_occ: Float[Array, "spin ao"],
-            F: Float[Array, "spin ao ao"]):
+def get_grad(
+    mo_coeff: Float[Array, "spin ao ao"],
+    mo_occ: Float[Array, "spin ao"],
+    F: Float[Array, "spin ao ao"],
+):
     """RHF orbital gradients
 
     Args:
@@ -321,15 +335,20 @@ def get_grad(mo_coeff: Float[Array, "spin ao ao"],
 
     return jnp.einsum("sab,sac,scd->bd", C_vir.conj(), F, C_occ)
 
+
 ##################### Loss Functions #####################
 
-@partial(value_and_grad, has_aux=True)
-def mse_energy_loss(params: PyTree, molecule_predictor: Callable,
-                    molecules: list[Molecule], truth_energies: Float[Array, "energy"], elec_num_norm: Scalar=True
-    ) -> Scalar:
+
+def mse_energy_loss(
+    params: PyTree,
+    molecule_predictor: Callable,
+    molecules: list[Molecule],
+    truth_energies: Float[Array, "energy"],
+    elec_num_norm: Scalar = True,
+) -> Scalar:
     r"""
     Computes the default loss function, here MSE, between predicted and true energy.
-    
+
     This loss function does not yet support parallel execution for the loss contributions
     and instead implemented a simple for loop.
 
@@ -345,21 +364,127 @@ def mse_energy_loss(params: PyTree, molecule_predictor: Callable,
     Returns
     ----------
     """
-    
-    def unnorm_sum():
-        def increment_loss(i, energy_sum):
-            E_predict, _ = molecule_predictor(params, molecules[i])
-            energy_sum += (E_predict - truth_energies[i])**2
-        return fori_loop(0, len(molecules), increment_loss, 0)
-            
-    def norm_sum():
-        def increment_loss_norm(i, energy_sum):
-            E_predict, _ = molecule_predictor(params, molecules[i])
-            energy_sum += ((E_predict - truth_energies[i])/molecules[i].num_elec)**2
-        return fori_loop(0, len(molecules), increment_loss_norm, 0)
-    
-    energy_sum = cond(elec_num_norm, norm_sum, unnorm_sum)
-
-    cost_value = energy_sum/len(molecules)
+    sum = 0
+    for i, molecule in enumerate(molecules):
+        E_predict, _, _ = molecule_predictor(params, molecule)
+        diff = E_predict - truth_energies[i]
+        # Not jittable because of if.
+        if elec_num_norm:
+            diff = diff / molecule.num_elec
+        sum += (diff) ** 2
+    cost_value = sum / len(molecules)
 
     return cost_value
+
+
+def sq_electron_err_int(
+    pred_density: Float[Array, "spin_up spin_dn"],
+    truth_density: Float[Array, "spin_up spin_dn"],
+    molecule: Molecule,
+) -> Scalar:
+    r"""
+    Computes the integral:
+
+    .. math::
+        \epsilon = \int (\rho_{pred}(r) - \rho_{truth})^2 dr
+    Parameters
+    ----------
+    pred_density: Float[Array, "spin_up spin_dn"]
+        Density predicted by a neural functional
+    truth_density: Float[Array, "spin_up spin_dn"]
+        A accurate density used as a truth value in training
+    molecule: Molecule
+        A Grad-DFT Molecule
+
+    Returns
+        Scalar: the value epsilon described above
+    ----------
+    """
+    diff_up = jnp.clip((pred_density[:, 0] - truth_density[:, 0]) ** 2, a_min=1e-12)
+    diff_dn = jnp.clip((pred_density[:, 1] - truth_density[:, 1]) ** 2, a_min=1e-12)
+    err_int = jnp.sum(diff_up * molecule.grid.weights) + jnp.sum(diff_dn * molecule.grid.weights)
+    return err_int
+
+
+def mse_density_loss(
+    params: PyTree,
+    molecule_predictor: Callable,
+    molecules: list[Molecule],
+    truth_rhos: Float[Array, "energy"],
+    elec_num_norm: Scalar = True,
+) -> Scalar:
+    r"""
+    Computes the default loss function, here MSE, between predicted and true energy.
+
+    This loss function does not yet support parallel execution for the loss contributions
+    and instead implemented a simple for loop.
+
+    Parameters
+    ----------
+    params: PyTree
+        functional parameters (weights)
+    molecule_predict: Callable.
+        Use molecule_predict = molecule_predictor(functional) to generate it.
+    molecule: Molecule
+    trueenergy: float
+
+    Returns
+    ----------
+    """
+    sum = 0
+    for i, molecule in enumerate(molecules):
+        _, rho_predict, _ = molecule_predictor(params, molecule)
+        diff = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
+        # Not jittable because of if.
+        if elec_num_norm:
+            diff = diff / (molecule.num_elec**2)
+        sum += diff
+    cost_value = sum / len(molecules)
+
+    return cost_value
+
+
+def mse_energy_and_density_loss(
+    params: PyTree,
+    molecule_predictor: Callable,
+    molecules: list[Molecule],
+    truth_rhos: Float[Array, "energy"],
+    truth_energies: Float[Array, "energy"],
+    energy_factor: Scalar = 1.0,
+    rho_factor: Scalar = 1.0,
+    elec_num_norm: Scalar = True,
+) -> Scalar:
+    r"""
+    Computes the most general loss function using both the energy and density
+
+    This loss function does not yet support parallel execution for the loss contributions
+    and instead implemented a simple for loop.
+
+    Parameters
+    ----------
+    params: PyTree
+        functional parameters (weights)
+    molecule_predict: Callable.
+        Use molecule_predict = molecule_predictor(functional) to generate it.
+    molecule: Molecule
+    trueenergy: float
+
+    Returns
+    ----------
+    """
+    sum_energy = 0
+    sum_rho = 0
+    for i, molecule in enumerate(molecules):
+        energy_predict, rho_predict, _ = molecule_predictor(params, molecule)
+        diff_rho = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
+        diff_energy = energy_predict - truth_energies[i]
+        # Not jittable because of if.
+        if elec_num_norm:
+            diff_rho = diff_rho / (molecule.num_elec**2)
+            diff_energy = diff_energy / molecule.num_elec
+        sum_rho += diff_rho
+        sum_energy += diff_energy**2
+    energy_contrib = energy_factor * sum_energy / len(molecules)
+    rho_contrib = rho_factor * sum_rho / len(molecules)
+
+    return energy_contrib + rho_contrib
