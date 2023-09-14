@@ -27,6 +27,8 @@ import pytest
 
 from flax import struct
 
+from typing import Optional
+
 
 from grad_dft.train import mse_energy_loss, mse_density_loss, mse_energy_and_density_loss
 
@@ -35,6 +37,11 @@ RANDOM_KEYS = [PRNGKey(seed) for seed in SEEDS]
 
 TRUTH_ENERGIES = [12.8, 10.1]
 TRUTH_DENSITIES = [normal(rand_key, (1000, 2)) for rand_key in RANDOM_KEYS]
+
+INIT_ENERGIES = [12.8, 10.1]
+TRUTH_DENSITIES = [normal(rand_key, (1000, 2)) for rand_key in RANDOM_KEYS]
+
+
 
 PARAMS = jnp.array([0.11, 0.80, 0.24])
 GRID_WEIGHTS = jnp.ones(shape=(1000,))
@@ -60,12 +67,18 @@ class dummy_molecule:
     """
     num_elec: Scalar
     grid: dummy_grid
+    energy: Optional[Scalar] = 0
+    rdm1: Optional[Float[Array, "spin orbitals orbitals"]] = 0
+    rho: Optional[Float[Array, "spin spin"]] = 0
+    
+    def density(self):
+        return self.rho
 
 
 MOLECULES = [dummy_molecule(1.0, GRID), dummy_molecule(2.0, GRID)]
 
 
-def dummy_predictor(params: PyTree, molecule: dummy_molecule):
+def dummy_predictor(params: PyTree, molecule: dummy_molecule) -> dummy_molecule:
     r"""A dummy function matching the signature of the predictor functions in Grad-DFT
 
     Args:
@@ -76,10 +89,16 @@ def dummy_predictor(params: PyTree, molecule: dummy_molecule):
         tuple[Scalar, Array, Array]: The total energy, density and 1RDM
     """
     total_energy = 10.0 + params[0]
-    density = jnp.ones(shape=(1000, 2)) + params[1]
+    rho = jnp.ones(shape=(1000, 2)) + params[1]
     # we don't presently implement loss functions using an RDM1, but we could in the future
     rdm1 = jnp.ones(shape=(10, 10)) + params[2]
-    return (total_energy, density, rdm1)
+    molecule = molecule.replace(energy=total_energy)
+    molecule = molecule.replace(rdm1=rdm1)
+    # Real molecule object doesn't store density, but we do it here to not write any dummy logic
+    # converting rdm1 to a density
+    molecule = molecule.replace(rho=rho)
+
+    return molecule
 
 
 LOSS_ARGS = [

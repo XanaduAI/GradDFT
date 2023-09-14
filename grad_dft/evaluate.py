@@ -61,6 +61,7 @@ def make_test_kernel(tx: optax.GradientTransformation, loss: Callable) -> Callab
 
 def make_non_scf_predictor(
     functional: Functional,
+    chunk_size: int = 1024,
     **kwargs,
 ) -> Callable:
     r"""
@@ -75,8 +76,8 @@ def make_non_scf_predictor(
     ---------
     Callable
     """
-     
-    def non_scf_predictor(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Array, Array]:
+    predict_molecule = molecule_predictor(functional, chunk_size=chunk_size, **kwargs)
+    def non_scf_predictor(params: PyTree, molecule: Molecule, *args) -> Molecule:
         r"""Calculates the total energy at a fixed density non-self consistently.
 
         Main parameters
@@ -88,15 +89,13 @@ def make_non_scf_predictor(
 
          Returns
         ---------
-        tuple[Scalar, Array, Array]
-            The predicted energy only. Elements 1 and 2 of the tuple are
-            set to None as the density and rdm1 do not change when a non-self consistent 
-            calculation is performed. 
+        Molecule
+            A Grad-DFT Molecule object with updated attributes 
         """
-        predicted_e = functional.energy(params, molecule, *args, **kwargs)
-        predicted_rho = None
-        predicted_rdm1 = None
-        return (predicted_e, predicted_rho, predicted_rdm1)
+        predicted_e, fock = predict_molecule(params, molecule, *args)
+        molecule = molecule.replace(fock=fock)
+        molecule = molecule.replace(energy=predicted_e)
+        return molecule
     
     return non_scf_predictor
 
@@ -132,7 +131,7 @@ def make_simple_scf_loop(
 
     predict_molecule = molecule_predictor(functional, chunk_size=chunk_size, **kwargs)
 
-    def scf_iterator(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Array, Array]:
+    def scf_iterator(params: PyTree, molecule: Molecule, *args) -> Molecule:
         r"""
         Implements a scf loop for a Molecule and a functional implicitly defined predict_molecule with
         parameters params
@@ -167,6 +166,7 @@ def make_simple_scf_loop(
 
             # Update the molecular occupation
             mo_occ = molecule.get_occ()
+            molecule = molecule.replace(mo_occ=mo_occ)
             if verbose > 2:
                 print(
                     f"Cycle {cycle} took {time.time() - start_time:.1e} seconds to compute and diagonalize Fock matrix"
@@ -213,15 +213,15 @@ def make_simple_scf_loop(
                     f"       relative energy difference: {abs((predicted_e - old_e)/predicted_e):.5e}"
                 )
             old_e = predicted_e
-            predicted_rho = molecule.density()
-            predicted_rdm1 = molecule.rdm1
 
         if verbose > 1:
             print(
                 f"cycle: {cycle}, predicted energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}"
             )
-
-        return (predicted_e, predicted_rho, predicted_rdm1)
+        # Ensure molecule is fully updated
+        molecule = molecule.replace(fock=fock)
+        molecule = molecule.replace(energy=predicted_e)
+        return molecule
 
     return scf_iterator
 
@@ -244,7 +244,7 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
     predict_molecule = molecule_predictor(functional, chunk_size=None, **kwargs)
 
     @jit
-    def scf_jitted_iterator(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Array, Array]:
+    def scf_jitted_iterator(params: PyTree, molecule: Molecule, *args) -> Molecule:
         r"""
         Implements a scf loop intented for use in a jax.jit compiled function (training loop).
         If you are looking for a more flexible but not differentiable scf loop, see evaluate.py make_scf_loop.
@@ -309,10 +309,9 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
         # Compute the scf loop
         final_state = fori_loop(0, cycles, body_fun=loop_body, init_val=state)
         molecule, fock, predicted_e, old_e, norm_gorb = final_state
-        predicted_rho = molecule.density()
-        predicted_rdm1 = molecule.rdm1
-
-        return (predicted_e, predicted_rho, predicted_rdm1)
+        molecule = molecule.replace(fock=fock)
+        molecule = molecule.replace(energy=predicted_e)
+        return Molecule
 
     return scf_jitted_iterator
 
@@ -349,7 +348,7 @@ def make_scf_loop(
 
     predict_molecule = molecule_predictor(functional, chunk_size=chunk_size, **kwargs)
 
-    def scf_iterator(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Array, Array]:
+    def scf_iterator(params: PyTree, molecule: Molecule, *args) -> Molecule:
         r"""
         Implements a scf loop for a Molecule and a functional implicitly defined predict_molecule with
         parameters params
@@ -544,10 +543,10 @@ def make_scf_loop(
             print(
                 f"cycle: {cycle}, predicted energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}"
             )
-        predicted_rho = molecule.density()
-        predicted_rdm1 = molecule.rdm1
-
-        return (predicted_e, predicted_rho, predicted_rdm1)
+        # Ensure molecule is fully updated
+        molecule = molecule.replace(fock=fock)
+        molecule = molecule.replace(energy=predicted_e)
+        return molecule
 
     return scf_iterator
 
@@ -839,10 +838,11 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
         state = loop_body(0, state)
         molecule, fock, predicted_e, _, _, _ = final_state
         
-        predicted_rho = molecule.density()
-        predicted_rdm1 = molecule.rdm1
+        # Ensure molecule is fully updated
+        molecule = molecule.replace(fock=fock)
+        molecule = molecule.replace(energy=predicted_e)
 
-        return (predicted_e, predicted_rho, predicted_rdm1)
+        return molecule
 
     return scf_jitted_iterator
 

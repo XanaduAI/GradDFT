@@ -67,8 +67,8 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
     molecule = molecule_from_pyscf(mf, energy=energy, omegas=[], scf_iteration=0)
 
     iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=25)
-    e_XND = iterator(PARAMS, molecule)
-
+    molecule_out = iterator(PARAMS, molecule)
+    e_XND = molecule_out.energy
     mf = dft.UKS(mol)
     mf.xc = "B88"
     mf.max_cycle = 25
@@ -78,6 +78,7 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
 
     # Testing the training scf loop too.
     iterator = make_jitted_scf_loop(FUNCTIONAL, cycles=25)
-    e_XND_jit, _, _ = iterator(PARAMS, molecule)
+    molecule_out = iterator(PARAMS, molecule)
+    e_XND_jit = molecule_out.energy
     kcalmoldiff = (e_XND - e_XND_jit) * Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol=1e-6)

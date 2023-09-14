@@ -366,7 +366,8 @@ def mse_energy_loss(
     """
     sum = 0
     for i, molecule in enumerate(molecules):
-        E_predict, _, _ = molecule_predictor(params, molecule)
+        molecule_out = molecule_predictor(params, molecule)
+        E_predict = molecule_out.energy
         diff = E_predict - truth_energies[i]
         # Not jittable because of if.
         if elec_num_norm:
@@ -433,7 +434,8 @@ def mse_density_loss(
     """
     sum = 0
     for i, molecule in enumerate(molecules):
-        _, rho_predict, _ = molecule_predictor(params, molecule)
+        molecule_out = molecule_predictor(params, molecule)
+        rho_predict = molecule_out.density()
         diff = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
         # Not jittable because of if.
         if elec_num_norm:
@@ -475,7 +477,9 @@ def mse_energy_and_density_loss(
     sum_energy = 0
     sum_rho = 0
     for i, molecule in enumerate(molecules):
-        energy_predict, rho_predict, _ = molecule_predictor(params, molecule)
+        molecule_out = molecule_predictor(params, molecule)
+        rho_predict = molecule_out.density()
+        energy_predict = molecule_out.energy
         diff_rho = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
         diff_energy = energy_predict - truth_energies[i]
         # Not jittable because of if.
