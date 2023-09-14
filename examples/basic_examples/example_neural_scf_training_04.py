@@ -61,11 +61,11 @@ HH_molecule = molecule_from_pyscf(mf)
 # Now we create our neuralfunctional. We need to define at least the following methods: densities and coefficients
 # which compute the two vectors that get dot-multiplied and then integrated over space. If the functional is a
 # neural functional we also need to define coefficient_inputs, for which in this case we will reuse the densities function.
-def coefficient_inputs(molecule: Molecule, *_, **__):
-    rho = jnp.clip(molecule.density(), a_min = 1e-20)
+def coefficient_inputs(molecule: Molecule, clip_cte: float = 1e-30, *_, **__):
+    rho = jnp.clip(molecule.density(), a_min = clip_cte)
     return jnp.concatenate((rho, ), axis = 1)
 
-def energy_densities(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+def energy_densities(molecule: Molecule, clip_cte: float = 1e-30, *_, **__):
     r"""Auxiliary function to generate the features of LSDA."""
     # Molecule can compute the density matrix.
     rho = molecule.density()
@@ -127,7 +127,7 @@ def loss(params, molecule_predict, molecule, trueenergy):
     it will compute the gradients with respect to params.
     """
 
-    predictedenergy, _, _ = molecule_predict(params, molecule)
+    predictedenergy, molecule = molecule_predict(params, molecule)
     cost_value = (predictedenergy - trueenergy) ** 2
 
     return cost_value, predictedenergy
@@ -139,7 +139,7 @@ opt_state = tx.init(params)
 
 # and implement the optimization loop
 n_epochs = 20
-scf_iterator = make_jitted_scf_loop(neuralfunctional, cycles=3)
+scf_iterator = make_jitted_scf_loop(neuralfunctional, cycles=30)
 
 for iteration in tqdm(range(n_epochs), desc="Training epoch"):
     (cost_value, predicted_energy), grads = loss(

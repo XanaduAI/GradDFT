@@ -75,8 +75,8 @@ def safe_eigh_rev(res: tuple[tuple[Array, Array], Array], g: Array) -> tuple[Arr
     # Generate eigenvalue difference matrix
     eval_diff = evals.reshape((1, -1)) - evals.reshape((-1, 1))
     # Find elements where degen_tol condition was or wasn't was met
-    mask_degen = (jnp.abs(eval_diff) < DEGEN_TOL).astype(jnp.int32)
-    mask_non_degen = (jnp.abs(eval_diff) >= DEGEN_TOL).astype(jnp.int32)
+    mask_degen = (jnp.abs(eval_diff) < DEGEN_TOL).astype(jnp.int64)
+    mask_non_degen = (jnp.abs(eval_diff) >= DEGEN_TOL).astype(jnp.int64)
 
     # Regular gap for non_degen terms => 1/(e_j - e_i)
     # Will get +infs turning to large numbers here if degeneracies are present.

@@ -1,12 +1,12 @@
 <div align="center">
 
-# Grad-DFT: a software library for machine learning density functional theory
+# Grad-DFT: a software library for machine learning enhanced density functional theory
 
-[![arXiv](http://img.shields.io/badge/arXiv-2101.10279-B31B1B.svg "Grad-DFT")](https://arxiv.org/abs/2101.10279)
+[![build](https://img.shields.io/badge/build-passing-graygreen.svg "https://github.com/XanaduAI/GradDFT/actions")](https://github.com/XanaduAI/GradDFT/actions) 
+[![arXiv](http://img.shields.io/badge/arXiv-2101.10279-B31B1B.svg "Grad-DFT")](https://arxiv.org/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-9F9F9F "https://github.com/XanaduAI/GradDFT/blob/main/LICENSE")](https://github.com/XanaduAI/GradDFT/blob/main/LICENSE)
 
 </div>
-
-
 
 Grad-DFT is a JAX-based library enabling the differentiable design and experimentation of exchange-correlation functionals using machine learning techniques. This library supports a parametrization of exchange-correlation functionals based on energy densities and associated coefficient functions; the latter typically constructed using neural networks:
 
@@ -35,45 +35,23 @@ mf.kernel()
 molecule = molecule_from_pyscf(mf)
 ```
 
-### Creating a simple functional
-
-Then we can create a `Functional`.
-
-```python
-from jax import numpy as jnp
-from grad_dft.functional import Functional
-
-def energy_densities(molecule):
-    rho = molecule.density()
-    lda_e = -3/2 * (3/(4*jnp.pi))**(1/3) * (rho**(4/3)).sum(axis = 0, keepdims = True)
-    return lda_e
-
-coefficients = lambda self, rho: jnp.array([[1.]])
-
-LDA = Functional(coefficients, energy_densities)
-```
-
-We can use the functional to compute the predicted energy, where `params` stand for the $\theta$ parameters in the equation above.
-
-```python
-from flax.core import freeze
-
-params = freeze({'params': {}})
-predicted_energy = LDA.energy(params, molecule)
-```
-
-### A more complex neural functional
+### Creating a neural functional
 
 A more complex, neural functional can be created as
 
 ```python
 from jax.nn import sigmoid, gelu
+from jax.random import PRNGKey
 from flax import linen as nn
-from grad_dft.functional import NeuralFunctional
+from optax import adam, apply_updates
+from tqdm import tqdm
+from grad_dft.train import molecule_predictor
+from grad_dft.functional import NeuralFunctional, default_loss
+from grad_dft.interface import molecule_from_pyscf
 
 def coefficient_inputs(molecule):
-    rho = jnp.clip(molecule.density(), a_min = 1e-27)
-    kinetic = jnp.clip(molecule.kinetic_density(), a_min = 1e-27)
+    rho = jnp.clip(molecule.density(), a_min = 1e-30)
+    kinetic = jnp.clip(molecule.kinetic_density(), a_min = 1e-30)
     return jnp.concatenate((rho, kinetic))
 
 def coefficients(self, rhoinputs):
@@ -87,13 +65,35 @@ neuralfunctional = NeuralFunctional(coefficients, energy_densities, coefficient_
 with the corresponding energy calculation
 
 ```python
-from jax.random import PRNGKey
-
 key = PRNGKey(42)
 cinputs = coefficient_inputs(molecule)
 params = neuralfunctional.init(key, cinputs)
 
 predicted_energy = neuralfunctional.energy(params, molecule)
+```
+
+### Training the neural functional
+
+```python
+# Defining training parameters
+learning_rate = 1e-5
+momentum = 0.9
+tx = adam(learning_rate=learning_rate, b1=momentum)
+opt_state = tx.init(params)
+
+# and implement the optimization loop
+n_epochs = 20
+molecule_predict = molecule_predictor(neuralfunctional)
+for iteration in tqdm(range(n_epochs), desc="Training epoch"):
+    (cost_value, predicted_energy), grads = default_loss(
+        params, molecule_predict, HH_molecule, ground_truth_energy
+    )
+    print("Iteration", iteration, "Predicted energy:", predicted_energy, "Cost value:", cost_value)
+    updates, opt_state = tx.update(grads, opt_state, params)
+    params = apply_updates(params, updates)
+
+# Save checkpoint
+neuralfunctional.save_checkpoints(params, tx, step=n_epochs)
 ```
 
 ## Install
@@ -119,6 +119,12 @@ pip install -e ".[examples]"
 ```
 
 to install the additional dependencies.
+
+## Acknowledgements
+
+We thank helpful comments and insights from Alain Delgado, Modjtaba Shokrian Zini, Stepan Fomichev, Soran Jahangiri, Diego Guala, Jay Soni, Utkarsh Azad, Vincent Michaud-Rioux, Maria Schuld and Nathan Wiebe. 
+
+GradDFT often follows similar calculations and naming conventions as PySCF, though adapted for our purposes. Only a few non-jittable DIIS procedures were directly taken from it. Where this happens, it has been conveniently referenced in the documentation. The test were also implemented against PySCF results.
 
 ## Bibtex
 

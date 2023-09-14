@@ -81,4 +81,5 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
     molecule_out = iterator(PARAMS, molecule)
     e_XND_jit = molecule_out.energy
     kcalmoldiff = (e_XND - e_XND_jit) * Hartree2kcalmol
+    
     assert np.allclose(kcalmoldiff, 0, atol=1e-6)
