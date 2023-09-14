@@ -32,9 +32,8 @@ from grad_dft.train import make_train_kernel, molecule_predictor
 from grad_dft.evaluate import make_jitted_scf_loop
 
 from jax.config import config
-
-config.update("jax_disable_jit", True)
-
+config.update("jax_enable_x64", True)
+config.update('jax_debug_nans', True)
 
 orbax_checkpointer = PyTreeCheckpointer()
 
@@ -123,13 +122,13 @@ training_files = "dissociation/H2_extrapolation_train.hdf5"
 
 # Here we use one of the following. We will use the second here.
 molecule_predict = molecule_predictor(functional)
-scf_train_loop = make_jitted_scf_loop(functional, max_cycles=1)
+scf_train_loop = make_jitted_scf_loop(functional, max_cycles=50)
 
 
 @partial(value_and_grad, has_aux=True)
 def loss(params, molecule, ground_truth_energy):
     # predicted_energy, fock = molecule_predict(params, molecule)
-    predicted_energy, fock, rdm1 = scf_train_loop(params, molecule)
+    predicted_energy, molecule = scf_train_loop(params, molecule)
     cost_value = (predicted_energy - ground_truth_energy) ** 2
 
     # We may want to add a regularization term to the cost, be it one of the
