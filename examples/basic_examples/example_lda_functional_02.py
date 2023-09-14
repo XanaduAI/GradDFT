@@ -44,7 +44,7 @@ HF_molecule = molecule_from_pyscf(mf)
 # First a features method, which takes a molecule and returns an array of features
 # It computes what in the article appears as potential e_\theta(r), as well as the
 # input to the neural network to compute the density.
-def energy_densities(molecule: Molecule, clip_cte: float = 1e-27):
+def energy_densities(molecule: Molecule, clip_cte: float = 1e-30):
     r"""Auxiliary function to generate the features of LSDA."""
     # Molecule can compute the density matrix.
     rho = molecule.density()

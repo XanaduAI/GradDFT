@@ -128,7 +128,7 @@ grad_density_norm = jnp.linalg.norm(grad_density_0, axis=-1)
 density = HF_molecule.density()
 # We need to avoid dividing by zero
 x = jnp.where(
-    density > 1e-27,
+    density > 1e-30,
     grad_density_norm / (2 * (3 * jnp.pi**2) ** (1 / 3) * density ** (4 / 3)),
     0.0,
 )

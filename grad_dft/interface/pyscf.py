@@ -310,13 +310,13 @@ def loader(
                 args = {}
                 for key, value in group.items():
                     if key in ["name", "basis"]:
-                        args[key] = jnp.array([ord(char) for char in str(value[()])])
+                        args[key] = jnp.array([ord(char) for char in str(value[()])], dtype=jnp.int64)
                     elif key in ["energy"]:
-                        args[key] = jnp.float32(value) if training else jnp.float64(value)
-                    elif key in ["scf_iteration", "spin", "charge", "mo_occ"]:
-                        args[key] = jnp.int32(value)
+                        args[key] = jnp.float64(value)
+                    elif key in ["scf_iteration", "spin", "charge"]:
+                        args[key] = jnp.int64(value)
                     elif key in ["grad_n_ao"]:
-                        args[key] = {int(k): jnp.asarray(v) for k, v in value.items()}
+                        args[key] = {int(k): jnp.asarray(v, dtype = jnp.float64) for k, v in value.items()}
                     elif key == "chi":
                         # select the indices from the omegas array and load the corresponding chi matrix
                         if config_omegas is None:
@@ -332,10 +332,10 @@ def loader(
                             ), f"chi tensors for omega list {config_omegas} were not all precomputed in the molecule"
                             indices = [omegas.index(omega) for omega in config_omegas]
                             args[key] = jnp.stack(
-                                [jnp.asarray(value)[:, i] for i in indices], axis=1
+                                [jnp.asarray(value, dtype = jnp.float64)[:, i] for i in indices], axis=1
                             )
                     else:
-                        args[key] = jnp.asarray(value)
+                        args[key] = jnp.asarray(value, dtype=jnp.float64)
 
                 for key, value in group.attrs.items():
                     if not training:
@@ -359,7 +359,7 @@ def loader(
                     energy = jnp.float64(group["energy"])
                 else:
                     name = None
-                    energy = jnp.float32(group["energy"])
+                    energy = jnp.float64(group["energy"])
 
                 for molecule_name, molecule in group.items():
                     if molecule_name == "energy":
@@ -374,7 +374,7 @@ def loader(
                         elif key in ["name", "basis"]:
                             args[key] = jnp.array([ord(char) for char in str(value[()])])
                         elif key in ["energy"]:
-                            args[key] = jnp.float32(value) if training else jnp.float64(value)
+                            args[key] = jnp.float64(value)
                         elif key in ["grad_n_ao"]:
                             args[key] = {int(k): jnp.asarray(v) for k, v in value.items()}
                         elif key == "chi":

@@ -2,11 +2,9 @@
 
 # Grad-DFT: a software library for machine learning density functional theory
 
-[![arXiv](http://img.shields.io/badge/arXiv-2101.10279-B31B1B.svg "Grad-DFT")](https://arxiv.org/abs/2101.10279)
+[![arXiv](http://img.shields.io/badge/arXiv-2101.10279-B31B1B.svg "Grad-DFT")](https://arxiv.org/abs/2101.10279) ![License](https://img.shields.io/badge/License-Apache%202.0-9F9F9F "https://github.com/XanaduAI/DiffDFT/blob/main/LICENSE") 
 
 </div>
-
-
 
 Grad-DFT is a JAX-based library enabling the differentiable design and experimentation of exchange-correlation functionals using machine learning techniques. This library supports a parametrization of exchange-correlation functionals based on energy densities and associated coefficient functions; the latter typically constructed using neural networks:
 
@@ -72,8 +70,8 @@ from flax import linen as nn
 from grad_dft.functional import NeuralFunctional
 
 def coefficient_inputs(molecule):
-    rho = jnp.clip(molecule.density(), a_min = 1e-27)
-    kinetic = jnp.clip(molecule.kinetic_density(), a_min = 1e-27)
+    rho = jnp.clip(molecule.density(), a_min = 1e-30)
+    kinetic = jnp.clip(molecule.kinetic_density(), a_min = 1e-30)
     return jnp.concatenate((rho, kinetic))
 
 def coefficients(self, rhoinputs):

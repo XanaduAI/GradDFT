@@ -52,11 +52,11 @@ HH_molecule = molecule_from_pyscf(mf)
 # which compute the two vectors that get dot-multiplied and then integrated over space. If the functional is a
 # neural functional we also need to define coefficient_inputs, for which in this case we will reuse the densities function.
 def coefficient_inputs(molecule: Molecule, *_, **__):
-    rho = jnp.clip(molecule.density(), a_min = 1e-27)
-    kinetic = jnp.clip(molecule.kinetic_density(), a_min = 1e-27)
+    rho = jnp.clip(molecule.density(), a_min = 1e-30)
+    kinetic = jnp.clip(molecule.kinetic_density(), a_min = 1e-30)
     return jnp.concatenate((rho, kinetic), axis = 1)
 
-def energy_densities(molecule: Molecule, clip_cte: float = 1e-27, *_, **__):
+def energy_densities(molecule: Molecule, clip_cte: float = 1e-30, *_, **__):
     r"""Auxiliary function to generate the features of LSDA."""
     # Molecule can compute the density matrix.
     rho = molecule.density()
@@ -134,7 +134,7 @@ print("Energy from the scf loop:", energy)
 # We can alternatively use the jit-ed version of the scf loop
 HH_molecule = molecule_from_pyscf(mf)
 scf_iterator = make_jitted_scf_loop(neuralfunctional, cycles=5)
-jitted_energy, _, _ = scf_iterator(params, HH_molecule)
+jitted_energy, HH_molecule = scf_iterator(params, HH_molecule)
 print("Energy from the jitted scf loop:", jitted_energy)
 
 # We can even use a direct optimizer of the orbitals

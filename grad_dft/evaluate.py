@@ -23,10 +23,11 @@ from jax.lax import stop_gradient, cond, fori_loop
 
 import sys
 
-from typing import Callable, Tuple, Sequence, Optional
+from typing import Callable, Tuple, Optional
 from functools import partial, reduce
 import time
 from scipy.optimize import bisect
+from typeguard import typechecked
 
 from grad_dft.functional import Functional
 
@@ -43,7 +44,7 @@ from grad_dft.external import Functional
 from grad_dft.utils import Optimizer, safe_fock_solver
 from grad_dft.utils.types import Hartree2kcalmol
 
-from jaxtyping import PyTree, Array, Scalar
+from jaxtyping import PyTree, Array, Scalar, Float, jaxtyped
 
 
 ######## Test kernel ########
@@ -105,7 +106,7 @@ def make_simple_scf_loop(
 
     predict_molecule = molecule_predictor(functional, chunk_size=chunk_size, **kwargs)
 
-    def scf_iterator(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Scalar]:
+    def scf_iterator(params: PyTree, molecule: Molecule, clip_cte = 1e-30, *args) -> Tuple[Scalar, Scalar]:
         r"""
         Implements a scf loop for a Molecule and a functional implicitly defined predict_molecule with
         parameters params
@@ -120,7 +121,7 @@ def make_simple_scf_loop(
         nelectron = molecule.atom_index.sum() - molecule.charge
 
         # predicted_e, fock = predict_molecule(params, molecule, *args)
-        # fock = abs_clip(fock, 1e-20)
+        # fock = abs_clip(fock, clip_cte)
         # fock = molecule.fock
         old_e = 100000 # we should set the energy in a molecule object really
         for cycle in range(max_cycles):
@@ -133,7 +134,7 @@ def make_simple_scf_loop(
                 fock = molecule.fock
             else:
                 # Diagonalize Fock matrix
-                overlap = abs_clip(molecule.s1e, 1e-20)
+                overlap = abs_clip(molecule.s1e, clip_cte)
                 mo_energy, mo_coeff = safe_fock_solver(fock, overlap)
                 molecule = molecule.replace(mo_coeff=mo_coeff)
                 molecule = molecule.replace(mo_energy=mo_energy)
@@ -149,8 +150,8 @@ def make_simple_scf_loop(
             if cycle == 0:
                 old_rdm1 = molecule.make_rdm1()
             else:
-                rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*abs_clip(molecule.make_rdm1(), 1e-20)
-                rdm1 = abs_clip(rdm1, 1e-20)
+                rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*abs_clip(molecule.make_rdm1(), clip_cte)
+                rdm1 = abs_clip(rdm1, clip_cte)
                 molecule = molecule.replace(rdm1=rdm1)
                 old_rdm1 = rdm1
             
@@ -165,7 +166,7 @@ def make_simple_scf_loop(
             exc_start_time = time.time()
 
             predicted_e, fock = predict_molecule(params, molecule, *args)
-            fock = abs_clip(fock, 1e-20)
+            fock = abs_clip(fock, clip_cte)
             
             exc_time = time.time()
 
@@ -215,7 +216,11 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
     predict_molecule = molecule_predictor(functional, chunk_size=None, **kwargs)
 
     @jit
-    def scf_jitted_iterator(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Scalar]:
+    def scf_jitted_iterator(
+        params: PyTree, 
+        molecule: Molecule, 
+        *args
+    ) -> Tuple[Scalar, Molecule]:
         r"""
         Implements a scf loop intented for use in a jax.jit compiled function (training loop).
         If you are looking for a more flexible but not differentiable scf loop, see evaluate.py make_scf_loop.
@@ -227,6 +232,16 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
         params: PyTree
         molecule: Molecule
         *args: Arguments to be passed to predict_molecule function
+
+        Returns
+        -------
+        predicted_e: Scalar
+        molecule: Molecule
+
+        Notes:
+        ------
+        SCF training loop not implemented for (range-separated) exact-exchange functionals.
+        Doing so would require a differentiable way of recomputing the chi tensor.
         """
 
         if molecule.omegas:
@@ -245,13 +260,14 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
 
         predicted_e, fock = predict_molecule(params, molecule, *args)
 
-        state = (molecule, fock, predicted_e, old_e, norm_gorb)
+        state = (molecule, predicted_e, old_e, norm_gorb)
 
         def loop_body(cycle, state):
             old_state = state
-            molecule, fock, predicted_e, old_e, norm_gorb = old_state
+            molecule, predicted_e, old_e, norm_gorb = old_state
             old_e = predicted_e
             old_rdm1 = molecule.rdm1
+            fock = molecule.fock
 
             # Diagonalize Fock matrix
             mo_energy, mo_coeff = safe_fock_solver(fock, molecule.s1e)
@@ -269,19 +285,20 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
 
             # Compute the new energy and Fock matrix
             predicted_e, fock = predict_molecule(params, molecule, *args)
+            molecule = molecule.replace(fock=fock)
 
             # Compute the norm of the gradient
             norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
 
-            state = (molecule, fock, predicted_e, old_e, norm_gorb)
+            state = (molecule, predicted_e, old_e, norm_gorb)
 
             return state
 
         # Compute the scf loop
         final_state = fori_loop(0, cycles, body_fun=loop_body, init_val=state)
-        molecule, fock, predicted_e, old_e, norm_gorb = final_state
+        molecule, predicted_e, old_e, norm_gorb = final_state
 
-        return predicted_e, fock, molecule.rdm1
+        return predicted_e, molecule
 
     return scf_jitted_iterator
 
@@ -716,13 +733,17 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
 
     Returns
     ---------
-    float
+    scf_jitted_iterator: Callable
     """
 
     predict_molecule = molecule_predictor(functional, chunk_size=None, **kwargs)
 
     @jit
-    def scf_jitted_iterator(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Scalar]:
+    def scf_jitted_iterator(
+        params: PyTree, 
+        molecule: Molecule, 
+        *args
+    ) -> Tuple[Scalar, Molecule]:
         r"""
         Implements a scf loop intented for use in a jax.jit compiled function (training loop).
         If you are looking for a more flexible but not differentiable scf loop, see evaluate.py make_scf_loop.
@@ -734,18 +755,29 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
         params: PyTree
         molecule: Molecule
         *args: Arguments to be passed to predict_molecule function
+
+        Returns
+        -------
+        predicted_e: Scalar
+        molecule: Molecule
+
+        Notes:
+        ------
+        SCF training loop not implemented for (range-separated) exact-exchange functionals.
+        Doing so would require a differentiable way of recomputing the chi tensor.
         """
 
-        if molecule.omegas:
-            raise NotImplementedError(
-                "SCF training loop not implemented for (range-separated) exact-exchange functionals. \
-                                    Doing so would require a differentiable way of recomputing the chi tensor."
-            )
+        #if molecule.omegas:
+        #    raise NotImplementedError(
+        #        "SCF training loop not implemented for (range-separated) exact-exchange functionals. \
+        #                            Doing so would require a differentiable way of recomputing the chi tensor."
+        #    )
 
         old_e = jnp.inf
         norm_gorb = jnp.inf
 
         predicted_e, fock = predict_molecule(params, molecule, *args)
+        molecule = molecule.replace(fock=fock)
 
         # Initialize DIIS
         A = jnp.identity(molecule.s1e.shape[0])
@@ -757,12 +789,13 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
             jnp.zeros((diis.max_diis, 2, A.shape[0], A.shape[0])),
         )
 
-        state = (molecule, fock, predicted_e, old_e, norm_gorb, diis_data)
+        state = (molecule, predicted_e, old_e, norm_gorb, diis_data)
 
         def loop_body(cycle, state):
             old_state = state
-            molecule, fock, predicted_e, old_e, norm_gorb, diis_data = old_state
+            molecule, predicted_e, old_e, norm_gorb, diis_data = old_state
             old_e = predicted_e
+            fock = molecule.fock
 
             # DIIS iteration
             new_data = (molecule.rdm1, fock, predicted_e)
@@ -783,17 +816,18 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
 
             # Compute the new energy and Fock matrix
             predicted_e, fock = predict_molecule(params, molecule, *args)
+            molecule = molecule.replace(fock=fock)
 
             # Compute the norm of the gradient
             norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
 
-            state = (molecule, fock, predicted_e, old_e, norm_gorb, diis_data)
+            state = (molecule, predicted_e, old_e, norm_gorb, diis_data)
 
             return state
 
         # Compute the scf loop
         final_state = fori_loop(0, cycles, body_fun=loop_body, init_val=state)
-        molecule, fock, predicted_e, old_e, norm_gorb, diis_data = final_state
+        molecule, predicted_e, old_e, norm_gorb, diis_data = final_state
 
         # Perform a final diagonalization without diis (reinitializing)
         diis_data = (
@@ -802,11 +836,11 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
             jnp.zeros(diis.max_diis),
             jnp.zeros((diis.max_diis, 2, A.shape[0], A.shape[0])),
         )
-        state = (molecule, fock, predicted_e, old_e, norm_gorb, diis_data)
+        state = (molecule, predicted_e, old_e, norm_gorb, diis_data)
         state = loop_body(0, state)
-        molecule, fock, predicted_e, _, _, _ = final_state
+        molecule, predicted_e, _, _, _ = final_state
 
-        return predicted_e, fock, molecule.rdm1
+        return predicted_e, molecule
 
     return scf_jitted_iterator
 

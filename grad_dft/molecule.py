@@ -311,7 +311,7 @@ class Molecule:
         -------
         Float[Array, "spin orbitals"]
         """
-        nelecs = jnp.array([self.mo_occ[i].sum() for i in range(2)], dtype=jnp.int32)
+        nelecs = jnp.array([self.mo_occ[i].sum() for i in range(2)], dtype=jnp.int64)
         naos = self.mo_occ.shape[1]
         return get_occ(self.mo_energy, nelecs, naos)
 
@@ -339,7 +339,7 @@ def orbital_grad(
     ----------
         mo_coeff: Float[Array, "spin orbitals orbitals"]
             Orbital coefficients
-        mo_occ: Int[Array, "spin orbitals"]
+        mo_occ: Float[Array, "spin orbitals"]
             Orbital occupancy
         F: Float[Array, "spin orbitals orbitals"]
             Fock matrix in AO representation
@@ -717,7 +717,8 @@ def nonXC(
 @jaxtyped
 @typechecked
 @partial(jax.jit)
-def symmetrize_rdm1(rdm1: Float[Array, "spin orbitals orbitals"]) -> Float[Array, "spin orbitals orbitals"]:
+def symmetrize_rdm1(rdm1: Float[Array, "spin orbitals orbitals"], 
+                    clip_cte: float = 1e-30) -> Float[Array, "spin orbitals orbitals"]:
     r"""A function that symmetrizes and clips the reduced density matrix.
     
     Parameters
@@ -730,7 +731,7 @@ def symmetrize_rdm1(rdm1: Float[Array, "spin orbitals orbitals"]) -> Float[Array
     Float[Array, "spin orbitals orbitals"]
     """
     dm = rdm1.sum(axis=0)
-    dm = abs_clip(dm, 1e-20)
+    dm = abs_clip(dm, clip_cte)
     return jnp.stack([dm, dm], axis=0) / 2.0
 
 @jaxtyped
@@ -739,7 +740,8 @@ def symmetrize_rdm1(rdm1: Float[Array, "spin orbitals orbitals"]) -> Float[Array
 def coulomb_energy(
     rdm1: Float[Array, "spin orbitals orbitals"],
     rep_tensor: Float[Array, "orbitals orbitals orbitals orbitals"],
-    precision=Precision.HIGHEST
+    precision=Precision.HIGHEST,
+    clip_cte: float = 1e-30,
 ) -> Scalar:
     r"""A function that computes the Coulomb two-body energy of a DFT functional.
     
@@ -755,7 +757,7 @@ def coulomb_energy(
     Scalar
     """
     v_coul = coulomb_potential(rdm1, rep_tensor, precision)
-    v_coul = abs_clip(v_coul, 1e-20)
+    v_coul = abs_clip(v_coul, clip_cte)
     coulomb2e_energy = jnp.einsum("sji,sij->", rdm1, v_coul, precision=precision) / 2.0
     return coulomb2e_energy
 
@@ -765,7 +767,8 @@ def coulomb_energy(
 def one_body_energy(
     rdm1: Float[Array, "spin orbitals orbitals"],
     h1e: Float[Array, "orbitals orbitals"],
-    precision=Precision.HIGHEST
+    precision=Precision.HIGHEST,
+    clip_cte: float = 1e-30,
 ) -> Scalar:
     r"""A function that computes the one-body energy of a DFT functional.
 
@@ -780,7 +783,7 @@ def one_body_energy(
     -------
     Scalar
     """
-    h1e = abs_clip(h1e, 1e-20)
+    h1e = abs_clip(h1e, clip_cte)
     h1e_energy = jnp.einsum("sij,ji->", rdm1, h1e, precision=precision)
     return h1e_energy
 
@@ -886,7 +889,7 @@ def get_occ(
         return mo_occ
 
     mo_occ = jnp.stack(
-        [get_occ_spin(mo_energies[s], jnp.int32(nelecs[s]), naos) for s in range(2)], axis=0
+        [get_occ_spin(mo_energies[s], jnp.int64(nelecs[s]), naos) for s in range(2)], axis=0
     )
 
     return mo_occ

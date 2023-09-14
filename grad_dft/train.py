@@ -28,6 +28,7 @@ from grad_dft.molecule import Molecule, abs_clip, coulomb_energy, coulomb_potent
 def molecule_predictor(
     functional: Functional,
     nlc_functional: Optional[DispersionFunctional] = None,
+    clip_cte: float = 1e-30,
     **kwargs,
 ) -> Callable:
     r"""Generate a function that predicts the energy
@@ -131,9 +132,9 @@ def molecule_predictor(
         """
 
         energy, fock = energy_and_grads(params, molecule.rdm1, molecule, *args)
-        fock = abs_clip(fock, 1e-20)
+        fock = abs_clip(fock, clip_cte)
         fock = 1 / 2 * (fock + fock.transpose(0, 2, 1))
-        fock = abs_clip(fock, 1e-20)
+        fock = abs_clip(fock, clip_cte)
         
 
         # Compute the features that should be autodifferentiated
@@ -177,25 +178,25 @@ def molecule_predictor(
                 functional, params, molecule, nograd_densities, cinputs, grad_densities
             )
             fock += vxc_expl + vxc_expl.transpose(0, 2, 1)  # Sum over omega
-            fock = abs_clip(fock, 1e-20)
+            fock = abs_clip(fock, clip_cte)
 
         if functional.coefficient_input_grads:
             vxc_expl = functional.coefficient_input_grads(
                 functional, params, molecule, nograd_cinputs, grad_cinputs, densities
             )
             fock += vxc_expl + vxc_expl.transpose(0, 2, 1)  # Sum over omega
-            fock = abs_clip(fock, 1e-20)
+            fock = abs_clip(fock, clip_cte)
 
         if functional.is_xc:
             rdm1 = symmetrize_rdm1(molecule.rdm1)
             fock += coulomb_potential(rdm1, molecule.rep_tensor)
-            fock = abs_clip(fock, 1e-20)
+            fock = abs_clip(fock, clip_cte)
             # fock = cond(jnp.isclose(molecule.spin, 0), # Condition
             #                lambda x: x, # Truefn branch
             #                lambda x: jnp.stack([x.sum(axis = 0)/2., x.sum(axis = 0)/2.], axis=0), # Falsefn branch
             #                fock) # Argument
             fock = fock + jnp.stack([molecule.h1e, molecule.h1e], axis=0)
-            fock = abs_clip(fock, 1e-20)
+            fock = abs_clip(fock, clip_cte)
 
         return energy, fock
 
