@@ -28,6 +28,7 @@ jobs:
       - name: Run unit tests
         run: |
             pytest -v tests/unit/test_eigenproblem.py
+            pytest -v tests/unit/test_loss.py
       - name: Run integration tests
         run: |
           pytest -v tests/integration/test_non_xc_energy.py
