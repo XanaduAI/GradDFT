@@ -343,10 +343,9 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
 
         # Compute the scf loop
         final_state = fori_loop(0, cycles, body_fun=loop_body, init_val=state)
-        molecule, fock, predicted_e, old_e, norm_gorb = final_state
-        molecule = molecule.replace(fock=fock)
+        molecule, predicted_e, old_e, norm_gorb = final_state
         molecule = molecule.replace(energy=predicted_e)
-        return Molecule
+        return molecule
 
     return simple_scf_jitted_iterator
 
@@ -850,6 +849,7 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
             # DIIS iteration
             new_data = (molecule.rdm1, fock, predicted_e)
             fock, diis_data = diis.run(new_data, diis_data, cycle)
+            molecule = molecule.replace(fock=fock)
 
             # Diagonalize Fock matrix
             mo_energy, mo_coeff = safe_fock_solver(fock, molecule.s1e)
@@ -888,10 +888,9 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
         )
         state = (molecule, predicted_e, old_e, norm_gorb, diis_data)
         state = loop_body(0, state)
-        molecule, fock, predicted_e, _, _, _ = final_state
+        molecule, predicted_e, _, _, _ = final_state
         
         # Ensure molecule is fully updated
-        molecule = molecule.replace(fock=fock)
         molecule = molecule.replace(energy=predicted_e)
         return molecule
 

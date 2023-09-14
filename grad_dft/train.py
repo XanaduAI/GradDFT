@@ -532,8 +532,10 @@ def sq_electron_err_int(
         Scalar: the value epsilon described above
     ----------
     """
-    diff_up = jnp.clip((pred_density[:, 0] - truth_density[:, 0]) ** 2, a_min=1e-12)
-    diff_dn = jnp.clip((pred_density[:, 1] - truth_density[:, 1]) ** 2, a_min=1e-12)
+    pred_density = jnp.clip(pred_density, a_min=1e-12)
+    truth_density = jnp.clip(truth_density, a_min=1e-12)
+    diff_up = jnp.clip(jnp.clip(pred_density[:, 0] - truth_density[:, 0], a_min=1e-12) ** 2, a_min=1e-12)
+    diff_dn = jnp.clip(jnp.clip(pred_density[:, 1] - truth_density[:, 1], a_min=1e-12) ** 2, a_min=1e-12)
     err_int = jnp.sum(diff_up * molecule.grid.weights) + jnp.sum(diff_dn * molecule.grid.weights)
     return err_int
 

@@ -113,19 +113,39 @@ KEY = PRNGKey(42)
 CINPUTS = coefficient_inputs(MOLECULES[0])
 PARAMS = NF.init(KEY, CINPUTS)
 
-# LOSS_FUNCTIONS = [mse_energy_loss, mse_density_loss, mse_energy_and_density_loss]
-# PREDICTORS = [
-#     make_jitted_scf_loop(NF, SCF_ITERS)
-#     ]
 
-TRAIN_RECIPES = [(mse_energy_loss, [PARAMS, make_non_scf_predictor(NF), MOLECULES, TRUTH_ENERGIES, True])]
-
-# LOSS_INFO = [(mse_energy_loss, [PARAMS, make_non_scf_predictor, MOLECULES, TRUTH_ENERGIES, True]),
-#     [PARAMS, dummy_predictor, MOLECULES, TRUTH_DENSITIES, True],
-#     [PARAMS, dummy_predictor, MOLECULES, TRUTH_DENSITIES, TRUTH_ENERGIES, True],
-# ]
-
-# LOSS_INFO = [(LOSS_FUNCTIONS[i], LOSS_ARGS[i]) for i in range(3)]
+TRAIN_RECIPES = [
+    # Non-SCF training on the energy only
+    (mse_energy_loss, [PARAMS, make_non_scf_predictor(NF), MOLECULES, TRUTH_ENERGIES, True]),
+    
+    # DIIS-SCF training on the energy only
+    (mse_energy_loss, [PARAMS, make_scf_loop(NF, max_cycles=SCF_ITERS), MOLECULES, TRUTH_ENERGIES, True]),
+    # DIIS-SCF training on the density only
+    (mse_density_loss, [PARAMS, make_scf_loop(NF, max_cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, True]),
+    # DIIS-SCF training on energy and density
+    (mse_energy_and_density_loss, [PARAMS, make_scf_loop(NF, max_cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, TRUTH_ENERGIES, 1.0, 1.0, True]),
+    
+    # Jitted DIIS-SCF training on the energy only
+    (mse_energy_loss, [PARAMS, make_jitted_scf_loop(NF, cycles=SCF_ITERS), MOLECULES, TRUTH_ENERGIES, True]),
+    # Jitted DIIS-SCF training on the density only
+    (mse_density_loss, [PARAMS, make_jitted_scf_loop(NF, cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, True]),
+    # Jitted DIIS-SCF training on energy and density
+    (mse_energy_and_density_loss, [PARAMS, make_jitted_scf_loop(NF, cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, TRUTH_ENERGIES, 1.0, 1.0, True]),
+    
+    # Linear mixing SCF training on the energy only
+    (mse_energy_loss, [PARAMS, make_simple_scf_loop(NF, max_cycles=SCF_ITERS), MOLECULES, TRUTH_ENERGIES, True]),
+    # Linear mixing SCF training on the density only
+    (mse_density_loss, [PARAMS, make_simple_scf_loop(NF, max_cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, True]),
+    # Linear SCF training on energy and density
+    (mse_energy_and_density_loss, [PARAMS, make_simple_scf_loop(NF, max_cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, TRUTH_ENERGIES, 1.0, 1.0, True]),
+    
+    # Jitted Linear mixing SCF training on the energy only
+    (mse_energy_loss, [PARAMS, make_jitted_simple_scf_loop(NF, max_cycles=SCF_ITERS), MOLECULES, TRUTH_ENERGIES, True]),
+    # Jitted Linear mixing SCF training on the density only
+    (mse_density_loss, [PARAMS, make_jitted_simple_scf_loop(NF, max_cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, True]),
+    # Jitted Linear SCF training on energy and density
+    (mse_energy_and_density_loss, [PARAMS, make_jitted_simple_scf_loop(NF, max_cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, TRUTH_ENERGIES, 1.0, 1.0, True]),
+]
 
 
 @pytest.mark.parametrize("train_recipe", TRAIN_RECIPES)
@@ -147,7 +167,7 @@ def test_loss_functions(train_recipe: tuple) -> None:
     gradient = grad_fn(*loss_args)
     assert not jnp.isnan(
         gradient["params"]["Dense_0"]["bias"]
-    ).any(), f"Dense_0 loss gradients for loss function {loss_func.__name__} and predictor {predictor_name} contains a NaN. It should not."
+    ).any(), f"Bias loss gradients for loss function {loss_func.__name__} and predictor {predictor_name} contains a NaN. It should not."
     assert not jnp.isnan(
         gradient["params"]["Dense_0"]["kernel"]
     ).any(), f"Kernel loss gradients for loss function {loss_func.__name__} and predictor {predictor_name} contains a NaN. It should not."
