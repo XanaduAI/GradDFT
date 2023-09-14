@@ -149,7 +149,7 @@ def make_simple_scf_loop(
 
     predict_molecule = molecule_predictor(functional, chunk_size=chunk_size, **kwargs)
 
-    def scf_iterator(params: PyTree, molecule: Molecule, clip_cte = 1e-30, *args) -> Molecule:
+    def simple_scf_iterator(params: PyTree, molecule: Molecule, clip_cte = 1e-30, *args) -> Molecule:
         r"""
         Implements a scf loop for a Molecule and a functional implicitly defined predict_molecule with
         parameters params
@@ -241,7 +241,7 @@ def make_simple_scf_loop(
         molecule = molecule.replace(energy=predicted_e)
         return molecule
 
-    return scf_iterator
+    return simple_scf_iterator
 
 def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing_factor: float = 0.4, **kwargs) -> Callable:
     r"""
@@ -262,7 +262,7 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
     predict_molecule = molecule_predictor(functional, chunk_size=None, **kwargs)
 
     @jit
-    def scf_jitted_iterator(
+    def simple_scf_jitted_iterator(
         params: PyTree, 
         molecule: Molecule, 
         *args
@@ -348,7 +348,7 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
         molecule = molecule.replace(energy=predicted_e)
         return Molecule
 
-    return scf_jitted_iterator
+    return simple_scf_jitted_iterator
 
 
 def make_scf_loop(
