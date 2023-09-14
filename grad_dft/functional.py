@@ -26,7 +26,7 @@ from jax.nn import sigmoid, gelu, elu
 from jax.nn.initializers import zeros, he_normal
 from jax.random import normal, PRNGKey
 
-from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float
+from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float, jaxtyped
 
 from flax import linen as nn
 from flax.core import freeze, unfreeze
@@ -34,9 +34,10 @@ from flax.training import train_state, checkpoints
 from flax.training.train_state import TrainState
 from optax import GradientTransformation
 from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
+from typeguard import typechecked
 from grad_dft.molecule import abs_clip
 
-from grad_dft.utils import Scalar, Array, PyTree, DType, default_dtype
+from grad_dft.utils import DType, default_dtype
 from grad_dft.molecule import Grid, Molecule
 
 import sys
@@ -178,7 +179,7 @@ class Functional(nn.Module):
 
         elif self.nograd_densities:
             densities = stop_gradient(self.nograd_densities(molecule, *args, **kwargs))
-        densities = abs_clip(densities, 1e-20)
+        densities = abs_clip(densities, 1e-20) #todo: investigate if we can lower this
         return densities
 
     def compute_coefficient_inputs(self, molecule: Molecule, *args, **kwargs):
@@ -308,6 +309,7 @@ class Functional(nn.Module):
         Scalar
         """
 
+        #todo: study if we can lower this clipping constants
         return jnp.einsum("r,r->", abs_clip(gridweights, 1e-20), abs_clip(energy_density, 1e-20), precision=precision)
 
 
@@ -641,7 +643,8 @@ def dm21_combine_densities(
         [densities] + [ehf[i].sum(axis=0, keepdims=True).T for i in range(len(ehf))], axis=1
     )
 
-
+@jaxtyped
+@typechecked
 def dm21_hfgrads_densities(
     functional: nn.Module,
     params: PyTree,
@@ -651,12 +654,39 @@ def dm21_hfgrads_densities(
     densities_wout_hf: Float[Array, "grid densities_whf"],
     omegas: Float[Array, "omega"] = jnp.array([0.0, 0.4]),
 ) -> Float[Array, "spin orbitals orbitals"]:
+    r"""
+    Calculate the Hartree-Fock matrix contribution due to the partial derivative
+    with respect to the Hartree Fock energy density.
+
+    Parameters
+    ----------
+    functional: nn.Module
+        The functional to calculate the Hartree-Fock matrix contribution for.
+    params: PyTree
+        The parameters of the functional.
+    molecule: Molecule
+        The molecule to calculate the Hartree-Fock matrix contribution for.
+    ehf: Float[Array, "omega spin grid"]
+        The Hartree-Fock energy density.
+    coefficient_inputs: Float[Array, "grid cinputs"]
+        The inputs to the neural network.
+    densities_wout_hf: Float[Array, "grid densities_whf"]
+        The rest of the local energy densities that get dot-multiplied by the output of a neural network
+        in a functional of the form similar to DM21.
+    omegas: Float[Array, "omega"]
+        The omegas to calculate the Hartree-Fock matrix contribution for.
+
+    Returns
+    ----------
+    Float[Array, "spin orbitals orbitals"]
+    """
     vxc_hf = molecule.HF_density_grad_2_Fock(
         functional, params, omegas, ehf, coefficient_inputs, densities_wout_hf
     )
     return vxc_hf.sum(axis=0)  # Sum over omega
 
-
+@jaxtyped
+@typechecked
 def dm21_hfgrads_cinputs(
     functional: nn.Module,
     params: PyTree,
@@ -666,6 +696,31 @@ def dm21_hfgrads_cinputs(
     densities: Float[Array, "grid densities"],
     omegas: Float[Array, "omega"] = jnp.array([0.0, 0.4]),
 ) -> Float[Array, "spin orbitals orbitals"]:
+    r"""
+    Calculate the Hartree-Fock matrix contribution due to the partial derivative
+    with respect to the Hartree Fock coefficient input.
+
+    Parameters
+    ----------
+    functional: nn.Module
+        The functional to calculate the Hartree-Fock matrix contribution for.
+    params: PyTree
+        The parameters of the functional.
+    molecule: Molecule
+        The molecule to calculate the Hartree-Fock matrix contribution for.
+    ehf: Float[Array, "omega spin grid"]
+        The Hartree-Fock energy density.
+    cinputs_wout_hf: Float[Array, "grid cinputs_whf"]
+        The rest of the inputs to the neural network.
+    densities: Float[Array, "grid densities"]
+        The local energy densities that get dot-multiplied by the output of a neural network.
+    omegas: Float[Array, "omega"]
+        The omegas to calculate the Hartree-Fock matrix contribution for.
+
+    Returns
+    ----------
+    Float[Array, "spin orbitals orbitals"]
+    """
     vxc_hf = molecule.HF_coefficient_input_grad_2_Fock(
         functional, params, omegas, ehf, cinputs_wout_hf, densities
     )
@@ -871,24 +926,27 @@ def _canonicalize_fxc(fxc: Functional) -> Callable:
 ################ Spin polarization correction functions ################
 
 
-def exchange_polarization_correction(e_PF, rho):
+def exchange_polarization_correction(
+    e_PF: Float[Array, "spin grid"], 
+    rho: Float[Array, "spin grid"]
+) -> Float[Array, "grid"]:
     r"""Spin polarization correction to an exchange functional using eq 2.71 from
     Carsten A. Ullrich, "Time-Dependent Density-Functional Theory".
 
     Parameters
     ----------
     e_PF:
-        Array, shape (2, n_grid)
+        Float[Array, "spin grid"]
         The paramagnetic/ferromagnetic energy contributions on the grid, to be combined.
 
     rho:
-        Array, shape (2, n_grid)
+        Float[Array, "spin grid"]
         The electronic density of each spin polarization at each grid point.
 
     Returns
     ----------
     e_tilde
-        Array, shape (n_grid)
+        Float[Array, "grid"]
         The ready to be integrated electronic energy density.
     """
     zeta = (rho[:, 0] - rho[:, 1]) / rho.sum(axis=1)
@@ -900,18 +958,20 @@ def exchange_polarization_correction(e_PF, rho):
     return e_PF[:, 0] + (e_PF[:, 1] - e_PF[:, 0]) * fzeta(zeta)
 
 
-def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float = 1e-27):
+def correlation_polarization_correction(
+    e_tilde_PF: Float[Array, "spin grid"], 
+    rho: Float[Array, "spin grid"], 
+    clip_cte: float = 1e-27
+) -> Float[Array, "grid"]:
     r"""Spin polarization correction to a correlation functional using eq 2.75 from
     Carsten A. Ullrich, "Time-Dependent Density-Functional Theory".
 
     Parameters
     ----------
-    e_PF:
-        Array, shape (2, n_grid)
+    e_tilde_PF: Float[Array, "spin grid"]
         The paramagnetic/ferromagnetic energy contributions on the grid, to be combined.
 
-    rho:
-        Array, shape (2, n_grid)
+    rho: Float[Array, "spin grid"]
         The electronic density of each spin polarization at each grid point.
 
     clip_cte:
@@ -920,12 +980,9 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
 
     Returns
     ----------
-    e_tilde
-        Array, shape (n_grid)
+    e_tilde: Float[Array, "grid"]
         The ready to be integrated electronic energy density.
     """
-
-    e_tilde_PF = jnp.einsum("rs,r->rs", e_PF, rho.sum(axis=1))
 
     log_rho = jnp.log2(jnp.clip(rho.sum(axis=1), a_min=clip_cte))
     # assert not jnp.isnan(log_rho).any() and not jnp.isinf(log_rho).any()
@@ -954,8 +1011,8 @@ def correlation_polarization_correction(e_PF: Array, rho: Array, clip_cte: float
     alphac = 2 * A_ * (1 + ars) * jnp.log(1 + (1 / (2 * A_)) / (brs_1_2 + brs + brs_3_2 + brs2))
     # assert not jnp.isnan(alphac).any() and not jnp.isinf(alphac).any()
 
-    fz = jnp.round(fzeta(zeta), int(math.log10(clip_cte)))
-    z4 = jnp.round(2 ** (4 * jnp.log2(jnp.clip(zeta, a_min=clip_cte))), int(math.log10(clip_cte)))
+    fz = fzeta(zeta) #jnp.round(fzeta(zeta), int(math.log10(clip_cte)))
+    z4 = zeta**4 #jnp.round(2 ** (4 * jnp.log2(jnp.clip(zeta, a_min=clip_cte))), int(math.log10(clip_cte)))
 
     e_tilde = (
         e_tilde_PF[:, 0]

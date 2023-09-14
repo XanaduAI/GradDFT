@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Union, Sequence, Tuple, NamedTuple
+from typing import List, Optional, Union, Sequence, Tuple, NamedTuple
 from dataclasses import fields
+
+from typeguard import typechecked
 from grad_dft.utils import vmap_chunked
 from functools import partial
 
@@ -26,7 +28,7 @@ from flax import struct
 from flax import linen as nn
 import jax
 
-from jaxtyping import Array, PyTree, Scalar, Float, Int
+from jaxtyping import Array, PyTree, Scalar, Float, Int, jaxtyped
 
 
 @struct.dataclass
@@ -84,22 +86,22 @@ class Molecule:
     h1e: Float[Array, "orbitals orbitals"]
     vj: Float[Array, "spin orbitals orbitals"]
     mo_coeff: Float[Array, "spin orbitals orbitals"]
-    mo_occ: Int[Array, "spin orbitals"]
+    mo_occ: Float[Array, "spin orbitals"]
     num_elec: Scalar
     mo_energy: Float[Array, "spin orbitals"]
     mf_energy: Optional[Scalar] = None
-    s1e: Optional[Float[Array, "spin orbitals orbitals"]] = None  # Not used during training
-    omegas: Optional[Int[Array, "omega"]] = None
+    s1e: Optional[Float[Array, "orbitals orbitals"]] = None  # Not used during training
+    omegas: Optional[Float[Array, "omega"]] = None
     chi: Optional[Float[Array, "grid omega spin orbitals"]] = None
     rep_tensor: Optional[Float[Array, "orbitals orbitals orbitals orbitals"]] = None
     energy: Optional[Scalar] = None
-    basis: Optional[str] = None
-    name: Optional[str] = None
+    basis: Optional[Int[Array, '...']] = None # The name is saved as a list of integers, JAX does not accept str
+    name: Optional[Int[Array, '...']] = None # The name is saved as a list of integers, JAX does not accept str
     spin: Optional[Scalar] = 0
     charge: Optional[Scalar] = 0
     unit_Angstrom: Optional[bool] = True
-    grid_level: Optional[int] = 2
-    scf_iteration: Optional[int] = 50
+    grid_level: Optional[Scalar] = 2
+    scf_iteration: Optional[Scalar] = 50
     fock: Optional[Array] = None
 
     # def __repr__(self):
@@ -109,23 +111,43 @@ class Molecule:
     def grid_size(self):
         return len(self.grid)
 
-    def density(self, *args, **kwargs) -> Float[Array, "grid spin"]:
-        r""" Computes the electronic density of a molecule at each grid point."""
+    def density(self, *args, **kwargs) -> Array:
+        r""" Computes the electronic density of a molecule at each grid point.
+        
+        Returns
+        -------
+        Float[Array, "grid spin"]
+        """
         return density(self.rdm1, self.ao, *args, **kwargs)
 
-    def grad_density(self, *args, **kwargs) -> Float[Array, "grid spin 3"]:
-        r""" Computes the gradient of the electronic density of a molecule at each grid point."""
+    def grad_density(self, *args, **kwargs) -> Array:
+        r""" Computes the gradient of the electronic density of a molecule at each grid point.
+        
+        Returns
+        -------
+        Float[Array, "grid spin 3"]
+        """
         return grad_density(self.rdm1, self.ao, self.grad_ao, *args, **kwargs)
 
-    def lapl_density(self, *args, **kwargs) -> Float[Array, "grid spin"]:
-        r""" Computes the laplacian of the electronic density of a molecule at each grid point."""
+    def lapl_density(self, *args, **kwargs) -> Array:
+        r""" Computes the laplacian of the electronic density of a molecule at each grid point.
+        
+        Returns
+        -------
+        Float[Array, "grid spin"]
+        """
         return lapl_density(self.rdm1, self.ao, self.grad_ao, self.grad_n_ao[2], *args, **kwargs)
 
-    def kinetic_density(self, *args, **kwargs) -> Float[Array, "grid spin"]:
-        r""" Computes the kinetic energy density of a molecule at each grid point."""
+    def kinetic_density(self, *args, **kwargs) -> Array:
+        r""" Computes the kinetic energy density of a molecule at each grid point.
+        
+        Returns
+        -------
+        Float[Array, "grid spin"]
+        """
         return kinetic_density(self.rdm1, self.grad_ao, *args, **kwargs)
 
-    def select_HF_omegas(self, omegas: Float[Array, "omega"]) -> Float[Array, "grid omega spin orbitals"]:
+    def select_HF_omegas(self, omegas: Float[Array, "omega"]) -> Array:
         r""" Selects the chi tensor according to the omegas passed.
 
         Parameters
@@ -157,9 +179,23 @@ class Molecule:
         chi = jnp.stack([self.chi[:, i] for i in indices], axis=1)
         return chi
 
-    def HF_energy_density(self, omegas: Float[Array, "omega"], *args, **kwargs) -> Float[Array, "grid omega spin"]:
+    def HF_energy_density(self, omegas: Float[Array, "omega"], *args, **kwargs) -> Array:
         r""" Computes the Hartree-Fock energy density of a molecule at each grid point,
         for a given set of omegas in the range-separated Coulomb kernel.
+
+        Parameters
+        ----------
+        omegas: Float[Array, "omega"]
+        The parameter omega with which the kernel
+            .. math::
+                f(|r-r'|) = \erf(\omega|r-r'|)/|r-r'|
+
+            has been computed.
+
+
+        Returns
+        -------
+        Float[Array, "grid omega spin"]
         """
         chi = self.select_HF_omegas(omegas)
         return HF_energy_density(self.rdm1, self.ao, chi, *args, **kwargs)
@@ -260,12 +296,22 @@ class Molecule:
         r""" Computes the non-XC energy of a DFT functional."""
         return nonXC(self.rdm1, self.h1e, self.rep_tensor, self.nuclear_repulsion, *args, **kwargs)
 
-    def make_rdm1(self) -> Float[Array, "spin orbitals orbitals"]:
-        r""" Computes the 1-Reduced Density Matrix for the molecule."""
+    def make_rdm1(self) -> Array:
+        r""" Computes the 1-Reduced Density Matrix for the molecule.
+        
+        Returns
+        -------
+        Float[Array, "spin orbitals orbitals"]
+        """
         return make_rdm1(self.mo_coeff, self.mo_occ)
 
-    def get_occ(self) -> Float[Array, "spin orbitals"]:
-        r""" Computes the orbital occupancy for the molecule."""
+    def get_occ(self) -> Array:
+        r""" Computes the orbital occupancy for the molecule.
+        
+        Returns
+        -------
+        Float[Array, "spin orbitals"]
+        """
         nelecs = jnp.array([self.mo_occ[i].sum() for i in range(2)], dtype=jnp.int32)
         naos = self.mo_occ.shape[1]
         return get_occ(self.mo_energy, nelecs, naos)
@@ -279,10 +325,14 @@ class Molecule:
 
 #######################################################################
 
+@jaxtyped
+@typechecked
+@partial(jax.jit, static_argnames="precision")
 def orbital_grad(
         mo_coeff: Float[Array, "spin orbitals orbitals"],
         mo_occ: Float[Array, "spin orbitals"],
         F: Float[Array, "spin orbitals orbitals"],
+        precision: Precision = Precision.HIGHEST
     ) -> Float[Array, "orbitals orbitals"]:
     r""" Computes the restricted Hartree Fock orbital gradients
 
@@ -294,6 +344,7 @@ def orbital_grad(
             Orbital occupancy
         F: Float[Array, "spin orbitals orbitals"]
             Fock matrix in AO representation
+        precision: jax.lax.Precision, optional
 
     Returns:
     -------
@@ -313,11 +364,12 @@ def orbital_grad(
     C_occ = jax.vmap(jnp.where, in_axes=(None, 1, None), out_axes=1)(mo_occ > 0, mo_coeff, 0)
     C_vir = jax.vmap(jnp.where, in_axes=(None, 1, None), out_axes=1)(mo_occ == 0, mo_coeff, 0)
 
-    return jnp.einsum("sab,sac,scd->bd", C_vir.conj(), F, C_occ)
+    return jnp.einsum("sab,sac,scd->bd", C_vir.conj(), F, C_occ, precision = precision)
 
 
 ##########################################################
-
+@jaxtyped
+@typechecked
 @partial(jax.jit, static_argnames="precision")
 def density(rdm1: Float[Array, "spin orbitals orbitals"], 
             ao: Float[Array, "grid orbitals"], 
@@ -342,6 +394,8 @@ def density(rdm1: Float[Array, "spin orbitals orbitals"],
 
     return jnp.einsum("...ab,ra,rb->r...", rdm1, ao, ao, precision=precision)
 
+@jaxtyped
+@typechecked
 @partial(jax.jit, static_argnames="precision")
 def grad_density(
     rdm1: Float[Array, "spin orbitals orbitals"], 
@@ -371,6 +425,8 @@ def grad_density(
 
     return 2 * jnp.einsum("...ab,ra,rbj->r...j", rdm1, ao, grad_ao, precision=precision)
 
+@jaxtyped
+@typechecked
 @partial(jax.jit, static_argnames="precision")
 def lapl_density(
     rdm1: Float[Array, "spin orbitals orbitals"], 
@@ -403,6 +459,8 @@ def lapl_density(
         "...ab,raj,rbj->r...", rdm1, grad_ao, grad_ao, precision=precision
     ) + 2 * jnp.einsum("...ab,ra,rbi->r...", rdm1, ao, grad_2_ao, precision=precision)
 
+@jaxtyped
+@typechecked
 @partial(jax.jit, static_argnames="precision")
 def kinetic_density(
     rdm1: Float[Array, "spin orbitals orbitals"], 
@@ -429,6 +487,8 @@ def kinetic_density(
 
     return 0.5 * jnp.einsum("...ab,raj,rbj->r...", rdm1, grad_ao, grad_ao, precision=precision)
 
+@jaxtyped
+@typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def HF_energy_density(
     rdm1: Float[Array, "spin orbitals orbitals"],
@@ -466,6 +526,8 @@ def HF_energy_density(
     )
     return vmap(_hf_energy, in_axes=(0, None, 0), out_axes=2)(chi, rdm1, ao)
 
+@jaxtyped
+@typechecked
 def HF_density_grad_2_Fock(
     grid: Grid,
     functional: nn.Module,
@@ -475,7 +537,7 @@ def HF_density_grad_2_Fock(
     ehf: Float[Array, "omega spin grid"],
     coefficient_inputs: Optional[Float[Array, "grid cinputs"]],
     densities_wout_hf: Float[Array, "grid densities_w"],
-    chunk_size: Optional[int] = None,
+    chunk_size: Optional[Int] = None,
     precision: Precision = Precision.HIGHEST
 ) -> Float[Array, "omega spin orbitals orbitals"]:
     r""" Calculate the Hartree-Fock matrix contribution due to the partial derivative
@@ -536,6 +598,8 @@ def HF_density_grad_2_Fock(
 
     return (jax.jit(chunked_jvp)(chi.transpose(3, 0, 1, 2), gr, ao)).transpose(1, 2, 3, 0)
 
+@jaxtyped
+@typechecked
 def HF_coefficient_input_grad_2_Fock(
     grid: Grid,
     functional: nn.Module,
@@ -612,6 +676,8 @@ def abs_clip(arr, threshold):
 
 ######################################################################
 
+@jaxtyped
+@typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def nonXC(
     rdm1: Float[Array, "spin orbitals orbitals"],
@@ -649,6 +715,8 @@ def nonXC(
 
     return nuclear_repulsion + h1e_energy + coulomb2e_energy
 
+@jaxtyped
+@typechecked
 @partial(jax.jit)
 def symmetrize_rdm1(rdm1: Float[Array, "spin orbitals orbitals"]) -> Float[Array, "spin orbitals orbitals"]:
     r"""A function that symmetrizes and clips the reduced density matrix.
@@ -666,6 +734,8 @@ def symmetrize_rdm1(rdm1: Float[Array, "spin orbitals orbitals"]) -> Float[Array
     dm = abs_clip(dm, 1e-20)
     return jnp.stack([dm, dm], axis=0) / 2.0
 
+@jaxtyped
+@typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def coulomb_energy(
     rdm1: Float[Array, "spin orbitals orbitals"],
@@ -690,6 +760,8 @@ def coulomb_energy(
     coulomb2e_energy = jnp.einsum("sji,sij->", rdm1, v_coul, precision=precision) / 2.0
     return coulomb2e_energy
 
+@jaxtyped
+@typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def one_body_energy(
     rdm1: Float[Array, "spin orbitals orbitals"],
@@ -713,10 +785,13 @@ def one_body_energy(
     h1e_energy = jnp.einsum("sij,ji->", rdm1, h1e, precision=precision)
     return h1e_energy
 
+@jaxtyped
+@typechecked
+@partial(jax.jit, static_argnames=["precision"])
 def coulomb_potential(
     rdm1: Float[Array, "spin orbitals orbitals"],
     rep_tensor: Float[Array, "orbitals orbitals orbitals orbitals"],
-    precision=Precision.HIGHEST
+    precision=Precision.HIGHEST,
 ) -> Float[Array, "spin orbitals orbitals"]:
     r"""
     A function that computes the Coulomb potential matrix.
@@ -739,9 +814,13 @@ def coulomb_potential(
     # The 2 is to compensate for the /2 in the dm definition
     return 2 * jnp.einsum("pqrt,srt->spq", rep_tensor, rdm1, precision=precision)
 
+@jaxtyped
+@typechecked
+@partial(jax.jit, static_argnames=["precision"])
 def make_rdm1(
     mo_coeff: Float[Array, "spin orbitals orbitals"],
-    mo_occ: Float[Array, "spin orbitals"]
+    mo_occ: Float[Array, "spin orbitals"],
+    precision=Precision.HIGHEST
 ) -> Float[Array, "spin orbitals orbitals"]:
     r"""
     One-particle density matrix in AO representation
@@ -768,8 +847,11 @@ def make_rdm1(
     return jnp.array((dm_a, dm_b))
     """
 
-    return jnp.einsum("sij,sj,skj -> sik", mo_coeff, mo_occ, mo_coeff.conj())
+    return jnp.einsum("sij,sj,skj -> sik", mo_coeff, mo_occ, mo_coeff.conj(), precision=precision)
 
+@jaxtyped
+@typechecked
+@jax.jit
 def get_occ(
     mo_energies: Float[Array, "spin orbitals"],
     nelecs: Int[Array, "spin"],

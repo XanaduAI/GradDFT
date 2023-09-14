@@ -31,7 +31,8 @@ jobs:
       - name: Run integration tests
         run: |
           pytest -v tests/integration/test_non_xc_energy.py
-          pytest -v tests/integration/test_classical_functionals.py
+          pytest -v tests/integration/test_functional_implementations.py
+          pytest -v tests/integration/test_Harris.py
           pytest -v tests/integration/test_predict_B88.py
           pytest -v tests/integration/test_predict_B3LYP.py
 

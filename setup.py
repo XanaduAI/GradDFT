@@ -38,7 +38,8 @@ setup(
     extras_require={
         "examples": [
             "openfermion>=1.5.1", "tqdm>=4.66.1", "torch>=2.0.1",
-            "matplotlib>=3.7.2", "pandas>=2.0.3", "seaborn>=0.12.2"
+            "matplotlib>=3.7.2", "pandas>=2.0.3", "seaborn>=0.12.2",
+            "openpyxl"
         ],
     },  
     classifiers=[

@@ -115,9 +115,9 @@ opt_state = tx.init(params)
 num_epochs = 50
 cost_val = jnp.inf
 
-dirpath = os.path.dirname(os.path.dirname(__file__))
-training_data_dirpath = os.path.normpath(dirpath + "/data/training/")
-training_files = "/dissociation/H2_extrapolation_molecules.hdf5"
+dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+training_data_dirpath = os.path.join(dirpath, "data/training/")
+training_files = "dissociation/H2_extrapolation_train.hdf5"
 
 ####### Loss function and train kernel #######
 
@@ -158,7 +158,7 @@ def train_epoch(state, training_files, training_data_dirpath):
 
     batch_metrics = []
     params, opt_state, cost_val = state
-    fpath = os.path.join(training_data_dirpath + training_files)
+    fpath = os.path.join(training_data_dirpath, training_files)
     print("Training on file: ", fpath, "\n")
 
     load = loader(fname=fpath, randomize=True, training=True, config_omegas=[])

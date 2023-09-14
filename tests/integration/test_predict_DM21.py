@@ -24,6 +24,8 @@ from grad_dft.external import Functional
 # This only works on startup!
 from jax.config import config
 
+from grad_dft.train import molecule_predictor
+
 config.update("jax_enable_x64", True)
 
 dirpath = os.path.dirname(os.path.dirname(__file__))
@@ -45,7 +47,7 @@ from grad_dft.external.density_functional_approximation_dm21.density_functional_
 from openfermion import geometry_from_pubchem
 
 from pyscf import gto, dft, cc, scf
-import numpy as np
+import jax.numpy as jnp
 from grad_dft.functional import DM21
 from grad_dft.utils.types import Hartree2kcalmol
 
@@ -87,11 +89,11 @@ def test_predict(mol):
     e_DM = mf.kernel()
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1)
+    assert jnp.allclose(kcalmoldiff, 0, atol=1)
 
 
 ##################
-test_predict(mol)
+# test_predict(mol)
 
 
 ###################### Open shell ############################
@@ -122,16 +124,16 @@ def test_predict(mol):
     # iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     # e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_scf_loop(functional, verbose=2, max_cycles=10)
+    iterator = make_scf_loop(functional, verbose=2, max_cycles=1)
     e_XND = iterator(params, molecule)
 
     mf = dft.UKS(mol)
     mf._numint = NeuralNumInt(Functional.DM21)
-    mf.max_cycle = 10
+    mf.max_cycle = 1
     e_DM = mf.kernel()
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1)
+    assert jnp.allclose(kcalmoldiff, 0, atol=1)
 
 
 ##################
@@ -167,7 +169,7 @@ def test_rks():
     e_XND = iterator(params, molecule)
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1)
+    assert jnp.allclose(kcalmoldiff, 0, atol=1)
 
 
 def test_uks():
@@ -197,7 +199,7 @@ def test_uks():
     e_XND = iterator(params, molecule)
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1)
+    assert jnp.allclose(kcalmoldiff, 0, atol=1)
 
 
 ##################

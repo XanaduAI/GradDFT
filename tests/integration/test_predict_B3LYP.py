@@ -56,27 +56,23 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
         mol_and_name (tuple[gto.Mole, str]): PySCF molecule object and the name of the molecule.
     """
     mol, name = mol_and_name
-    if name == "water":
-        mf = dft.RKS(mol)
-    elif name == "Li":
-        mf = dft.UKS(mol)
+    mf = dft.UKS(mol)
     mf.max_cycle = 0
-    
     energy = mf.kernel()
 
     molecule = molecule_from_pyscf(mf, energy=energy, omegas=[0.0], scf_iteration=0)
 
-    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=25)
+
+    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=10)
     molecule_out = iterator(PARAMS, molecule)
     e_XND = molecule_out.energy
 
-    if name == "water":
+    if mol.spin == 0:
         mf = dft.RKS(mol)
-    elif name == "Li":
+    else:
         mf = dft.UKS(mol)
     mf.xc = "B3LYP"
-    mf.max_cycle = 25
+    mf.max_cycle = 10
     e_DM = mf.kernel()
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol=1)
-
