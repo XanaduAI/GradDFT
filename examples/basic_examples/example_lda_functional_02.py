@@ -15,9 +15,9 @@
 from jax import grad, numpy as jnp
 from jax.lax import stop_gradient
 from flax.core import freeze
-from grad_dft.functional import Functional, exchange_polarization_correction
+from grad_dft.functional import Functional
 from grad_dft.interface import molecule_from_pyscf
-from grad_dft.molecule import Molecule, coulomb_potential, symmetrize_rdm1
+from grad_dft.molecule import Molecule
 
 from jax import config
 
@@ -82,7 +82,7 @@ cinputs = LSDA.compute_coefficient_inputs(molecule=HF_molecule)
 # Finally we compute the exchange-correlation energy
 predicted_energy_2 = LSDA.xc_energy(params, HF_molecule.grid, cinputs, densities)
 # And add the non-exchange-correlation energy component
-predicted_energy_2 += stop_gradient(HF_molecule.nonXC())
+predicted_energy_2 += HF_molecule.nonXC()
 
 # We can check that all methods return the same energy
 print("Predicted energies", predicted_energy_0, predicted_energy_1, predicted_energy_2)
@@ -102,8 +102,4 @@ def compute_energy_and_fock(rdm1, molecule):
 new_fock = grad(compute_energy_and_fock, argnums=0)(HF_molecule.rdm1, HF_molecule)
 # We need to add the corrections to compute the full fock matrix
 new_fock = 1 / 2 * (new_fock + new_fock.transpose(0, 2, 1))
-rdm1 = symmetrize_rdm1(HF_molecule.rdm1)
-new_fock += coulomb_potential(rdm1, HF_molecule.rep_tensor)
-new_fock = new_fock + jnp.stack([HF_molecule.h1e, HF_molecule.h1e], axis=0)
-
 print("Is the newly computed fock matrix correct?:", jnp.isclose(fock, new_fock).all())

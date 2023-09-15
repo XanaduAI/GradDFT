@@ -33,6 +33,7 @@ from jaxtyping import Array, PyTree, Scalar, Float, Int, jaxtyped
 
 @struct.dataclass
 class Grid:
+    r""" Base class for the grid coordinates and integration grids."""
     coords: Array
     weights: Array
 
@@ -102,7 +103,7 @@ class Molecule:
     unit_Angstrom: Optional[bool] = True
     grid_level: Optional[Scalar] = 2
     scf_iteration: Optional[Scalar] = 50
-    fock: Optional[Array] = None,
+    fock: Optional[Array] = None
 
     @property
     def grid_size(self):
@@ -668,6 +669,7 @@ def HF_coefficient_input_grad_2_Fock(
     return (jax.jit(chunked_jvp)(chi.transpose(3, 0, 1, 2), gr, ao)).transpose(1, 2, 3, 0)
 
 def abs_clip(arr, threshold):
+    r"""If the absolute value of an array is below a threshold, set it to zero."""
     return jnp.where(jnp.abs(arr) > threshold, arr, 0)
 
 
@@ -710,7 +712,6 @@ def nonXC(
     coulomb2e_energy = coulomb_energy(rdm1, rep_tensor, precision)
 
     return nuclear_repulsion + h1e_energy + coulomb2e_energy
-
 
 @jaxtyped
 @typechecked
@@ -873,12 +874,13 @@ def get_occ(
 
 
 class Reaction(NamedTuple):
+    r""" Base class for storing reactions as set of reactants and ."""
     reactants: Sequence[Molecule]
     products: Sequence[Molecule]
     reactant_numbers: Sequence[int]
     product_numbers: Sequence[int]
     energy: float
-    name: Optional[str] = None
+    name: Optional[List[int]] = None
 
 
 def make_reaction(

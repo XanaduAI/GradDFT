@@ -102,4 +102,6 @@ opt_state = tx.init(params)
 
 # Create the scf iterator
 scf_iterator = make_scf_loop(functional, verbose=2)
-predicted_e = scf_iterator(params, molecule)
+modified_molecule = scf_iterator(params, molecule)
+predicted_e = modified_molecule.energy
+print(f"The predicted energy is {predicted_e}")

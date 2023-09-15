@@ -26,11 +26,7 @@ from grad_dft.functional import DispersionFunctional, Functional
 from grad_dft.molecule import (
     Molecule, 
     abs_clip, 
-    coulomb_energy, 
-    coulomb_potential, 
-    nonXC, 
-    one_body_energy, 
-    symmetrize_rdm1
+    coulomb_energy
 )
 
 def molecule_predictor(
@@ -490,6 +486,7 @@ def mse_energy_loss(
     ----------
     Scalar: the mean-squared error between predicted and truth energies
     """
+    if isinstance(molecules, Molecule): molecules = [molecules]
     sum = 0
     for i, molecule in enumerate(molecules):
         molecule_out = molecule_predictor(params, molecule)

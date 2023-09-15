@@ -127,7 +127,8 @@ def loss(params, molecule_predict, molecule, trueenergy):
     it will compute the gradients with respect to params.
     """
 
-    predictedenergy, molecule = molecule_predict(params, molecule)
+    molecule = molecule_predict(params, molecule)
+    predictedenergy = molecule.energy
     cost_value = (predictedenergy - trueenergy) ** 2
 
     return cost_value, predictedenergy
@@ -168,14 +169,14 @@ opt_state = tx.init(params)
 # Create the scf iterator
 HH_molecule = molecule_from_pyscf(mf)
 scf_iterator = make_scf_loop(neuralfunctional, verbose=2, max_cycles=1)
-energy = scf_iterator(params, HH_molecule)
-print("Energy from the scf loop:", energy)
+modified_molecule = scf_iterator(params, HH_molecule)
+print("Energy from the scf loop:", modified_molecule.energy)
 
 # We can alternatively use the jit-ed version of the scf loop
 HH_molecule = molecule_from_pyscf(mf)
 scf_iterator = make_jitted_scf_loop(neuralfunctional, cycles=1)
-jitted_energy, _, _ = scf_iterator(params, HH_molecule)
-print("Energy from the jitted scf loop:", jitted_energy)
+modified_molecule = scf_iterator(params, HH_molecule)
+print("Energy from the jitted scf loop:", modified_molecule.energy)
 
 # We can even use a direct optimizer of the orbitals
 HH_molecule = molecule_from_pyscf(mf)
@@ -183,8 +184,8 @@ learning_rate = 1e-5
 momentum = 0.9
 tx = adam(learning_rate=learning_rate, b1=momentum)
 orbital_optimizer = make_orbital_optimizer(neuralfunctional, tx, max_cycles=20)
-optimized_energy = orbital_optimizer(params, HH_molecule)
-print("Energy from the orbital optimizer:", optimized_energy)
+modified_molecule = orbital_optimizer(params, HH_molecule)
+print("Energy from the orbital optimizer:", modified_molecule.energy)
 
 
 # We can even use a direct optimizer of the orbitals
@@ -193,5 +194,5 @@ learning_rate = 1e-5
 momentum = 0.9
 tx = adam(learning_rate=learning_rate, b1=momentum)
 orbital_optimizer = make_jitted_orbital_optimizer(neuralfunctional, tx, max_cycles=20)
-jitted_optimized_energy = orbital_optimizer(params, HH_molecule)
-print("Energy from the orbital optimizer:", jitted_optimized_energy)
+modified_molecule = orbital_optimizer(params, HH_molecule)
+print("Energy from the orbital optimizer:", modified_molecule.energy)
