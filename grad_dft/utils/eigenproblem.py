@@ -20,7 +20,7 @@ from typing import Tuple
 #from .types import Array, Scalar
 
 # Probably don't alter these unless you know what you're doing
-DEGEN_TOL = 1e10 # set very high presently such that we always apply broadening.
+DEGEN_TOL = 1e-6 #
 BROADENING = 1e-10
 
 @custom_vjp
