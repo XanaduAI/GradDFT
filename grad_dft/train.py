@@ -274,7 +274,7 @@ def Harris_energy_predictor(
 
         energy = jnp.einsum("sr,sr->", molecule.mo_occ, molecule.mo_energy)
 
-        coulomb_e = -coulomb_energy(molecule.rdm1, molecule.rep_tensor)
+        coulomb_e = -coulomb_energy(molecule.rdm1.sum(axis = 0), molecule.rep_tensor)
 
         xc_energy, xcfock = xc_energy_and_grads(params, molecule.rdm1, molecule, *args, **kwargs)
 
