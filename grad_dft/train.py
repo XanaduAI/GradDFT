@@ -188,13 +188,10 @@ def molecule_predictor(
             fock = abs_clip(fock, clip_cte)
 
         if functional.is_xc:
-            #rdm1 = symmetrize_rdm1(molecule.rdm1)
-            nxcfock = coulomb_potential(molecule.rdm1.sum(axis = 0), molecule.rep_tensor)
-            nxcfock = nxcfock + molecule.h1e
+            nxcfock = coulomb_potential(molecule.rdm1.sum(axis = 0), molecule.rep_tensor) + molecule.h1e
+            auto_nxcfock = grad(nonXC, argnums = 0)(molecule.rdm1.sum(axis = 0), molecule.h1e, molecule.rep_tensor, molecule.nuclear_repulsion)
 
-            autodiff_nxcfock = grad(nonXC, argnums = 1)(molecule.rdm1.sum(axis = 0), molecule.h1e, molecule.rep_tensor, molecule.nuclear_repulsion)
-
-            fock = fock + jnp.stack([nxcfock, nxcfock], axis=0)
+            fock = fock + jnp.stack([auto_nxcfock, auto_nxcfock], axis=0)
         fock = abs_clip(fock, clip_cte)
 
         return energy, fock
