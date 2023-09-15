@@ -24,15 +24,10 @@ from optax import OptState, GradientTransformation, apply_updates
 
 from grad_dft.functional import DispersionFunctional, Functional
 from grad_dft.molecule import (
-    Molecule,
-    abs_clip,
-    coulomb_energy,
-    coulomb_potential,
-    nonXC,
-    one_body_energy,
-    symmetrize_rdm1,
+    Molecule, 
+    abs_clip, 
+    coulomb_energy
 )
-
 
 def molecule_predictor(
     functional: Functional,
@@ -199,16 +194,7 @@ def molecule_predictor(
             fock += vxc_expl + vxc_expl.transpose(0, 2, 1)  # Sum over omega
             fock = abs_clip(fock, clip_cte)
 
-        if functional.is_xc:
-            rdm1 = symmetrize_rdm1(molecule.rdm1)
-            fock += coulomb_potential(rdm1, molecule.rep_tensor)
-            fock = abs_clip(fock, clip_cte)
-            # fock = cond(jnp.isclose(molecule.spin, 0), # Condition
-            #                lambda x: x, # Truefn branch
-            #                lambda x: jnp.stack([x.sum(axis = 0)/2., x.sum(axis = 0)/2.], axis=0), # Falsefn branch
-            #                fock) # Argument
-            fock = fock + jnp.stack([molecule.h1e, molecule.h1e], axis=0)
-            fock = abs_clip(fock, clip_cte)
+        fock = abs_clip(fock, clip_cte)
 
         return energy, fock
 
@@ -295,7 +281,7 @@ def Harris_energy_predictor(
 
         energy = jnp.einsum("sr,sr->", molecule.mo_occ, molecule.mo_energy)
 
-        coulomb_e = -coulomb_energy(molecule.rdm1, molecule.rep_tensor)
+        coulomb_e = -coulomb_energy(molecule.rdm1.sum(axis = 0), molecule.rep_tensor)
 
         xc_energy, xcfock = xc_energy_and_grads(params, molecule.rdm1, molecule, *args, **kwargs)
 
@@ -500,18 +486,41 @@ def mse_energy_loss(
     ----------
     Scalar: the mean-squared error between predicted and truth energies
     """
+    if isinstance(molecules, Molecule): molecules = [molecules]
     sum = 0
     for i, molecule in enumerate(molecules):
         molecule_out = molecule_predictor(params, molecule)
         E_predict = molecule_out.energy
         diff = E_predict - truth_energies[i]
         # Not jittable because of if.
+        num_elec = jnp.sum(molecule.atom_index) - molecule.charge
         if elec_num_norm:
-            diff = diff / molecule.num_elec
+            diff = diff / num_elec
         sum += (diff) ** 2
     cost_value = sum / len(molecules)
 
     return cost_value
+
+@partial(value_and_grad, has_aux=True)
+def simple_energy_loss(params: PyTree,
+    molecule_predictor: Callable,
+    molecule: Molecule,
+    truth_energy: Float,
+    ):
+    r"""
+    Computes the loss for a single molecule
+
+    Parameters
+    ----------
+    params: PyTree
+        functional parameters (weights)
+    molecule_predict: Callable.
+        any non SCF or SCF method in evaluate.py
+    """
+    molecule_out = molecule_predictor(params, molecule)
+    E_predict = molecule_out.energy
+    diff = E_predict - truth_energy
+    return diff**2, E_predict
 
 
 def sq_electron_err_int(
@@ -582,8 +591,9 @@ def mse_density_loss(
         rho_predict = molecule_out.density()
         diff = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
         # Not jittable because of if.
+        num_elec = jnp.sum(molecule.atom_index) - molecule.charge
         if elec_num_norm:
-            diff = diff / (molecule.num_elec**2)
+            diff = diff / num_elec**2
         sum += diff
     cost_value = sum / len(molecules)
 
@@ -638,9 +648,10 @@ def mse_energy_and_density_loss(
         diff_rho = sq_electron_err_int(rho_predict, truth_densities[i], molecule)
         diff_energy = energy_predict - truth_energies[i]
         # Not jittable because of if.
+        num_elec = jnp.sum(molecule.atom_index) - molecule.charge
         if elec_num_norm:
-            diff_rho = diff_rho / (molecule.num_elec**2)
-            diff_energy = diff_energy / molecule.num_elec
+            diff_rho = diff_rho / num_elec**2
+            diff_energy = diff_energy / num_elec
         sum_rho += diff_rho
         sum_energy += diff_energy**2
     energy_contrib = energy_factor * sum_energy / len(molecules)

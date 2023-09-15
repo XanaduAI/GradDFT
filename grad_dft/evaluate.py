@@ -105,7 +105,7 @@ def make_non_scf_predictor(
         molecule: Molecule
             A Grad-DFT molecule object
 
-         Returns
+        Returns
         ---------
         Molecule
             A Grad-DFT Molecule object with updated attributes 
@@ -290,22 +290,13 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
         SCF training loop not implemented for (range-separated) exact-exchange functionals.
         Doing so would require a differentiable way of recomputing the chi tensor.
         """
-
-        if molecule.omegas:
-            raise NotImplementedError(
-                "SCF training loop not implemented for (range-separated) exact-exchange functionals. \
-                                    Doing so would require a differentiable way of recomputing the chi tensor."
-            )
-
-        old_e = jnp.inf
-        norm_gorb = jnp.inf
-
-        predicted_e, fock = predict_molecule(params, molecule, *args)
         
         old_e = jnp.inf
         norm_gorb = jnp.inf
 
         predicted_e, fock = predict_molecule(params, molecule, *args)
+        molecule = molecule.replace(fock=fock)
+        molecule = molecule.replace(energy=predicted_e)
         
 
         state = (molecule, predicted_e, old_e, norm_gorb)
@@ -697,7 +688,9 @@ def make_orbital_optimizer(
                     f"cycle: {cycle}, predicted energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}"
                 )
 
-        return predicted_e
+            molecule = molecule.replace(energy=predicted_e)
+
+        return molecule
 
     return neural_iterator
 
@@ -742,8 +735,20 @@ def make_jitted_orbital_optimizer(
         return predicted_e
 
     @jit
-    def neural_iterator(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Scalar]:
-        # Predict the energy and the fock matrix
+    def neural_iterator(params: PyTree, molecule: Molecule, *args) -> Molecule:
+        r"""
+        Implements an jit-compiled orbital optimizer.
+
+        Parameters
+        ----------
+        params: PyTree
+        molecule: Molecule
+        *args: Arguments to be passed to predict_molecule function
+
+        Returns
+        -------
+        molecule: Molecule
+        """
         predicted_e, _ = predict_molecule(params, molecule, *args)
 
         w, v = jnp.linalg.eigh(molecule.s1e)
@@ -765,7 +770,9 @@ def make_jitted_orbital_optimizer(
         final_state = fori_loop(0, cycles, body_fun=loop_body, init_val=state)
         W, opt_state, predicted_e = final_state
 
-        return predicted_e
+        molecule = molecule.replace(energy = predicted_e)
+
+        return molecule
 
     return neural_iterator
 
@@ -808,7 +815,6 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
 
         Returns
         -------
-        predicted_e: Scalar
         molecule: Molecule
 
         Notes:

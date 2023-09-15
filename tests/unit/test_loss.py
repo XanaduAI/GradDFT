@@ -19,6 +19,7 @@
 (2) Gradients free of NaN's when the used with a dummy molecule_predictor
 """
 
+from re import A
 from jaxtyping import Array, PyTree, Scalar, Float, Int
 from jax.random import PRNGKey, normal, randint
 import jax.numpy as jnp
@@ -62,11 +63,12 @@ GRID = dummy_grid(GRID_WEIGHTS)
 
 @struct.dataclass
 class dummy_molecule:
-    r"""A dummy Molecule object used only to access the num_elec attribute used in
+    r"""A dummy Molecule object used only to access the atom_index and charge attributes used in
     loss functions
     """
-    num_elec: Scalar
+    atom_index: Int[Array, "atoms"]
     grid: dummy_grid
+    charge: Scalar = 0
     energy: Optional[Scalar] = 0
     rdm1: Optional[Float[Array, "spin orbitals orbitals"]] = 0
     rho: Optional[Float[Array, "spin spin"]] = 0
@@ -75,7 +77,8 @@ class dummy_molecule:
         return self.rho
 
 
-MOLECULES = [dummy_molecule(1.0, GRID), dummy_molecule(2.0, GRID)]
+MOLECULES = [dummy_molecule(jnp.array([1, 1]), GRID), 
+            dummy_molecule(jnp.array([1, 8, 1]), GRID)]
 
 
 def dummy_predictor(params: PyTree, molecule: dummy_molecule) -> dummy_molecule:

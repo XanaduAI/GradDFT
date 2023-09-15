@@ -20,7 +20,6 @@ from grad_dft.interface.pyscf import molecule_from_pyscf
 # This file aims to test some of the constraints implemented in constraints.py.
 
 from jax import config
-
 config.update("jax_enable_x64", True)
 
 # First we define a molecule:

@@ -15,10 +15,14 @@
 from jax.random import PRNGKey
 from optax import adam, apply_updates
 from jax.lax import stop_gradient
+from grad_dft.evaluate import make_non_scf_predictor
 
 from grad_dft.interface.pyscf import molecule_from_pyscf
-from grad_dft.functional import DM21, default_loss
-from grad_dft.train import molecule_predictor
+from grad_dft.functional import DM21
+from grad_dft.train import simple_energy_loss
+
+from jax.config import config
+config.update("jax_enable_x64", True)
 
 # In this example we aim to explain how we can train the DM21 functional.
 
@@ -73,11 +77,11 @@ opt_state = tx.init(params)
 
 # and implement the optimization loop
 n_epochs = 15
-molecule_predict = molecule_predictor(functional)
+predict = make_non_scf_predictor(functional)
 for iteration in range(n_epochs):
     # Here we use a default loss without regularizer, but it is easy to adapt it.
-    (cost_value, predicted_energy), grads = default_loss(
-        params, molecule_predict, molecule, ground_truth_energy
+    (cost_value, predicted_energy), grads = simple_energy_loss(
+        params, predict, molecule, ground_truth_energy
     )
     print("Iteration", iteration, "Predicted energy:", predicted_energy)
     updates, opt_state = tx.update(grads, opt_state, params)

@@ -27,6 +27,9 @@ from grad_dft.functional import DM21
 # First we define a molecule, using pyscf:
 from pyscf import gto, dft
 
+from jax.config import config
+config.update("jax_enable_x64", True)
+
 warnings.warn('--- This example should be executed after intermediate_examples/example_HF_training.py ---')
 
 mol = gto.M(atom="H 0 0 0; F 0 0 1.1")
@@ -85,6 +88,7 @@ print("Predicted_energy:", predicted_energy)
 
 # Finally, we create and implement the self-consistent loop.
 scf_iterator = make_scf_loop(functional, verbose=2, max_cycles=5)
-predicted_e = scf_iterator(params, molecule)
+modified_molecule = scf_iterator(params, molecule)
+predicted_e = modified_molecule.energy
 
 print(f"The predicted energy is {predicted_e}")

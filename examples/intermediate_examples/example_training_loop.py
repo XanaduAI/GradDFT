@@ -15,13 +15,16 @@
 from jax.random import split, PRNGKey
 from jax import numpy as jnp
 from optax import adam, apply_updates
+from grad_dft.evaluate import make_non_scf_predictor
+
+from jax.config import config
+config.update("jax_enable_x64", True)
 
 from grad_dft.interface.pyscf import molecule_from_pyscf
-from grad_dft.train import molecule_predictor
+from grad_dft.train import simple_energy_loss
 from grad_dft.functional import (
     NeuralFunctional,
     canonicalize_inputs,
-    default_loss,
     dm21_coefficient_inputs,
     dm21_densities,
 )
@@ -120,10 +123,10 @@ opt_state = tx.init(params)
 
 # and implement the optimization loop
 n_epochs = 20
-molecule_predict = molecule_predictor(functional)
+predict = make_non_scf_predictor(functional)
 for iteration in range(n_epochs):
-    (cost_value, predicted_energy), grads = default_loss(
-        params, molecule_predict, molecule, ground_truth_energy
+    (cost_value, predicted_energy), grads = simple_energy_loss(
+        params, predict, molecule, ground_truth_energy
     )
     print("Iteration", iteration, "Predicted energy:", predicted_energy)
     updates, opt_state = tx.update(grads, opt_state, params)

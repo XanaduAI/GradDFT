@@ -2,7 +2,7 @@
 
 # Grad-DFT: a software library for machine learning enhanced density functional theory
 
-[![build](https://img.shields.io/badge/build-passing-graygreen.svg "https://github.com/XanaduAI/GradDFT/actions")](https://github.com/XanaduAI/GradDFT/actions) 
+[![build](https://img.shields.io/badge/build-passing-graygreen.svg "https://github.com/XanaduAI/GradDFT/actions")](https://github.com/XanaduAI/GradDFT/actions)
 [![arXiv](http://img.shields.io/badge/arXiv-2101.10279-B31B1B.svg "Grad-DFT")](https://arxiv.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-9F9F9F "https://github.com/XanaduAI/GradDFT/blob/main/LICENSE")](https://github.com/XanaduAI/GradDFT/blob/main/LICENSE)
 
@@ -45,8 +45,8 @@ from jax.random import PRNGKey
 from flax import linen as nn
 from optax import adam, apply_updates
 from tqdm import tqdm
-from grad_dft.train import molecule_predictor
-from grad_dft.functional import NeuralFunctional, default_loss
+from grad_dft.train import molecule_predictor, simple_energy_loss
+from grad_dft.functional import NeuralFunctional
 from grad_dft.interface import molecule_from_pyscf
 
 def coefficient_inputs(molecule):
@@ -75,7 +75,6 @@ predicted_energy = neuralfunctional.energy(params, molecule)
 ### Training the neural functional
 
 ```python
-# Defining training parameters
 learning_rate = 1e-5
 momentum = 0.9
 tx = adam(learning_rate=learning_rate, b1=momentum)
@@ -85,8 +84,8 @@ opt_state = tx.init(params)
 n_epochs = 20
 molecule_predict = molecule_predictor(neuralfunctional)
 for iteration in tqdm(range(n_epochs), desc="Training epoch"):
-    (cost_value, predicted_energy), grads = default_loss(
-        params, molecule_predict, HH_molecule, ground_truth_energy
+    (cost_value, predicted_energy), grads = simple_energy_loss(
+        params, molecule_predict, HH_molecule, ground_truth_energy]
     )
     print("Iteration", iteration, "Predicted energy:", predicted_energy, "Cost value:", cost_value)
     updates, opt_state = tx.update(grads, opt_state, params)
@@ -122,7 +121,7 @@ to install the additional dependencies.
 
 ## Acknowledgements
 
-We thank helpful comments and insights from Alain Delgado, Modjtaba Shokrian Zini, Stepan Fomichev, Soran Jahangiri, Diego Guala, Jay Soni, Utkarsh Azad, Vincent Michaud-Rioux, Maria Schuld and Nathan Wiebe. 
+We thank helpful comments and insights from Alain Delgado, Modjtaba Shokrian Zini, Stepan Fomichev, Soran Jahangiri, Diego Guala, Jay Soni, Utkarsh Azad, Vincent Michaud-Rioux, Maria Schuld and Nathan Wiebe.
 
 GradDFT often follows similar calculations and naming conventions as PySCF, though adapted for our purposes. Only a few non-jittable DIIS procedures were directly taken from it. Where this happens, it has been conveniently referenced in the documentation. The test were also implemented against PySCF results. PySCF Notice file is included for these reasons.
 

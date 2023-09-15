@@ -17,6 +17,9 @@ from jax import numpy as jnp
 from optax import adam
 from grad_dft.evaluate import make_scf_loop
 
+from jax.config import config
+config.update("jax_enable_x64", True)
+
 from grad_dft.interface.pyscf import molecule_from_pyscf
 from grad_dft.functional import (
     NeuralFunctional,
@@ -102,4 +105,6 @@ opt_state = tx.init(params)
 
 # Create the scf iterator
 scf_iterator = make_scf_loop(functional, verbose=2)
-predicted_e = scf_iterator(params, molecule)
+modified_molecule = scf_iterator(params, molecule)
+predicted_e = modified_molecule.energy
+print(f"The predicted energy is {predicted_e}")

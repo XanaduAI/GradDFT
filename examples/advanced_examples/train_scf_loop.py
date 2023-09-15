@@ -128,7 +128,8 @@ scf_train_loop = make_jitted_scf_loop(functional, max_cycles=50)
 @partial(value_and_grad, has_aux=True)
 def loss(params, molecule, ground_truth_energy):
     # predicted_energy, fock = molecule_predict(params, molecule)
-    predicted_energy, molecule = scf_train_loop(params, molecule)
+    modified_molecule = scf_train_loop(params, molecule)
+    predicted_energy = modified_molecule.energy
     cost_value = (predicted_energy - ground_truth_energy) ** 2
 
     # We may want to add a regularization term to the cost, be it one of the

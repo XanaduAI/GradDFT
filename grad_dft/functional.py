@@ -281,8 +281,7 @@ class Functional(nn.Module):
         energy = self.xc_energy(params, molecule.grid, cinputs, densities, **kwargs)
 
         if self.is_xc:
-            # energy += molecule.nonXC() #todo: should we remove the stop gradient?
-            energy += stop_gradient(molecule.nonXC())
+            energy += molecule.nonXC()
 
         return energy
 

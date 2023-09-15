@@ -13,17 +13,18 @@
 # limitations under the License.
 
 from jax import numpy as jnp
-from jax.random import split, PRNGKey
+from jax.random import PRNGKey
 from optax import adam, apply_updates
 from tqdm import tqdm
 from grad_dft.evaluate import (
     make_jitted_orbital_optimizer,
+    make_non_scf_predictor,
     make_orbital_optimizer,
     make_scf_loop,
     make_jitted_scf_loop,
 )
-from grad_dft.train import molecule_predictor
-from grad_dft.functional import NeuralFunctional, default_loss
+from grad_dft.train import simple_energy_loss
+from grad_dft.functional import NeuralFunctional
 from grad_dft.interface import molecule_from_pyscf
 from grad_dft.molecule import Molecule
 from jax.nn import sigmoid, gelu
@@ -100,10 +101,10 @@ opt_state = tx.init(params)
 
 # and implement the optimization loop
 n_epochs = 20
-molecule_predict = molecule_predictor(neuralfunctional)
+predict = make_non_scf_predictor(neuralfunctional)
 for iteration in tqdm(range(n_epochs), desc="Training epoch"):
-    (cost_value, predicted_energy), grads = default_loss(
-        params, molecule_predict, HH_molecule, ground_truth_energy
+    (cost_value, predicted_energy), grads = simple_energy_loss(
+        params, predict, HH_molecule, ground_truth_energy
     )
     print("Iteration", iteration, "Predicted energy:", predicted_energy, "Cost value:", cost_value)
     updates, opt_state = tx.update(grads, opt_state, params)
@@ -128,14 +129,14 @@ opt_state = tx.init(params)
 # Create the scf iterator
 HH_molecule = molecule_from_pyscf(mf)
 scf_iterator = make_scf_loop(neuralfunctional, verbose=2, max_cycles=5)
-energy = scf_iterator(params, HH_molecule)
-print("Energy from the scf loop:", energy)
+modified_molecule = scf_iterator(params, HH_molecule)
+print("Energy from the scf loop:", modified_molecule.energy)
 
 # We can alternatively use the jit-ed version of the scf loop
 HH_molecule = molecule_from_pyscf(mf)
 scf_iterator = make_jitted_scf_loop(neuralfunctional, cycles=5)
-jitted_energy, HH_molecule = scf_iterator(params, HH_molecule)
-print("Energy from the jitted scf loop:", jitted_energy)
+modified_molecule = scf_iterator(params, HH_molecule)
+print("Energy from the jitted scf loop:", modified_molecule.energy)
 
 # We can even use a direct optimizer of the orbitals
 HH_molecule = molecule_from_pyscf(mf)
@@ -143,8 +144,8 @@ learning_rate = 1e-5
 momentum = 0.9
 tx = adam(learning_rate=learning_rate, b1=momentum)
 orbital_optimizer = make_orbital_optimizer(neuralfunctional, tx, max_cycles=20)
-optimized_energy = orbital_optimizer(params, HH_molecule)
-print("Energy from the orbital optimizer:", optimized_energy)
+modified_molecule = orbital_optimizer(params, HH_molecule)
+print("Energy from the orbital optimizer:", modified_molecule.energy)
 
 
 # We can even use a direct optimizer of the orbitals
@@ -153,5 +154,5 @@ learning_rate = 1e-5
 momentum = 0.9
 tx = adam(learning_rate=learning_rate, b1=momentum)
 orbital_optimizer = make_jitted_orbital_optimizer(neuralfunctional, tx, max_cycles=20)
-jitted_optimized_energy = orbital_optimizer(params, HH_molecule)
-print("Energy from the orbital optimizer:", jitted_optimized_energy)
+modified_molecule = orbital_optimizer(params, HH_molecule)
+print("Energy from the orbital optimizer:", modified_molecule.energy)
