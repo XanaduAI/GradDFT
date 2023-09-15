@@ -911,37 +911,6 @@ def canonicalize_inputs(x):
         return x
 
 
-@partial(value_and_grad, has_aux=True)
-def default_loss(params: PyTree, molecule_predict: Callable, molecule: Molecule, trueenergy: float):
-    r"""
-    Computes the default loss function, here MSE, between predicted and true energy
-
-    Parameters
-    ----------
-    params: PyTree
-        functional parameters (weights)
-    molecule_predict: Callable.
-        Use molecule_predict = molecule_predictor(functional) to generate it.
-    molecule: Molecule
-    trueenergy: float
-
-    Returns
-    ----------
-    Tuple[float, float]
-    The loss and predicted energy.
-
-    Note
-    ----------
-    Since it has the decorator @partial(value_and_grad, has_aux = True)
-    it will compute the gradients with respect to params.
-    """
-
-    predictedenergy, _ = molecule_predict(params, molecule)
-    cost_value = (predictedenergy - trueenergy) ** 2
-
-    return cost_value, predictedenergy
-
-
 def _canonicalize_fxc(fxc: Functional) -> Callable:
     if hasattr(fxc, "energy"):
         return fxc.energy

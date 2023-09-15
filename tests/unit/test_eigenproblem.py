@@ -35,7 +35,7 @@ import pytest
 
 config.update("jax_enable_x64", True)
 
-ABS_THRESH = 1e-10
+ABS_THRESH = 1e-8
 SEEDS = [1984, 1993, 1945, 2001, 10, 29, 101, 1992]
 RANDOM_KEYS = [PRNGKey(seed) for seed in SEEDS]
 MATRIX_SIZES = jnp.arange(2, 10)

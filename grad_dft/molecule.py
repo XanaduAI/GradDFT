@@ -87,6 +87,7 @@ class Molecule:
     vj: Float[Array, "spin orbitals orbitals"]
     mo_coeff: Float[Array, "spin orbitals orbitals"]
     mo_occ: Float[Array, "spin orbitals"]
+    num_elec: Scalar
     mo_energy: Float[Array, "spin orbitals"]
     mf_energy: Optional[Scalar] = None
     s1e: Optional[Float[Array, "orbitals orbitals"]] = None  # Not used during training
@@ -101,10 +102,7 @@ class Molecule:
     unit_Angstrom: Optional[bool] = True
     grid_level: Optional[Scalar] = 2
     scf_iteration: Optional[Scalar] = 50
-    fock: Optional[Array] = None
-
-    # def __repr__(self):
-    #    return f"{self.__class__.__name__}(grid_size={self.grid_size})"
+    fock: Optional[Array] = None,
 
     @property
     def grid_size(self):

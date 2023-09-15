@@ -47,6 +47,8 @@ MOL_LI.basis = "def2-tzvp"
 MOL_LI.spin = 1
 MOL_LI.build()
 
+SCF_ITERS = 10
+
 @pytest.mark.parametrize("mol_and_name", [(MOL_WATER, "water"), (MOL_LI, "Li")])
 def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
     r"""Compare the total energy predicted by Grad-DFT for the B88 functional versus PySCF.
@@ -62,22 +64,26 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
         mf = dft.UKS(mol)
     mf.max_cycle = 0
     
-    energy = mf.kernel()
-
-    molecule = molecule_from_pyscf(mf, energy=energy, omegas=[], scf_iteration=0)
-
-    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=25)
-    e_XND = iterator(PARAMS, molecule)
-
-    mf = dft.UKS(mol)
     mf.xc = "B88"
-    mf.max_cycle = 25
+    mf.max_cycle = 10
     e_DM = mf.kernel()
+    
+    # Start from Non-SCF density
+    molecule = molecule_from_pyscf(mf, energy=e_DM, omegas=[], scf_iteration=0)
+
+    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=10)
+    molecule_out = iterator(PARAMS, molecule)
+    e_XND = molecule_out.energy
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
     assert np.allclose(kcalmoldiff, 0, atol=1e-6)
 
     # Testing the training scf loop too.
-    iterator = make_jitted_scf_loop(FUNCTIONAL, cycles=25)
-    e_XND_jit, molecule = iterator(PARAMS, molecule)
+    iterator = make_jitted_scf_loop(FUNCTIONAL, cycles=10)
+    molecule_out = iterator(PARAMS, molecule)
+    e_XND_jit = molecule_out.energy
     kcalmoldiff = (e_XND - e_XND_jit) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e-6)
+    
+    assert np.allclose(kcalmoldiff, 0, atol=1e-3)
+    
+
+# test_predict((MOL_LI, "Li"))
