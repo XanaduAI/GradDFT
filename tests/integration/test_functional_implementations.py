@@ -29,7 +29,6 @@ from grad_dft.external import Functional
 from jax import config
 
 from grad_dft.utils.types import Hartree2kcalmol
-from openfermion import geometry_from_pubchem
 
 config.update("jax_enable_x64", True)
 
