@@ -500,6 +500,19 @@ def mse_energy_loss(
 
     return cost_value
 
+def simple_energy_loss(params: PyTree,
+    molecule_predictor: Callable,
+    molecule: Molecule,
+    truth_energy: Float,
+    elec_num_norm: Scalar = True):
+    return mse_energy_loss(
+        params, 
+        molecule_predictor, 
+        [molecule], 
+        jnp.array([truth_energy]), 
+        elec_num_norm
+    )
+
 
 def sq_electron_err_int(
     pred_density: Float[Array, "ngrid nspin"],
