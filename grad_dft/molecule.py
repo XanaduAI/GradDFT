@@ -293,7 +293,7 @@ class Molecule:
 
     def nonXC(self, *args, **kwargs) -> Scalar:
         r""" Computes the non-XC energy of a DFT functional."""
-        return nonXC(self.rdm1, self.h1e, self.rep_tensor, self.nuclear_repulsion, *args, **kwargs)
+        return nonXC(self.rdm1.sum(axis = 0), self.h1e, self.rep_tensor, self.nuclear_repulsion, *args, **kwargs)
 
     def make_rdm1(self) -> Array:
         r""" Computes the 1-Reduced Density Matrix for the molecule.
@@ -679,7 +679,7 @@ def abs_clip(arr, threshold):
 @typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def nonXC(
-    rdm1: Float[Array, "spin orbitals orbitals"],
+    rdm1: Float[Array, "orbitals orbitals"],
     h1e: Float[Array, "orbitals orbitals"],
     rep_tensor: Float[Array, "orbitals orbitals orbitals orbitals"],
     nuclear_repulsion: Scalar,
@@ -689,7 +689,7 @@ def nonXC(
 
     Parameters
     ----------
-    rdm1 : Float[Array, "spin orbitals orbitals"]
+    rdm1 : Float[Array, "orbitals orbitals"]
         The 1-Reduced Density Matrix.
         Equivalent to mf.make_rdm1() in pyscf.
     h1e : Float[Array, "orbitals orbitals"]
@@ -708,7 +708,6 @@ def nonXC(
     -------
     Scalar
     """
-    rdm1 = symmetrize_rdm1(rdm1)
     h1e_energy = one_body_energy(rdm1, h1e, precision)
     coulomb2e_energy = coulomb_energy(rdm1, rep_tensor, precision)
 
@@ -738,7 +737,7 @@ def symmetrize_rdm1(rdm1: Float[Array, "spin orbitals orbitals"],
 @typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def coulomb_energy(
-    rdm1: Float[Array, "spin orbitals orbitals"],
+    rdm1: Float[Array, "orbitals orbitals"],
     rep_tensor: Float[Array, "orbitals orbitals orbitals orbitals"],
     precision=Precision.HIGHEST,
     clip_cte: float = 1e-30,
@@ -758,14 +757,14 @@ def coulomb_energy(
     """
     v_coul = coulomb_potential(rdm1, rep_tensor, precision)
     v_coul = abs_clip(v_coul, clip_cte)
-    coulomb2e_energy = jnp.einsum("sji,sij->", rdm1, v_coul, precision=precision) / 2.0
+    coulomb2e_energy = jnp.einsum("ji,ij->", rdm1, v_coul, precision=precision) / 2.0
     return coulomb2e_energy
 
 @jaxtyped
 @typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def one_body_energy(
-    rdm1: Float[Array, "spin orbitals orbitals"],
+    rdm1: Float[Array, "orbitals orbitals"],
     h1e: Float[Array, "orbitals orbitals"],
     precision=Precision.HIGHEST,
     clip_cte: float = 1e-30,
@@ -784,17 +783,17 @@ def one_body_energy(
     Scalar
     """
     h1e = abs_clip(h1e, clip_cte)
-    h1e_energy = jnp.einsum("sij,ji->", rdm1, h1e, precision=precision)
+    h1e_energy = jnp.einsum("ij,ji->", rdm1, h1e, precision=precision)
     return h1e_energy
 
 @jaxtyped
 @typechecked
 @partial(jax.jit, static_argnames=["precision"])
 def coulomb_potential(
-    rdm1: Float[Array, "spin orbitals orbitals"],
+    rdm1: Float[Array, "orbitals orbitals"],
     rep_tensor: Float[Array, "orbitals orbitals orbitals orbitals"],
     precision=Precision.HIGHEST,
-) -> Float[Array, "spin orbitals orbitals"]:
+) -> Float[Array, "orbitals orbitals"]:
     r"""
     A function that computes the Coulomb potential matrix.
 
@@ -813,8 +812,7 @@ def coulomb_potential(
     -------
     Float[Array, "spin orbitals orbitals"]
     """
-    # The 2 is to compensate for the /2 in the dm definition
-    return 2 * jnp.einsum("pqrt,srt->spq", rep_tensor, rdm1, precision=precision)
+    return jnp.einsum("pqrt,rt->pq", rep_tensor, rdm1, precision=precision)
 
 @jaxtyped
 @typechecked
