@@ -124,7 +124,7 @@ to install the additional dependencies.
 
 We thank helpful comments and insights from Alain Delgado, Modjtaba Shokrian Zini, Stepan Fomichev, Soran Jahangiri, Diego Guala, Jay Soni, Utkarsh Azad, Vincent Michaud-Rioux, Maria Schuld and Nathan Wiebe. 
 
-GradDFT often follows similar calculations and naming conventions as PySCF, though adapted for our purposes. Only a few non-jittable DIIS procedures were directly taken from it. Where this happens, it has been conveniently referenced in the documentation. The test were also implemented against PySCF results.
+GradDFT often follows similar calculations and naming conventions as PySCF, though adapted for our purposes. Only a few non-jittable DIIS procedures were directly taken from it. Where this happens, it has been conveniently referenced in the documentation. The test were also implemented against PySCF results. PySCF Notice file is included for these reasons.
 
 ## Bibtex
 
