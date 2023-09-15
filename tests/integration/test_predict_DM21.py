@@ -44,7 +44,6 @@ from grad_dft.evaluate import make_scf_loop, make_orbital_optimizer
 from grad_dft.external.density_functional_approximation_dm21.density_functional_approximation_dm21.compute_hfx_density import (
     get_hf_density,
 )
-from openfermion import geometry_from_pubchem
 
 from pyscf import gto, dft, cc, scf
 import jax.numpy as jnp
@@ -57,16 +56,17 @@ params = functional.generate_DM21_weights()
 
 ###################### Closed shell ############################
 
-molecule_name = "water"
-geometry = geometry_from_pubchem(molecule_name)
-mol = gto.M(atom=geometry, basis="def2-tzvp")
-mf2 = scf.RHF(mol)
+MOL_WATER = gto.Mole()
+MOL_WATER.atom = "O 0.0 0.0 0.0; H 0.2774 0.8929 0.2544; H 0.6068 -0.2383 -0.7169"
+MOL_WATER.basis = "def2-tzvp"
+MOL_WATER.build()
+mf2 = scf.RHF(MOL_WATER)
 mf2.kernel()
 mycc = cc.CCSD(mf2).run()
 ccsd_energy = mycc.e_tot
 
 
-@pytest.mark.parametrize("mol", [mol])
+@pytest.mark.parametrize("mol", [MOL_WATER])
 def test_predict(mol):
     mf = dft.UKS(mol)
     mf.max_cycle = 0

@@ -24,22 +24,22 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 
 from grad_dft.interface import molecule_from_pyscf
-from grad_dft.evaluate import make_scf_loop, make_jitted_scf_loop
+from grad_dft.evaluate import make_scf_loop
 from grad_dft.utils.types import Hartree2kcalmol
 from grad_dft.popular_functionals import B3LYP
 
-from openfermion import geometry_from_pubchem
-
 from pyscf import gto, dft
 
-import numpy as np
+import jax.numpy as jnp
 
 
 FUNCTIONAL = B3LYP
 PARAMS = {"params": {}}
 
-GEOMETRY = geometry_from_pubchem("water")
-MOL_WATER = gto.M(atom=GEOMETRY, basis="def2-tzvp")
+MOL_WATER = gto.Mole()
+MOL_WATER.atom = "O 0.0 0.0 0.0; H 0.2774 0.8929 0.2544; H 0.6068 -0.2383 -0.7169"
+MOL_WATER.basis = "def2-tzvp"
+MOL_WATER.build()
 
 MOL_LI = gto.Mole()
 MOL_LI.atom = "Li 0 0 0"
@@ -56,17 +56,6 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
         mol_and_name (tuple[gto.Mole, str]): PySCF molecule object and the name of the molecule.
     """
     mol, name = mol_and_name
-    mf = dft.UKS(mol)
-    mf.max_cycle = 0
-    energy = mf.kernel()
-
-    molecule = molecule_from_pyscf(mf, energy=energy, omegas=[0.0], scf_iteration=0)
-
-
-    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=10)
-    molecule_out = iterator(PARAMS, molecule)
-    e_XND = molecule_out.energy
-
     if mol.spin == 0:
         mf = dft.RKS(mol)
     else:
@@ -74,5 +63,11 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
     mf.xc = "B3LYP"
     mf.max_cycle = 10
     e_DM = mf.kernel()
+
+    molecule = molecule_from_pyscf(mf, energy=e_DM, omegas=[0.0], scf_iteration=0)
+
+    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=10)
+    molecule_out = iterator(PARAMS, molecule)
+    e_XND = molecule_out.energy
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1)
+    assert jnp.allclose(kcalmoldiff, 0, atol=1), f"Energy difference with PySCF for B3LYP on {name} exceeds the threshold."

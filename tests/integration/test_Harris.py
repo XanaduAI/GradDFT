@@ -15,7 +15,7 @@
 from flax.core import freeze
 from jax import numpy as jnp
 import pytest
-from grad_dft.popular_functionals import B3LYP, B88, LSDA, LYP, VWN, PW92
+from grad_dft.popular_functionals import B88, LSDA
 
 from grad_dft.interface.pyscf import molecule_from_pyscf
 
@@ -26,13 +26,17 @@ from grad_dft.interface.pyscf import molecule_from_pyscf
 from jax import config
 
 from grad_dft.utils.types import Hartree2kcalmol
-from openfermion import geometry_from_pubchem
 from grad_dft.train import molecule_predictor, Harris_energy_predictor
 
 config.update("jax_enable_x64", True)
 
 # First we define a molecule:
 from pyscf import gto, dft
+
+MOL_WATER = gto.Mole()
+MOL_WATER.atom = "O 0.0 0.0 0.0; H 0.2774 0.8929 0.2544; H 0.6068 -0.2383 -0.7169"
+MOL_WATER.basis = "def2-tzvp"
+MOL_WATER.build()
 
 params = freeze({"params": {}})
 
@@ -41,7 +45,7 @@ mol = gto.M(atom="Li 0 0 0", spin = 1, basis = 'def2-tzvp')
 
 mols = [
     gto.M(atom="H 0 0 0; F 0 0 1.1", basis = 'def2-tzvp'),
-    gto.M(atom=geometry_from_pubchem("water"), basis = 'def2-tzvp'),
+    MOL_WATER,
     gto.M(atom="Li 0 0 0", spin = 1, basis = 'def2-tzvp'),
 ]
 
