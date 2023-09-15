@@ -36,4 +36,5 @@ jobs:
           pytest -v tests/integration/test_Harris.py
           pytest -v tests/integration/test_predict_B88.py
           pytest -v tests/integration/test_predict_B3LYP.py
+          pytest -v tests/integration/test_training.py
 
