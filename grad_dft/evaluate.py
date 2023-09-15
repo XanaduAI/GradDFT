@@ -306,8 +306,6 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
         norm_gorb = jnp.inf
 
         predicted_e, fock = predict_molecule(params, molecule, *args)
-        rho = molecule.density()
-        molecule = molecule.replace(rho=rho)
         
 
         state = (molecule, predicted_e, old_e, norm_gorb)
@@ -332,8 +330,6 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
             unmixed_new_rdm1 =  molecule.make_rdm1()
             rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*unmixed_new_rdm1
             molecule = molecule.replace(rdm1=rdm1)
-            rho = molecule.density()
-            molecule = molecule.replace(rho=rho)
 
             # Compute the new energy and Fock matrix
             predicted_e, fock = predict_molecule(params, molecule, *args)
