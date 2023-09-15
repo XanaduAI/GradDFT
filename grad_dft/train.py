@@ -19,11 +19,20 @@ from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float
 from jax import grad, numpy as jnp, vmap
 from jax import value_and_grad
 from jax.profiler import annotate_function
-from jax.lax import stop_gradient
+from jax.lax import stop_gradient, fori_loop, cond
 from optax import OptState, GradientTransformation, apply_updates
 
 from grad_dft.functional import DispersionFunctional, Functional
-from grad_dft.molecule import Molecule, abs_clip, coulomb_energy, coulomb_potential, nonXC, one_body_energy, symmetrize_rdm1
+from grad_dft.molecule import (
+    Molecule,
+    abs_clip,
+    coulomb_energy,
+    coulomb_potential,
+    nonXC,
+    one_body_energy,
+    symmetrize_rdm1,
+)
+
 
 def molecule_predictor(
     functional: Functional,
@@ -79,7 +88,11 @@ def molecule_predictor(
 
     @partial(value_and_grad, argnums=1)
     def energy_and_grads(
-        params: PyTree, rdm1: Float[Array, "spin orbitals orbitals"], molecule: Molecule, *args, **functional_kwargs
+        params: PyTree,
+        rdm1: Float[Array, "spin orbitals orbitals"],
+        molecule: Molecule,
+        *args,
+        **functional_kwargs,
     ) -> Scalar:
         r"""
         Computes the energy and gradients with respect to the density matrix
@@ -136,7 +149,6 @@ def molecule_predictor(
         fock = 1 / 2 * (fock + fock.transpose(0, 2, 1))
         fock = abs_clip(fock, clip_cte)
         
-
         # Compute the features that should be autodifferentiated
         if functional.energy_densities and functional.densitygrads:
             grad_densities = functional.energy_densities(molecule, *args, **kwargs)
@@ -419,9 +431,11 @@ def orbital_grad_regularization(molecule: Molecule, F: Float[Array, "spin ao ao"
     return dE**2
 
 
-def get_grad(mo_coeff: Float[Array, "spin ao ao"], 
-            mo_occ: Float[Array, "spin ao"],
-            F: Float[Array, "spin ao ao"]):
+def get_grad(
+    mo_coeff: Float[Array, "spin ao ao"],
+    mo_occ: Float[Array, "spin ao"],
+    F: Float[Array, "spin ao ao"],
+):
     """RHF orbital gradients
 
     Parameters
@@ -451,3 +465,185 @@ def get_grad(mo_coeff: Float[Array, "spin ao ao"],
     C_vir = vmap(jnp.where, in_axes=(None, 1, None), out_axes=1)(mo_occ == 0, mo_coeff, 0)
 
     return jnp.einsum("sab,sac,scd->bd", C_vir.conj(), F, C_occ)
+
+
+##################### Loss Functions #####################
+
+
+def mse_energy_loss(
+    params: PyTree,
+    molecule_predictor: Callable,
+    molecules: list[Molecule],
+    truth_energies: Float[Array, "energy"],
+    elec_num_norm: Scalar = True,
+) -> Scalar:
+    r"""
+    Computes the mean-squared error between predicted and truth energies.
+
+    This loss function does not yet support parallel execution for the loss contributions
+    and instead implemented a simple for loop.
+
+    Parameters
+    ----------
+    params: PyTree
+        functional parameters (weights)
+    molecule_predict: Callable.
+        any non SCF or SCF method in evaluate.py
+    molecule: Molecule
+        a Grad-DFT Molecule object
+    truth_energies: Float[Array, "energy"]
+        the truth values of the energy to measure the predictions against
+    elec_num_norm: Scalar
+        True to normalize the loss function by the number of electrons in a Molecule.
+
+    Returns
+    ----------
+    Scalar: the mean-squared error between predicted and truth energies
+    """
+    sum = 0
+    for i, molecule in enumerate(molecules):
+        molecule_out = molecule_predictor(params, molecule)
+        E_predict = molecule_out.energy
+        diff = E_predict - truth_energies[i]
+        # Not jittable because of if.
+        if elec_num_norm:
+            diff = diff / molecule.num_elec
+        sum += (diff) ** 2
+    cost_value = sum / len(molecules)
+
+    return cost_value
+
+
+def sq_electron_err_int(
+    pred_density: Float[Array, "ngrid nspin"],
+    truth_density: Float[Array, "ngrid nspin"],
+    molecule: Molecule,
+    clip_cte=1e-30
+) -> Scalar:
+    r"""
+    Computes the integral:
+
+    .. math::
+        \epsilon = \int (\rho_{pred}(r) - \rho_{truth})^2 dr
+    Parameters
+    ----------
+    pred_density: Float[Array, "ngrid nspin"]
+        Density predicted by a neural functional
+    truth_density: Float[Array, "ngrid nspin"]
+        A accurate density used as a truth value in training
+    molecule: Molecule
+        A Grad-DFT Molecule
+
+    Returns
+        Scalar: the value epsilon described above
+    ----------
+    """
+    pred_density = jnp.clip(pred_density, a_min=clip_cte)
+    truth_density = jnp.clip(truth_density, a_min=clip_cte)
+    diff_up = jnp.clip(jnp.clip(pred_density[:, 0] - truth_density[:, 0], a_min=clip_cte) ** 2, a_min=clip_cte)
+    diff_dn = jnp.clip(jnp.clip(pred_density[:, 1] - truth_density[:, 1], a_min=clip_cte) ** 2, a_min=clip_cte)
+    err_int = jnp.sum(diff_up * molecule.grid.weights) + jnp.sum(diff_dn * molecule.grid.weights)
+    return err_int
+
+
+def mse_density_loss(
+    params: PyTree,
+    molecule_predictor: Callable,
+    molecules: list[Molecule],
+    truth_rhos: list[Float[Array, "ngrid nspin"]],
+    elec_num_norm: Scalar = True,
+) -> Scalar:
+    r"""
+    Computes the mean-squared error between predicted and truth densities.
+
+    This loss function does not yet support parallel execution for the loss contributions
+    and instead implemented a simple for loop.
+
+    Parameters
+    ----------
+    params: PyTree
+        functional parameters (weights)
+    molecule_predict: Callable.
+        any non SCF or SCF method in evaluate.py
+    molecule: Molecule
+        a Grad-DFT Molecule object
+    truth_densities: list[Float[Array, "ngrid nspin"]]
+        the truth values of the density to measure the predictions against
+    elec_num_norm: Scalar
+        True to normalize the loss function by the number of electrons in a Molecule.
+
+    Returns
+    ----------
+    Scalar: the mean-squared error between predicted and truth densities
+    """
+    sum = 0
+    for i, molecule in enumerate(molecules):
+        molecule_out = molecule_predictor(params, molecule)
+        rho_predict = molecule_out.density()
+        diff = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
+        # Not jittable because of if.
+        if elec_num_norm:
+            diff = diff / (molecule.num_elec**2)
+        sum += diff
+    cost_value = sum / len(molecules)
+
+    return cost_value
+
+
+def mse_energy_and_density_loss(
+    params: PyTree,
+    molecule_predictor: Callable,
+    molecules: list[Molecule],
+    truth_densities: list[Float[Array, "ngrid nspin"]],
+    truth_energies: Float[Array, "energy"],
+    energy_factor: Scalar = 1.0,
+    rho_factor: Scalar = 1.0,
+    elec_num_norm: Scalar = True,
+) -> Scalar:
+    r"""
+    Computes the most general loss function using mean-squared error of energies and densities.
+
+    This loss function does not yet support parallel execution for the loss contributions
+    and instead implemented a simple for loop.
+
+    Parameters
+    ----------
+    params: PyTree
+        functional parameters (weights)
+    molecule_predict: Callable.
+        any non SCF or SCF method in evaluate.py
+    molecule: Molecule
+        a Grad-DFT Molecule object
+    truth_densities: list[Float[Array, "ngrid, nspin"]]
+        the truth values of the density to measure the predictions against
+    truth_energies: Float[Array, "energy"]
+        the truth values of the energy to measure the predictions against
+    energy_factor: Scalar
+        A weighting factor for the energy portion of the loss. Default = 1.0
+    density_factor: Scalar
+        A weighting factor for the density portion of the loss. Default = 1.0
+    elec_num_norm: Scalar
+        True to normalize the loss function by the number of electrons in a Molecule.
+
+    Returns
+    ----------
+    Scalar: the mean-squared error of both energies and densities each with it's own weight.
+    """
+    sum_energy = 0
+    sum_rho = 0
+    for i, molecule in enumerate(molecules):
+        molecule_out = molecule_predictor(params, molecule)
+        rho_predict = molecule_out.density()
+        energy_predict = molecule_out.energy
+        diff_rho = sq_electron_err_int(rho_predict, truth_densities[i], molecule)
+        diff_energy = energy_predict - truth_energies[i]
+        # Not jittable because of if.
+        if elec_num_norm:
+            diff_rho = diff_rho / (molecule.num_elec**2)
+            diff_energy = diff_energy / molecule.num_elec
+        sum_rho += diff_rho
+        sum_energy += diff_energy**2
+    energy_contrib = energy_factor * sum_energy / len(molecules)
+    rho_contrib = rho_factor * sum_rho / len(molecules)
+
+    return energy_contrib + rho_contrib

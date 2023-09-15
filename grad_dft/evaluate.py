@@ -75,6 +75,49 @@ def make_test_kernel(tx: optax.GradientTransformation, loss: Callable) -> Callab
 
     return kernel
 
+######## Non self-consistent iterator ################
+
+def make_non_scf_predictor(
+    functional: Functional,
+    chunk_size: int = 1024,
+    **kwargs,
+) -> Callable:
+    r"""
+    Creates an non_scf_predictor function which when called non-self consistently
+    calculates the total energy at a fixed density.
+
+    Main parameters
+    ---------------
+    functional: Functional
+
+    Returns
+    ---------
+    Callable
+    """
+    predict_molecule = molecule_predictor(functional, chunk_size=chunk_size, **kwargs)
+    def non_scf_predictor(params: PyTree, molecule: Molecule, *args) -> Molecule:
+        r"""Calculates the total energy at a fixed density non-self consistently.
+
+        Main parameters
+        ---------------
+        params: Pytree
+            Parameters of the neural functional
+        molecule: Molecule
+            A Grad-DFT molecule object
+
+         Returns
+        ---------
+        Molecule
+            A Grad-DFT Molecule object with updated attributes 
+        """
+        predicted_e, fock = predict_molecule(params, molecule, *args)
+        molecule = molecule.replace(fock=fock)
+        molecule = molecule.replace(energy=predicted_e)
+        return molecule
+    
+    return non_scf_predictor
+
+# Add Harris-Foulkes predictor here too! 
 
 ######## Test scf loop and orbital optimizers ########
 
@@ -106,7 +149,7 @@ def make_simple_scf_loop(
 
     predict_molecule = molecule_predictor(functional, chunk_size=chunk_size, **kwargs)
 
-    def scf_iterator(params: PyTree, molecule: Molecule, clip_cte = 1e-30, *args) -> Tuple[Scalar, Scalar]:
+    def simple_scf_iterator(params: PyTree, molecule: Molecule, clip_cte = 1e-30, *args) -> Molecule:
         r"""
         Implements a scf loop for a Molecule and a functional implicitly defined predict_molecule with
         parameters params
@@ -141,6 +184,7 @@ def make_simple_scf_loop(
 
             # Update the molecular occupation
             mo_occ = molecule.get_occ()
+            molecule = molecule.replace(mo_occ=mo_occ)
             if verbose > 2:
                 print(
                     f"Cycle {cycle} took {time.time() - start_time:.1e} seconds to compute and diagonalize Fock matrix"
@@ -192,10 +236,12 @@ def make_simple_scf_loop(
             print(
                 f"cycle: {cycle}, predicted energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}"
             )
+        # Ensure molecule is fully updated
+        molecule = molecule.replace(fock=fock)
+        molecule = molecule.replace(energy=predicted_e)
+        return molecule
 
-        return predicted_e
-
-    return scf_iterator
+    return simple_scf_iterator
 
 def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing_factor: float = 0.4, **kwargs) -> Callable:
     r"""
@@ -216,11 +262,12 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
     predict_molecule = molecule_predictor(functional, chunk_size=None, **kwargs)
 
     @jit
-    def scf_jitted_iterator(
+    def simple_scf_jitted_iterator(
         params: PyTree, 
         molecule: Molecule, 
         *args
-    ) -> Tuple[Scalar, Molecule]:
+    ) -> Molecule:
+
         r"""
         Implements a scf loop intented for use in a jax.jit compiled function (training loop).
         If you are looking for a more flexible but not differentiable scf loop, see evaluate.py make_scf_loop.
@@ -259,6 +306,7 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
         norm_gorb = jnp.inf
 
         predicted_e, fock = predict_molecule(params, molecule, *args)
+        
 
         state = (molecule, predicted_e, old_e, norm_gorb)
 
@@ -297,10 +345,10 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
         # Compute the scf loop
         final_state = fori_loop(0, cycles, body_fun=loop_body, init_val=state)
         molecule, predicted_e, old_e, norm_gorb = final_state
+        molecule = molecule.replace(energy=predicted_e)
+        return molecule
 
-        return predicted_e, molecule
-
-    return scf_jitted_iterator
+    return simple_scf_jitted_iterator
 
 
 def make_scf_loop(
@@ -335,7 +383,7 @@ def make_scf_loop(
 
     predict_molecule = molecule_predictor(functional, chunk_size=chunk_size, **kwargs)
 
-    def scf_iterator(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Scalar]:
+    def scf_iterator(params: PyTree, molecule: Molecule, *args) -> Molecule:
         r"""
         Implements a scf loop for a Molecule and a functional implicitly defined predict_molecule with
         parameters params
@@ -530,8 +578,10 @@ def make_scf_loop(
             print(
                 f"cycle: {cycle}, predicted energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}"
             )
-
-        return predicted_e
+        # Ensure molecule is fully updated
+        molecule = molecule.replace(fock=fock)
+        molecule = molecule.replace(energy=predicted_e)
+        return molecule
 
     return scf_iterator
 
@@ -604,7 +654,7 @@ def make_orbital_optimizer(
         C = molecule.mo_coeff
 
         if whitening == "PCA":
-            w, v = jnp.linalg.eig(molecule.s1e)
+            w, v = jnp.linalg.eigh(molecule.s1e)
             D = (jnp.diag(jnp.sqrt(1 / w)) @ v.T).real
             S_1 = (v @ jnp.diag(w) @ v.T).real
             diff = S_1 - molecule.s1e
@@ -613,7 +663,7 @@ def make_orbital_optimizer(
         elif whitening == "Cholesky":
             D = jnp.linalg.cholesky(jnp.linalg.inv(molecule.s1e)).T
         elif whitening == "ZCA":
-            w, v = jnp.linalg.eig(molecule.s1e)
+            w, v = jnp.linalg.eigh(molecule.s1e)
             D = (v @ jnp.diag(jnp.sqrt(1 / w)) @ v.T).real
 
         Q = jnp.einsum("sji,jk->sik", C, jnp.linalg.inv(D))  # C transposed
@@ -696,7 +746,7 @@ def make_jitted_orbital_optimizer(
         # Predict the energy and the fock matrix
         predicted_e, _ = predict_molecule(params, molecule, *args)
 
-        w, v = jnp.linalg.eig(molecule.s1e)
+        w, v = jnp.linalg.eigh(molecule.s1e)
         D = (jnp.diag(jnp.sqrt(1 / w)) @ v.T).real
         Q = jnp.einsum("sji,jk->sik", molecule.mo_coeff, jnp.linalg.inv(D))  # C transposed
         W = Q
@@ -743,7 +793,7 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
         params: PyTree, 
         molecule: Molecule, 
         *args
-    ) -> Tuple[Scalar, Molecule]:
+    ) -> Molecule:
         r"""
         Implements a scf loop intented for use in a jax.jit compiled function (training loop).
         If you are looking for a more flexible but not differentiable scf loop, see evaluate.py make_scf_loop.
@@ -800,6 +850,7 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
             # DIIS iteration
             new_data = (molecule.rdm1, fock, predicted_e)
             fock, diis_data = diis.run(new_data, diis_data, cycle)
+            molecule = molecule.replace(fock=fock)
 
             # Diagonalize Fock matrix
             mo_energy, mo_coeff = safe_fock_solver(fock, molecule.s1e)
@@ -839,8 +890,11 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
         state = (molecule, predicted_e, old_e, norm_gorb, diis_data)
         state = loop_body(0, state)
         molecule, predicted_e, _, _, _ = final_state
+        
+        # Ensure molecule is fully updated
+        molecule = molecule.replace(energy=predicted_e)
+        return molecule
 
-        return predicted_e, molecule
 
     return scf_jitted_iterator
 
@@ -1175,11 +1229,11 @@ class Diis:
         C = jnp.zeros((2, len(error_vector) + 1))
         C = C.at[:, 0].set(1)
 
-        w, v = jnp.linalg.eig(B[0])
+        w, v = jnp.linalg.eigh(B[0])
         w, v = w.real, v.real
         x0 = jnp.einsum("ij,jk,km,m-> i", v, jnp.diag(1.0 / w), v.T.conj(), C[0])
 
-        w, v = jnp.linalg.eig(B[1])
+        w, v = jnp.linalg.eigh(B[1])
         w, v = w.real, v.real
         x1 = jnp.einsum("ij,jk,km,m-> i", v, jnp.diag(1.0 / w), v.T.conj(), C[1])
 
