@@ -174,7 +174,6 @@ def free_atom_energies() -> dict[str, dict[str, float]]:
     return {"pyscf": energies_pyscf, "gdft": energies_gdft}
 
 
-# Tests
 @pytest.mark.parametrize("species", ATOMIC_SPECIES)
 def test_free_atom_energies(species: str, free_atom_energies: dict[str, dict[str, float]]) -> None:
     r"""Compare the total energies of the free atoms between PySCF and Grad-DFT with no XC component in the electronic energy

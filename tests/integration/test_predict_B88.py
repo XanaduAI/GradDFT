@@ -28,18 +28,18 @@ from grad_dft.evaluate import make_scf_loop, make_jitted_scf_loop
 from grad_dft.utils.types import Hartree2kcalmol
 from grad_dft.popular_functionals import B88
 
-from openfermion import geometry_from_pubchem
-
 from pyscf import gto, dft
 
-import numpy as np
+import jax.numpy as jnp
 
 
 FUNCTIONAL = B88
 PARAMS = {"params": {}}
 
-GEOMETRY = geometry_from_pubchem("water")
-MOL_WATER = gto.M(atom=GEOMETRY, basis="def2-tzvp")
+MOL_WATER = gto.Mole()
+MOL_WATER.atom = "O 0.0 0.0 0.0; H 0.2774 0.8929 0.2544; H 0.6068 -0.2383 -0.7169"
+MOL_WATER.basis = "def2-tzvp"
+MOL_WATER.build()
 
 MOL_LI = gto.Mole()
 MOL_LI.atom = "Li 0 0 0"
@@ -58,11 +58,10 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
         mol_and_name (tuple[gto.Mole, str]): PySCF molecule object and the name of the molecule.
     """
     mol, name = mol_and_name
-    if name == "water":
+    if mol.spin == 0:
         mf = dft.RKS(mol)
-    elif name == "Li":
+    else:
         mf = dft.UKS(mol)
-    mf.max_cycle = 0
     
     mf.xc = "B88"
     mf.max_cycle = 10
@@ -75,15 +74,10 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
     molecule_out = iterator(PARAMS, molecule)
     e_XND = molecule_out.energy
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
-    assert np.allclose(kcalmoldiff, 0, atol=1e-6)
-
+    assert jnp.allclose(kcalmoldiff, 0, atol=1e-6), f"Energy difference with PySCF for B88 on {name} exceeds the threshold."
     # Testing the training scf loop too.
     iterator = make_jitted_scf_loop(FUNCTIONAL, cycles=10)
     molecule_out = iterator(PARAMS, molecule)
     e_XND_jit = molecule_out.energy
     kcalmoldiff = (e_XND - e_XND_jit) * Hartree2kcalmol
-    
-    assert np.allclose(kcalmoldiff, 0, atol=1e-3)
-    
-
-# test_predict((MOL_LI, "Li"))
+    assert jnp.allclose(kcalmoldiff, 0, atol=1e-6), f"Energy difference with between jitted and non-jitted SCF for B88 on {name} exceeds the threshold."

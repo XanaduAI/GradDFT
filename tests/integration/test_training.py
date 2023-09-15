@@ -65,8 +65,7 @@ PYSCF_MOLS = [
 
 SCF_ITERS = 5
 
-# Truth values are decided to be from LDA calculations for speedy testing.
-# In reality, you would use high accuracy wavefunction of experimental data.
+# Truth values are decided to be from CISD calculations.
 TRUTH_ENERGIES = []
 TRUTH_DENSITIES = [] 
 MOLECULES = []
