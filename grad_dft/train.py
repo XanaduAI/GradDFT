@@ -532,10 +532,10 @@ def sq_electron_err_int(
         Scalar: the value epsilon described above
     ----------
     """
-    pred_density = jnp.clip(pred_density, a_min=1e-12)
-    truth_density = jnp.clip(truth_density, a_min=1e-12)
-    diff_up = jnp.clip(jnp.clip(pred_density[:, 0] - truth_density[:, 0], a_min=1e-12) ** 2, a_min=1e-12)
-    diff_dn = jnp.clip(jnp.clip(pred_density[:, 1] - truth_density[:, 1], a_min=1e-12) ** 2, a_min=1e-12)
+    pred_density = jnp.clip(pred_density, a_min=1e-27)
+    truth_density = jnp.clip(truth_density, a_min=1e-27)
+    diff_up = jnp.clip(jnp.clip(pred_density[:, 0] - truth_density[:, 0], a_min=1e-12) ** 2, a_min=1e-27)
+    diff_dn = jnp.clip(jnp.clip(pred_density[:, 1] - truth_density[:, 1], a_min=1e-12) ** 2, a_min=1e-27)
     err_int = jnp.sum(diff_up * molecule.grid.weights) + jnp.sum(diff_dn * molecule.grid.weights)
     return err_int
 
@@ -568,6 +568,8 @@ def mse_density_loss(
     sum = 0
     for i, molecule in enumerate(molecules):
         molecule_out = molecule_predictor(params, molecule)
+        # rho_predict = molecule_out.rho
+        # rho_predict = jnp.einsum("...ab,ra,rb->r...", molecule_out.rdm1, molecule_out.ao, molecule_out.ao)
         rho_predict = molecule_out.density()
         diff = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
         # Not jittable because of if.

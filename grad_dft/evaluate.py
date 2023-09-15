@@ -306,6 +306,9 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
         norm_gorb = jnp.inf
 
         predicted_e, fock = predict_molecule(params, molecule, *args)
+        rho = molecule.density()
+        molecule = molecule.replace(rho=rho)
+        
 
         state = (molecule, predicted_e, old_e, norm_gorb)
 
@@ -329,6 +332,8 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
             unmixed_new_rdm1 =  molecule.make_rdm1()
             rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*unmixed_new_rdm1
             molecule = molecule.replace(rdm1=rdm1)
+            rho = molecule.density()
+            molecule = molecule.replace(rho=rho)
 
             # Compute the new energy and Fock matrix
             predicted_e, fock = predict_molecule(params, molecule, *args)
@@ -653,7 +658,7 @@ def make_orbital_optimizer(
         C = molecule.mo_coeff
 
         if whitening == "PCA":
-            w, v = jnp.linalg.eig(molecule.s1e)
+            w, v = jnp.linalg.eigh(molecule.s1e)
             D = (jnp.diag(jnp.sqrt(1 / w)) @ v.T).real
             S_1 = (v @ jnp.diag(w) @ v.T).real
             diff = S_1 - molecule.s1e
@@ -662,7 +667,7 @@ def make_orbital_optimizer(
         elif whitening == "Cholesky":
             D = jnp.linalg.cholesky(jnp.linalg.inv(molecule.s1e)).T
         elif whitening == "ZCA":
-            w, v = jnp.linalg.eig(molecule.s1e)
+            w, v = jnp.linalg.eigh(molecule.s1e)
             D = (v @ jnp.diag(jnp.sqrt(1 / w)) @ v.T).real
 
         Q = jnp.einsum("sji,jk->sik", C, jnp.linalg.inv(D))  # C transposed
@@ -745,7 +750,7 @@ def make_jitted_orbital_optimizer(
         # Predict the energy and the fock matrix
         predicted_e, _ = predict_molecule(params, molecule, *args)
 
-        w, v = jnp.linalg.eig(molecule.s1e)
+        w, v = jnp.linalg.eigh(molecule.s1e)
         D = (jnp.diag(jnp.sqrt(1 / w)) @ v.T).real
         Q = jnp.einsum("sji,jk->sik", molecule.mo_coeff, jnp.linalg.inv(D))  # C transposed
         W = Q
@@ -1228,11 +1233,11 @@ class Diis:
         C = jnp.zeros((2, len(error_vector) + 1))
         C = C.at[:, 0].set(1)
 
-        w, v = jnp.linalg.eig(B[0])
+        w, v = jnp.linalg.eigh(B[0])
         w, v = w.real, v.real
         x0 = jnp.einsum("ij,jk,km,m-> i", v, jnp.diag(1.0 / w), v.T.conj(), C[0])
 
-        w, v = jnp.linalg.eig(B[1])
+        w, v = jnp.linalg.eigh(B[1])
         w, v = w.real, v.real
         x1 = jnp.einsum("ij,jk,km,m-> i", v, jnp.diag(1.0 / w), v.T.conj(), C[1])
 

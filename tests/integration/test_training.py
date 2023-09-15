@@ -43,8 +43,10 @@ from grad_dft.functional import NeuralFunctional
 
 from jax.nn import sigmoid, gelu
 from flax import linen as nn
-from jax import config
+from jax import config, value_and_grad
 from optax import adam, apply_updates
+
+import sys
 
 config.update("jax_enable_x64", True)
 
@@ -53,15 +55,15 @@ HH_BL = 0.8
 PYSCF_MOLS = [
     pyscf.M(
         atom = 'H %.5f 0.0 0.0; H %.5f 0.0 0.0' % (-HH_BL, HH_BL/2),
-        basis = 'sto-3g'
+        basis = 'ccpvdz'
     ),
     pyscf.M(
         atom = 'H %.5f 0.0 0.0; H %.5f 0.0 0.0' % (-HH_BL - 0.1, HH_BL/2 + 0.1),
-        basis = 'sto-3g'
+        basis = 'ccpvdz'
     )
 ]
 
-SCF_ITERS = 10
+SCF_ITERS = 5
 
 # Truth values are decided to be from LDA calculations for speedy testing.
 # In reality, you would use high accuracy wavefunction of experimental data.
@@ -76,7 +78,20 @@ for mol in PYSCF_MOLS:
     TRUTH_ENERGIES.append(E_pyscf)
     molecule = molecule_from_pyscf(mf)
     MOLECULES.append(molecule)
-    TRUTH_DENSITIES.append(molecule.density())
+    
+    hf = mol.UHF().run()
+    ci = pyscf.ci.CISD(hf).run()
+    
+    # DFT calculations used for initial guesses for densities
+    mf_dft = mol.UKS().run()
+    grad_dft_mol = molecule_from_pyscf(mf_dft)
+    ci_rdm1 = ci.make_rdm1(ao_repr=True)
+    dft_ci_rdm1 = grad_dft_mol.replace(rdm1=jnp.asarray(ci_rdm1))
+    # Works because we use the same AOs for DFT and CI
+    den_ci = dft_ci_rdm1.density()
+    
+    TRUTH_ENERGIES.append(ci.e_tot)
+    TRUTH_DENSITIES.append(dft_ci_rdm1.density())
 
 # Define a simple neural functional and its initial parameters
 
@@ -171,3 +186,37 @@ def test_loss_functions(train_recipe: tuple) -> None:
     assert not jnp.isnan(
         gradient["params"]["Dense_0"]["kernel"]
     ).any(), f"Kernel loss gradients for loss function {loss_func.__name__} and predictor {predictor_name} contains a NaN. It should not."
+
+LR = 0.001
+MOMENTUM = 0.9
+
+# and implement the optimization loop
+N_EPOCHS = 5
+
+@pytest.mark.parametrize("train_recipe", TRAIN_RECIPES)
+def test_minimize(train_recipe: tuple) -> None:
+    
+    loss_func, loss_args = train_recipe
+    predictor_name = loss_args[1].__name__
+    
+    tr_params = NF.init(KEY, CINPUTS)
+    loss_args[0] = tr_params
+    
+    tx = adam(learning_rate=LR, b1=MOMENTUM)
+    opt_state = tx.init(PARAMS)
+    loss_and_grad = value_and_grad(loss_func)
+    cost_history = []
+    for i in range(N_EPOCHS):
+        cost_value, grads = loss_and_grad(*loss_args)
+        # print(grads)
+        cost_history.append(cost_value)
+        updates, opt_state = tx.update(grads, opt_state, tr_params)
+        tr_params = apply_updates(tr_params, updates)
+        loss_args[0] = tr_params
+    assert (
+        cost_history[-1] <= cost_history[0]
+    ), f"Training recipe for loss function {loss_func.__name__} and {predictor_name} did not reduce the cost in 5 iterations"
+    
+# test_minimize(TRAIN_RECIPES[6])
+
+# Test for differnce in energy gradient between SCF and non-SCF!

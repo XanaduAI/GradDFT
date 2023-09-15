@@ -102,7 +102,8 @@ class Molecule:
     unit_Angstrom: Optional[bool] = True
     grid_level: Optional[Scalar] = 2
     scf_iteration: Optional[Scalar] = 50
-    fock: Optional[Array] = None
+    fock: Optional[Array] = None,
+    rho: Optional[Array] = None
 
     # def __repr__(self):
     #    return f"{self.__class__.__name__}(grid_size={self.grid_size})"
