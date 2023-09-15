@@ -112,6 +112,14 @@ LOSS_INFO = [(LOSS_FUNCTIONS[i], LOSS_ARGS[i]) for i in range(3)]
 
 @pytest.mark.parametrize("loss_info", LOSS_INFO)
 def test_loss_functions(loss_info: tuple) -> None:
+    r"""
+    Perform sanity checks on the internal loss functions:
+    (1) No NaNs in loss or it's gradients
+    (2) MSE should always be positive.
+
+    Args:
+        loss_info (tuple): information regarding the loss and it's arguments. See LOSS_ARGS variable above.
+    """
     loss_func, loss_args = loss_info
     loss = loss_func(*loss_args)
     # Pure loss test

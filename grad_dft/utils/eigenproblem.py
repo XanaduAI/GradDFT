@@ -20,9 +20,8 @@ from typing import Tuple
 #from .types import Array, Scalar
 
 # Probably don't alter these unless you know what you're doing
-DEGEN_TOL = 1e-6
-BROADENING = 1e-7
-
+DEGEN_TOL = 1e10
+BROADENING = 1e-10
 
 @custom_vjp
 def safe_eigh(A: Array) -> tuple[Array, Array]:

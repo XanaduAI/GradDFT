@@ -478,7 +478,7 @@ def mse_energy_loss(
     elec_num_norm: Scalar = True,
 ) -> Scalar:
     r"""
-    Computes the default loss function, here MSE, between predicted and true energy.
+    Computes the mean-squared error between predicted and truth energies.
 
     This loss function does not yet support parallel execution for the loss contributions
     and instead implemented a simple for loop.
@@ -488,12 +488,17 @@ def mse_energy_loss(
     params: PyTree
         functional parameters (weights)
     molecule_predict: Callable.
-        Use molecule_predict = molecule_predictor(functional) to generate it.
+        any non SCF or SCF method in evaluate.py
     molecule: Molecule
-    trueenergy: float
+        a Grad-DFT Molecule object
+    truth_energies: Float[Array, "energy"]
+        the truth values of the energy to measure the predictions against
+    elec_num_norm: Scalar
+        True to normalize the loss function by the number of electrons in a Molecule.
 
     Returns
     ----------
+    Scalar: the mean-squared error between predicted and truth energies
     """
     sum = 0
     for i, molecule in enumerate(molecules):
@@ -510,9 +515,10 @@ def mse_energy_loss(
 
 
 def sq_electron_err_int(
-    pred_density: Float[Array, "spin_up spin_dn"],
-    truth_density: Float[Array, "spin_up spin_dn"],
+    pred_density: Float[Array, "ngrid nspin"],
+    truth_density: Float[Array, "ngrid nspin"],
     molecule: Molecule,
+    clip_cte=1e-30
 ) -> Scalar:
     r"""
     Computes the integral:
@@ -521,9 +527,9 @@ def sq_electron_err_int(
         \epsilon = \int (\rho_{pred}(r) - \rho_{truth})^2 dr
     Parameters
     ----------
-    pred_density: Float[Array, "spin_up spin_dn"]
+    pred_density: Float[Array, "ngrid nspin"]
         Density predicted by a neural functional
-    truth_density: Float[Array, "spin_up spin_dn"]
+    truth_density: Float[Array, "ngrid nspin"]
         A accurate density used as a truth value in training
     molecule: Molecule
         A Grad-DFT Molecule
@@ -532,10 +538,10 @@ def sq_electron_err_int(
         Scalar: the value epsilon described above
     ----------
     """
-    pred_density = jnp.clip(pred_density, a_min=1e-27)
-    truth_density = jnp.clip(truth_density, a_min=1e-27)
-    diff_up = jnp.clip(jnp.clip(pred_density[:, 0] - truth_density[:, 0], a_min=1e-12) ** 2, a_min=1e-27)
-    diff_dn = jnp.clip(jnp.clip(pred_density[:, 1] - truth_density[:, 1], a_min=1e-12) ** 2, a_min=1e-27)
+    pred_density = jnp.clip(pred_density, a_min=clip_cte)
+    truth_density = jnp.clip(truth_density, a_min=clip_cte)
+    diff_up = jnp.clip(jnp.clip(pred_density[:, 0] - truth_density[:, 0], a_min=clip_cte) ** 2, a_min=clip_cte)
+    diff_dn = jnp.clip(jnp.clip(pred_density[:, 1] - truth_density[:, 1], a_min=clip_cte) ** 2, a_min=clip_cte)
     err_int = jnp.sum(diff_up * molecule.grid.weights) + jnp.sum(diff_dn * molecule.grid.weights)
     return err_int
 
@@ -544,11 +550,11 @@ def mse_density_loss(
     params: PyTree,
     molecule_predictor: Callable,
     molecules: list[Molecule],
-    truth_rhos: Float[Array, "energy"],
+    truth_rhos: list[Float[Array, "ngrid nspin"]],
     elec_num_norm: Scalar = True,
 ) -> Scalar:
     r"""
-    Computes the default loss function, here MSE, between predicted and true energy.
+    Computes the mean-squared error between predicted and truth densities.
 
     This loss function does not yet support parallel execution for the loss contributions
     and instead implemented a simple for loop.
@@ -558,18 +564,21 @@ def mse_density_loss(
     params: PyTree
         functional parameters (weights)
     molecule_predict: Callable.
-        Use molecule_predict = molecule_predictor(functional) to generate it.
+        any non SCF or SCF method in evaluate.py
     molecule: Molecule
-    trueenergy: float
+        a Grad-DFT Molecule object
+    truth_densities: list[Float[Array, "ngrid nspin"]]
+        the truth values of the density to measure the predictions against
+    elec_num_norm: Scalar
+        True to normalize the loss function by the number of electrons in a Molecule.
 
     Returns
     ----------
+    Scalar: the mean-squared error between predicted and truth densities
     """
     sum = 0
     for i, molecule in enumerate(molecules):
         molecule_out = molecule_predictor(params, molecule)
-        # rho_predict = molecule_out.rho
-        # rho_predict = jnp.einsum("...ab,ra,rb->r...", molecule_out.rdm1, molecule_out.ao, molecule_out.ao)
         rho_predict = molecule_out.density()
         diff = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
         # Not jittable because of if.
@@ -585,14 +594,14 @@ def mse_energy_and_density_loss(
     params: PyTree,
     molecule_predictor: Callable,
     molecules: list[Molecule],
-    truth_rhos: Float[Array, "energy"],
+    truth_densities: list[Float[Array, "ngrid nspin"]],
     truth_energies: Float[Array, "energy"],
     energy_factor: Scalar = 1.0,
     rho_factor: Scalar = 1.0,
     elec_num_norm: Scalar = True,
 ) -> Scalar:
     r"""
-    Computes the most general loss function using both the energy and density
+    Computes the most general loss function using mean-squared error of energies and densities.
 
     This loss function does not yet support parallel execution for the loss contributions
     and instead implemented a simple for loop.
@@ -602,12 +611,23 @@ def mse_energy_and_density_loss(
     params: PyTree
         functional parameters (weights)
     molecule_predict: Callable.
-        Use molecule_predict = molecule_predictor(functional) to generate it.
+        any non SCF or SCF method in evaluate.py
     molecule: Molecule
-    trueenergy: float
+        a Grad-DFT Molecule object
+    truth_densities: list[Float[Array, "ngrid, nspin"]]
+        the truth values of the density to measure the predictions against
+    truth_energies: Float[Array, "energy"]
+        the truth values of the energy to measure the predictions against
+    energy_factor: Scalar
+        A weighting factor for the energy portion of the loss. Default = 1.0
+    density_factor: Scalar
+        A weighting factor for the density portion of the loss. Default = 1.0
+    elec_num_norm: Scalar
+        True to normalize the loss function by the number of electrons in a Molecule.
 
     Returns
     ----------
+    Scalar: the mean-squared error of both energies and densities each with it's own weight.
     """
     sum_energy = 0
     sum_rho = 0
@@ -615,7 +635,7 @@ def mse_energy_and_density_loss(
         molecule_out = molecule_predictor(params, molecule)
         rho_predict = molecule_out.density()
         energy_predict = molecule_out.energy
-        diff_rho = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
+        diff_rho = sq_electron_err_int(rho_predict, truth_densities[i], molecule)
         diff_energy = energy_predict - truth_energies[i]
         # Not jittable because of if.
         if elec_num_norm:
