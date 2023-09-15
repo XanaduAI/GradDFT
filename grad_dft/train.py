@@ -187,11 +187,6 @@ def molecule_predictor(
             fock += vxc_expl + vxc_expl.transpose(0, 2, 1)  # Sum over omega
             fock = abs_clip(fock, clip_cte)
 
-        if functional.is_xc:
-            nxcfock = coulomb_potential(molecule.rdm1.sum(axis = 0), molecule.rep_tensor) + molecule.h1e
-            auto_nxcfock = grad(nonXC, argnums = 0)(molecule.rdm1.sum(axis = 0), molecule.h1e, molecule.rep_tensor, molecule.nuclear_repulsion)
-
-            fock = fock + jnp.stack([auto_nxcfock, auto_nxcfock], axis=0)
         fock = abs_clip(fock, clip_cte)
 
         return energy, fock
