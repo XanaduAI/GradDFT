@@ -347,7 +347,7 @@ def loader(
                 del args["coords"], args["weights"]
 
                 if 'num_elec' not in args.keys():
-                    args['num_elec'] = jnp.sum(args['mo_occ'])
+                    args['num_elec'] = jnp.sum(args['atom_index'])- args['charge']
 
                 molecule = Molecule(grid, **args)
 

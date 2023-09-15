@@ -500,18 +500,26 @@ def mse_energy_loss(
 
     return cost_value
 
+@partial(value_and_grad, has_aux=True)
 def simple_energy_loss(params: PyTree,
     molecule_predictor: Callable,
     molecule: Molecule,
     truth_energy: Float,
-    elec_num_norm: Scalar = True):
-    return mse_energy_loss(
-        params, 
-        molecule_predictor, 
-        [molecule], 
-        jnp.array([truth_energy]), 
-        elec_num_norm
-    )
+    ):
+    r"""
+    Computes the loss for a single molecule
+
+    Parameters
+    ----------
+    params: PyTree
+        functional parameters (weights)
+    molecule_predict: Callable.
+        any non SCF or SCF method in evaluate.py
+    """
+    molecule_out = molecule_predictor(params, molecule)
+    E_predict = molecule_out.energy
+    diff = E_predict - truth_energy
+    return diff**2, E_predict
 
 
 def sq_electron_err_int(

@@ -27,6 +27,9 @@ from grad_dft.functional import DM21
 # First we define a molecule, using pyscf:
 from pyscf import gto, dft
 
+from jax.config import config
+config.update("jax_enable_x64", True)
+
 warnings.warn('--- This example should be executed after intermediate_examples/example_HF_training.py ---')
 
 mol = gto.M(atom="H 0 0 0; F 0 0 1.1")

@@ -417,6 +417,7 @@ def constraint_x5(
         molecule.vj,
         molecule.mo_coeff,
         molecule.mo_occ,
+        molecule.num_elec,
         molecule.mo_energy,
         molecule.mf_energy,
         molecule.s1e,
@@ -593,6 +594,7 @@ def constraint_x7(
         molecule2e.vj,
         molecule2e.mo_coeff,
         molecule2e.mo_occ,
+        molecule2e.num_elec,
         molecule2e.mo_energy,
         molecule2e.mf_energy,
         molecule2e.s1e,
@@ -662,6 +664,7 @@ def constraint_c6(
         molecule.vj,
         molecule.mo_coeff,
         molecule.mo_occ,
+        molecule.num_elec,
         molecule.mo_energy,
         molecule.mf_energy,
         molecule.s1e,
@@ -853,6 +856,7 @@ def constraints_fractional_charge_spin(
     spin = gamma * molecule1.spin + (1 - gamma) * molecule2.spin
     charge = gamma * molecule1.charge + (1 - gamma) * molecule2.charge
     chi = generate_chi_tensor(rdm1, ao, grid.coords, mol, omegas)
+    num_elec = gamma * molecule1.num_elec + (1 - gamma) * molecule2.num_elec
 
     molecule = Molecule(
         grid,
@@ -867,6 +871,7 @@ def constraints_fractional_charge_spin(
         vj,
         mo_coeff,
         mo_occ,
+        num_elec,
         mo_energy,
         mf_energy,
         s1e,

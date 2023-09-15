@@ -17,6 +17,9 @@ from jax import numpy as jnp
 from optax import adam
 from grad_dft.evaluate import make_scf_loop
 
+from jax.config import config
+config.update("jax_enable_x64", True)
+
 from grad_dft.interface.pyscf import molecule_from_pyscf
 from grad_dft.functional import (
     NeuralFunctional,

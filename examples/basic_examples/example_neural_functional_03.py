@@ -18,11 +18,12 @@ from optax import adam, apply_updates
 from tqdm import tqdm
 from grad_dft.evaluate import (
     make_jitted_orbital_optimizer,
+    make_non_scf_predictor,
     make_orbital_optimizer,
     make_scf_loop,
     make_jitted_scf_loop,
 )
-from grad_dft.train import molecule_predictor, simple_energy_loss
+from grad_dft.train import simple_energy_loss
 from grad_dft.functional import NeuralFunctional
 from grad_dft.interface import molecule_from_pyscf
 from grad_dft.molecule import Molecule
@@ -100,10 +101,10 @@ opt_state = tx.init(params)
 
 # and implement the optimization loop
 n_epochs = 20
-molecule_predict = molecule_predictor(neuralfunctional)
+predict = make_non_scf_predictor(neuralfunctional)
 for iteration in tqdm(range(n_epochs), desc="Training epoch"):
     (cost_value, predicted_energy), grads = simple_energy_loss(
-        params, molecule_predict, HH_molecule, ground_truth_energy
+        params, predict, HH_molecule, ground_truth_energy
     )
     print("Iteration", iteration, "Predicted energy:", predicted_energy, "Cost value:", cost_value)
     updates, opt_state = tx.update(grads, opt_state, params)
