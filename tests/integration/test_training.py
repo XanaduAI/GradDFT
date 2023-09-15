@@ -165,6 +165,12 @@ TRAIN_RECIPES = [
 
 @pytest.mark.parametrize("train_recipe", TRAIN_RECIPES)
 def test_loss_functions(train_recipe: tuple) -> None:
+    r"""Same objectives as the unit test: test_loss.py but the predictors are now real DFT calculations
+    with Neural functionals.
+
+    Args:
+        train_recipe (tuple): information regarding the loss, its arguments and the predictor. See TRAIN_RECIPES variable above.
+    """
     loss_func, loss_args = train_recipe
     predictor_name = loss_args[1].__name__
     loss = loss_func(*loss_args)
@@ -195,6 +201,11 @@ N_EPOCHS = 5
 
 @pytest.mark.parametrize("train_recipe", TRAIN_RECIPES)
 def test_minimize(train_recipe: tuple) -> None:
+    r"""Check that the loss functions with different predictords are minimizable in 5 iterations.
+
+    Args:
+        train_recipe (tuple):train_recipe (tuple): information regarding the loss, its arguments and the predictor. See TRAIN_RECIPES variable above.
+    """
     
     loss_func, loss_args = train_recipe
     predictor_name = loss_args[1].__name__
@@ -216,7 +227,3 @@ def test_minimize(train_recipe: tuple) -> None:
     assert (
         cost_history[-1] <= cost_history[0]
     ), f"Training recipe for loss function {loss_func.__name__} and {predictor_name} did not reduce the cost in 5 iterations"
-    
-# test_minimize(TRAIN_RECIPES[6])
-
-# Test for differnce in energy gradient between SCF and non-SCF!

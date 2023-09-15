@@ -118,7 +118,7 @@ def test_loss_functions(loss_info: tuple) -> None:
     (2) MSE should always be positive.
 
     Args:
-        loss_info (tuple): information regarding the loss and it's arguments. See LOSS_ARGS variable above.
+        loss_info (tuple): information regarding the loss and its arguments. See LOSS_ARGS variable above.
     """
     loss_func, loss_args = loss_info
     loss = loss_func(*loss_args)
