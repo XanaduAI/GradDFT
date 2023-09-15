@@ -493,8 +493,9 @@ def mse_energy_loss(
         E_predict = molecule_out.energy
         diff = E_predict - truth_energies[i]
         # Not jittable because of if.
+        num_elec = jnp.sum(molecule.atom_index) - molecule.charge
         if elec_num_norm:
-            diff = diff / molecule.num_elec
+            diff = diff / num_elec
         sum += (diff) ** 2
     cost_value = sum / len(molecules)
 
@@ -590,8 +591,9 @@ def mse_density_loss(
         rho_predict = molecule_out.density()
         diff = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
         # Not jittable because of if.
+        num_elec = jnp.sum(molecule.atom_index) - molecule.charge
         if elec_num_norm:
-            diff = diff / (molecule.num_elec**2)
+            diff = diff / num_elec**2
         sum += diff
     cost_value = sum / len(molecules)
 
@@ -646,9 +648,10 @@ def mse_energy_and_density_loss(
         diff_rho = sq_electron_err_int(rho_predict, truth_densities[i], molecule)
         diff_energy = energy_predict - truth_energies[i]
         # Not jittable because of if.
+        num_elec = jnp.sum(molecule.atom_index) - molecule.charge
         if elec_num_norm:
-            diff_rho = diff_rho / (molecule.num_elec**2)
-            diff_energy = diff_energy / molecule.num_elec
+            diff_rho = diff_rho / num_elec**2
+            diff_energy = diff_energy / num_elec
         sum_rho += diff_rho
         sum_energy += diff_energy**2
     energy_contrib = energy_factor * sum_energy / len(molecules)

@@ -88,7 +88,6 @@ class Molecule:
     vj: Float[Array, "spin orbitals orbitals"]
     mo_coeff: Float[Array, "spin orbitals orbitals"]
     mo_occ: Float[Array, "spin orbitals"]
-    num_elec: Scalar
     mo_energy: Float[Array, "spin orbitals"]
     mf_energy: Optional[Scalar] = None
     s1e: Optional[Float[Array, "orbitals orbitals"]] = None  # Not used during training
