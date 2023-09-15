@@ -1197,6 +1197,23 @@ class Diis:
 
         Code taken from
         https://github.com/pyscf/pyscf/blob/df92512c09c13063a056dbc543e980e1997d21c8/pyscf/scf/diis.py#L149
+
+        # Copyright 2014-2018 The PySCF Developers. All Rights Reserved.
+        #
+        # Licensed under the Apache License, Version 2.0 (the "License");
+        # you may not use this file except in compliance with the License.
+        # You may obtain a copy of the License at
+        #
+        #     http://www.apache.org/licenses/LICENSE-2.0
+        #
+        # Unless required by applicable law or agreed to in writing, software
+        # distributed under the License is distributed on an "AS IS" BASIS,
+        # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+        # See the License for the specific language governing permissions and
+        # limitations under the License.
+        #
+        # Author: Qiming Sun <osirpt.sun@gmail.com>
+        #
         """
         nx = energy_vector.size
         nao = density_vector.shape[-1]
@@ -1223,6 +1240,22 @@ class Diis:
 
         Code taken from
         https://github.com/pyscf/pyscf/blob/df92512c09c13063a056dbc543e980e1997d21c8/pyscf/scf/diis.py#L208
+        # Copyright 2014-2018 The PySCF Developers. All Rights Reserved.
+        #
+        # Licensed under the Apache License, Version 2.0 (the "License");
+        # you may not use this file except in compliance with the License.
+        # You may obtain a copy of the License at
+        #
+        #     http://www.apache.org/licenses/LICENSE-2.0
+        #
+        # Unless required by applicable law or agreed to in writing, software
+        # distributed under the License is distributed on an "AS IS" BASIS,
+        # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+        # See the License for the specific language governing permissions and
+        # limitations under the License.
+        #
+        # Author: Qiming Sun <osirpt.sun@gmail.com>
+        #
         """
 
         nx = density_vector.shape[0]
