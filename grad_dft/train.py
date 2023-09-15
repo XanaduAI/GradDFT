@@ -23,7 +23,7 @@ from jax.lax import stop_gradient
 from optax import OptState, GradientTransformation, apply_updates
 
 from grad_dft.functional import DispersionFunctional, Functional
-from grad_dft.molecule import Molecule, abs_clip, coulomb_energy, coulomb_potential, nonXC, one_body_energy, symmetrize_rdm1
+from grad_dft.molecule import Molecule, abs_clip, coulomb_energy, coulomb_potential, nonXC
 
 def molecule_predictor(
     functional: Functional,
@@ -191,6 +191,9 @@ def molecule_predictor(
             #rdm1 = symmetrize_rdm1(molecule.rdm1)
             nxcfock = coulomb_potential(molecule.rdm1.sum(axis = 0), molecule.rep_tensor)
             nxcfock = nxcfock + molecule.h1e
+
+            autodiff_nxcfock = grad(nonXC, argnums = 1)(molecule.rdm1.sum(axis = 0), molecule.h1e, molecule.rep_tensor, molecule.nuclear_repulsion)
+
             fock = fock + jnp.stack([nxcfock, nxcfock], axis=0)
         fock = abs_clip(fock, clip_cte)
 

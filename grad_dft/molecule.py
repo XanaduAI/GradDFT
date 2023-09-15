@@ -713,25 +713,31 @@ def nonXC(
 
     return nuclear_repulsion + h1e_energy + coulomb2e_energy
 
+
 @jaxtyped
 @typechecked
-@partial(jax.jit)
-def symmetrize_rdm1(rdm1: Float[Array, "spin orbitals orbitals"], 
-                    clip_cte: float = 1e-30) -> Float[Array, "spin orbitals orbitals"]:
-    r"""A function that symmetrizes and clips the reduced density matrix.
-    
+@partial(jax.jit, static_argnames=["precision"])
+def one_body_energy(
+    rdm1: Float[Array, "orbitals orbitals"],
+    h1e: Float[Array, "orbitals orbitals"],
+    precision=Precision.HIGHEST,
+) -> Scalar:
+    r"""A function that computes the one-body energy of a DFT functional.
+
     Parameters
     ----------
     rdm1 : Float[Array, "spin orbitals orbitals"]
         The 1-Reduced Density Matrix.
+    h1e : Float[Array, "orbitals orbitals"]
+        The 1-electron Hamiltonian.
 
     Returns
     -------
-    Float[Array, "spin orbitals orbitals"]
+    Scalar
     """
-    dm = rdm1.sum(axis=0)
-    dm = abs_clip(dm, clip_cte)
-    return jnp.stack([dm, dm], axis=0) / 2.0
+    h1e_energy = jnp.einsum("ij,ij->", rdm1, h1e, precision=precision)
+    return h1e_energy
+
 
 @jaxtyped
 @typechecked
@@ -740,7 +746,6 @@ def coulomb_energy(
     rdm1: Float[Array, "orbitals orbitals"],
     rep_tensor: Float[Array, "orbitals orbitals orbitals orbitals"],
     precision=Precision.HIGHEST,
-    clip_cte: float = 1e-30,
 ) -> Scalar:
     r"""A function that computes the Coulomb two-body energy of a DFT functional.
     
@@ -756,35 +761,8 @@ def coulomb_energy(
     Scalar
     """
     v_coul = coulomb_potential(rdm1, rep_tensor, precision)
-    v_coul = abs_clip(v_coul, clip_cte)
-    coulomb2e_energy = jnp.einsum("ji,ij->", rdm1, v_coul, precision=precision) / 2.0
+    coulomb2e_energy = jnp.einsum("pq,pq->", rdm1, v_coul, precision=precision) / 2.0
     return coulomb2e_energy
-
-@jaxtyped
-@typechecked
-@partial(jax.jit, static_argnames=["precision"])
-def one_body_energy(
-    rdm1: Float[Array, "orbitals orbitals"],
-    h1e: Float[Array, "orbitals orbitals"],
-    precision=Precision.HIGHEST,
-    clip_cte: float = 1e-30,
-) -> Scalar:
-    r"""A function that computes the one-body energy of a DFT functional.
-
-    Parameters
-    ----------
-    rdm1 : Float[Array, "spin orbitals orbitals"]
-        The 1-Reduced Density Matrix.
-    h1e : Float[Array, "orbitals orbitals"]
-        The 1-electron Hamiltonian.
-
-    Returns
-    -------
-    Scalar
-    """
-    h1e = abs_clip(h1e, clip_cte)
-    h1e_energy = jnp.einsum("ij,ji->", rdm1, h1e, precision=precision)
-    return h1e_energy
 
 @jaxtyped
 @typechecked
