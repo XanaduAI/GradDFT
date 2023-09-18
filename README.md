@@ -21,12 +21,12 @@ Grad-DFT provides significant functionality, including fully differentiable and 
 The workflow of the library is the following:
 
 1. Specify `Molecule`, which has methods to compute the electronic density $\rho$ and derived quantities.
-2. Define the function `energy`, that computes $\bm{e}[\rho](\bm{r})$.
-3. Implement the function `coefficients`, which may include a neural network, and computes $\bm{c}_\theta[\rho](\bm{r})$. If the function `coefficients` requires inputs, specify function `coefficient_inputs` too.
+2. Define the function `energy`, that computes $\mathbf{e}\[\rho\](\mathbf{r})$.
+3. Implement the function `coefficients`, which may include a neural network, and computes $\mathbf{c}_{\theta}\[\rho\](\mathbf{r})$. If the function `coefficients` requires inputs, specify function `coefficient_inputs` too.
 4. Build the `Functional`, which has method `functional.energy(molecule, params)`, implementing
 
 ```math
-E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}).
+E_{xc} = \int d\mathbf{r} \mathbf{c}_{\theta}[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}).
 ```
 where`params` indicates neural network parameters $\theta$.
 
@@ -106,7 +106,7 @@ n_epochs = 20
 molecule_predict = molecule_predictor(neuralfunctional)
 for iteration in tqdm(range(n_epochs), desc="Training epoch"):
     (cost_value, predicted_energy), grads = simple_energy_loss(
-        params, molecule_predict, HH_molecule, ground_truth_energy]
+        params, molecule_predict, HH_molecule, ground_truth_energy
     )
     print("Iteration", iteration, "Predicted energy:", predicted_energy, "Cost value:", cost_value)
     updates, opt_state = tx.update(grads, opt_state, params)
