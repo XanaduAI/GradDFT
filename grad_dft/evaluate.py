@@ -36,22 +36,20 @@ from grad_dft import (
     Functional,
     molecule_predictor,
 )
-
 from grad_dft.interface.pyscf import (
     generate_chi_tensor,
     mol_from_Molecule,
     process_mol,
-    mol_from_Molecule,
 )
 from grad_dft.utils import (
-    Optimizer, 
+    Optimizer,
     safe_fock_solver,
 )
 from grad_dft.utils.types import (
     Hartree2kcalmol,
 )
 from typeguard import typechecked
-from jaxtyping import PyTree, Array, Scalar, Float, jaxtyped
+from jaxtyping import PyTree, Array, Scalar, Float, Int, jaxtyped
 
 
 ######## Test kernel ########
@@ -151,7 +149,7 @@ def make_simple_scf_loop(
 
     Returns
     ---------
-    float
+    Callable
     """
 
     predict_molecule = molecule_predictor(functional, chunk_size=chunk_size, **kwargs)
@@ -166,6 +164,10 @@ def make_simple_scf_loop(
         params: PyTree
         molecule: Molecule
         *args: Arguments to be passed to predict_molecule function
+
+        Returns
+        -------
+        Molecule
         """
 
         nelectron = molecule.atom_index.sum() - molecule.charge
@@ -263,7 +265,7 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
 
     Returns
     ---------
-    float
+    Callable
     """
 
     predict_molecule = molecule_predictor(functional, chunk_size=None, **kwargs)
@@ -289,7 +291,6 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
 
         Returns
         -------
-        predicted_e: Scalar
         molecule: Molecule
 
         Notes:
@@ -376,7 +377,7 @@ def make_scf_loop(
 
     Returns
     ---------
-    float
+    Callable
     """
 
     predict_molecule = molecule_predictor(functional, chunk_size=chunk_size, **kwargs)
@@ -391,6 +392,10 @@ def make_scf_loop(
         params: PyTree
         molecule: Molecule
         *args: Arguments to be passed to predict_molecule function
+
+        Returns
+        -------
+        Molecule
         """
 
         # Needed to be able to update the chi tensor
@@ -603,16 +608,64 @@ def make_orbital_optimizer(
     D4FT: A Deep Learning Approach to Kohn-Sham Density Functional Theory
     ICLR 2023, https://openreview.net/forum?id=aBWnqqsuot7
 
-    Note: This only optimizes the rdm1, not the orbitals, also discussed in the article above.
-    Note too: The calculation of tensor chi is not implemented self differentiably, so the functional cannot include exact exchange.
+    Parameters
+    ----------
+    fxc: Functional
+    tx: optax.GradientTransformation
+    chunk_size: int, default to 1024
+        The chunk size for the calculation of the chi tensor.
+    max_cycles: int, default to 500.
+    e_conv: float, default to 1e-7.
+        The convergence criterion for the energy.
+    whitening: str, default to "PCA".
+        The orthonormalization method to use. Can be "PCA", "Cholesky" or "ZCA".
+    verbose: int, default to 0.
+
+    Returns
+    ----------
+    Callable
+
+    Note
+    ----------
+    This only optimizes the rdm1, not the orbitals, also discussed in the article above.
+    The calculation of tensor chi is not implemented self differentiably, so the functional cannot include exact exchange.
     """
 
     predict_molecule = molecule_predictor(fxc, chunk_size=chunk_size, **kwargs)
 
+    @jaxtyped
+    @typechecked
     @partial(jax.value_and_grad, argnums=0)
     def molecule_orbitals_iterator(
-        W: Array, D: Array, params: PyTree, molecule: Molecule, *args
-    ) -> Tuple[Scalar, Scalar]:
+        W: Float[Array, "spin orbitals orbitals"],
+        D: Float[Array, "orbitals orbitals"], 
+        params: PyTree, 
+        molecule: Molecule, 
+        *args
+    ) -> Tuple[Scalar, Float[Array, "spin orbitals orbitals"]]:
+        r"""
+        Predicted energy and gradients for a molecule generated from W.
+
+        Parameters
+        ----------
+        W: Float[Array, "spin orbitals orbitals"]
+            The whitening matrix used to generate the orthogonal orbitals.
+        D: Float[Array, "orbitals orbitals"]
+            Generated from
+            ```
+            w, v = jnp.linalg.eigh(molecule.s1e)
+            D = (jnp.diag(jnp.sqrt(1 / w)) @ v.T).real
+            ```
+        params: PyTree
+            Parameters of the neural functional. Note that during the orbital optimizer cycle
+            we optimize the matrix W, not these param.
+        molecule: Molecule
+
+        Returns
+        ----------
+        Tuple[Scalar, Float[Array, "spin orbitals orbitals"]]
+            The predicted energy and the gradients of the energy with respect to W.
+        """
         Q0, _ = jnp.linalg.qr(W[0])
         Q1, _ = jnp.linalg.qr(W[1])
         Q = jnp.stack([Q0, Q1])
@@ -642,7 +695,25 @@ def make_orbital_optimizer(
         predicted_e, _ = predict_molecule(params, molecule, *args)
         return predicted_e
 
-    def neural_iterator(params: PyTree, molecule: Molecule, *args) -> Tuple[Scalar, Scalar]:
+    def neural_iterator(
+            params: PyTree,
+            molecule: Molecule, 
+            *args
+        ) -> Molecule:
+        r"""
+        Implements an orbital optimizer.
+
+        Parameters
+        ----------
+        params: PyTree
+        molecule: Molecule
+        *args: Arguments to be passed to predict_molecule function
+
+        Returns
+        -------
+        molecule: Molecule
+        """
+
         old_e = jnp.inf
         cycle = 0
 
@@ -706,26 +777,77 @@ def make_orbital_optimizer(
 
 
 def make_jitted_orbital_optimizer(
-    functional: Functional, tx: Optimizer, cycles: int = 500, **kwargs
+    functional: Functional,
+    tx: Optimizer,
+    cycles: int = 500,
+    **kwargs
 ) -> Callable:
     r"""
-    Creates an orbital_optimizer object that can be called to optimize the density matrix and minimize the energy.
+    Creates a jittable orbital_optimizer object that can be called to optimize the density matrix and minimize the energy.
     Follows the description in
 
     Tianbo Li, Min Lin, Zheyuan Hu, Kunhao Zheng, Giovanni Vignale, Kenji Kawaguchi, A.H. Castro Neto, Kostya S. Novoselov, Shuicheng YAN
     D4FT: A Deep Learning Approach to Kohn-Sham Density Functional Theory
     ICLR 2023, https://openreview.net/forum?id=aBWnqqsuot7
 
-    Note: This only optimizes the rdm1, not the orbitals, also discussed in the article above.
-    Note too: The calculation of tensor chi is not implemented self differentiably, so the functional cannot include exact exchange.
+    Parameters
+    ----------
+    fxc: Functional
+    tx: optax.GradientTransformation
+    chunk_size: int, default to 1024
+        The chunk size for the calculation of the chi tensor.
+    max_cycles: int, default to 500.
+    e_conv: float, default to 1e-7.
+        The convergence criterion for the energy.
+    whitening: str, default to "PCA".
+        The orthonormalization method to use. Can be "PCA", "Cholesky" or "ZCA".
+    verbose: int, default to 0.
+
+    Returns
+    ----------
+    Callable
+
+    Note
+    ----------
+    This only optimizes the rdm1, not the orbitals, also discussed in the article above.
+    The calculation of tensor chi is not implemented self differentiably, so the functional cannot include exact exchange.
     """
 
     predict_molecule = molecule_predictor(functional, **kwargs)
 
+    @jaxtyped
+    @typechecked
     @partial(jax.value_and_grad, argnums=0)
     def molecule_orbitals_energy(
-        W: Array, D: Array, params: PyTree, molecule: Molecule, *args
-    ) -> Tuple[Scalar, Scalar]:
+        W: Float[Array, "spin orbitals orbitals"],
+        D: Float[Array, "orbitals orbitals"], 
+        params: PyTree, 
+        molecule: Molecule, 
+        *args
+    ) -> Tuple[Scalar, Float[Array, "spin orbitals orbitals"]]:
+        r"""
+        Predicted energy and gradients for a molecule generated from W.
+
+        Parameters
+        ----------
+        W: Float[Array, "spin orbitals orbitals"]
+            The whitening matrix used to generate the orthogonal orbitals.
+        D: Float[Array, "orbitals orbitals"]
+            Generated from
+            ```
+            w, v = jnp.linalg.eigh(molecule.s1e)
+            D = (jnp.diag(jnp.sqrt(1 / w)) @ v.T).real
+            ```
+        params: PyTree
+            Parameters of the neural functional. Note that during the orbital optimizer cycle
+            we optimize the matrix W, not these param.
+        molecule: Molecule
+
+        Returns
+        ----------
+        Tuple[Scalar, Float[Array, "spin orbitals orbitals"]]
+            The predicted energy and the gradients of the energy with respect to W.
+        """
         Q0, _ = jnp.linalg.qr(W[0])
         Q1, _ = jnp.linalg.qr(W[1])
         Q = jnp.stack([Q0, Q1])
@@ -742,7 +864,11 @@ def make_jitted_orbital_optimizer(
         return predicted_e
 
     @jit
-    def neural_iterator(params: PyTree, molecule: Molecule, *args) -> Molecule:
+    def neural_iterator(
+        params: PyTree,
+        molecule: Molecule,
+        *args
+    ) -> Molecule:
         r"""
         Implements an jit-compiled orbital optimizer.
 
@@ -829,12 +955,6 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
         SCF training loop not implemented for (range-separated) exact-exchange functionals.
         Doing so would require a differentiable way of recomputing the chi tensor.
         """
-
-        #if molecule.omegas:
-        #    raise NotImplementedError(
-        #        "SCF training loop not implemented for (range-separated) exact-exchange functionals. \
-        #                            Doing so would require a differentiable way of recomputing the chi tensor."
-        #    )
 
         old_e = jnp.inf
         norm_gorb = jnp.inf
@@ -961,24 +1081,26 @@ class JittableDiis:
         x = B^{-1} C.
 
     Diis attributes:
-        overlap_matrix (jnp.array): Overlap matrix, molecule.s1e. Shape: (n_orbitals, n_orbitals).
-        A (jnp.array): Transformation matrix for CDIIS, molecule.A. Shape: (n_orbitals, n_orbitals).
-        max_diis (int): Maximum number of DIIS vectors to store. Defaults to 8.
+        overlap_matrix: Float[Array, "orbitals orbitals"]
+            molecule.s1e.
+        A: Float[Array, "orbitals orbitals"]
+            Transformation matrix for CDIIS, molecule.A.
+        max_diis: Int: Maximum number of DIIS vectors to store. Defaults to 8.
 
     Other objects used during the calculation:
-        density_vector (jnp.array): Density matrix vectorized.
-            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
-        fock_vector (jnp.array): Fock matrix vectorized.
-            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
-        energy_vector (jnp.array): Fock energy vector.
-            Shape: (n_iterations).
-        error_vector (jnp.array): Error vector.
-            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
+        density_vector: Float[Array, "iterations spin orbitals orbitals"].
+            Density matrix vectorized.
+        fock_vector: Float[Array, "iterations spin orbitals orbitals"].
+            Fock matrix vectorized.
+        energy_vector: Float[Array, "iterations"].
+            Fock energy vector.
+        error_vector: Float[Array, "iterations spin orbitals orbitals"].
+            Error vector.
     """
 
-    overlap_matrix: Array
-    A: Array
-    max_diis: Optional[int] = 8
+    overlap_matrix: Float[Array, "orbitals orbitals"]
+    A: Float[Array, "orbitals orbitals"]
+    max_diis: Optional[Int] = 8
 
     def update(self, new_data, diis_data, cycle):
         density_matrix, fock_matrix, energy = new_data
@@ -1128,8 +1250,10 @@ class Diis:
         x = B^{-1} C.
 
     Diis attributes:
-        overlap_matrix (jnp.array): Overlap matrix, molecule.s1e. Shape: (n_orbitals, n_orbitals).
-        A (jnp.array): Transformation matrix for CDIIS, molecule.A. Shape: (n_orbitals, n_orbitals).
+        overlap_matrix: Float[Array, "orbitals orbitals"]
+            molecule.s1e.
+        A: Float[Array, "orbitals orbitals"]
+            Transformation matrix for CDIIS, molecule.A.
         max_diis (int): Maximum number of DIIS vectors to store.
         diis_method (str): DIIS method to use. One of "DIIS", "EDIIS", "ADIIS", "EDIIS2", "ADIIS2".
         ediis2_threshold (float): Threshold for EDIIS2 to change from EDIIS to DIIS.
@@ -1137,19 +1261,19 @@ class Diis:
 
     
     Other objects used during the calculation:
-        density_vector (jnp.array): Density matrix vectorized.
-            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
-        fock_vector (jnp.array): Fock matrix vectorized.
-            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
-        energy_vector (jnp.array): Fock energy vector.
-            Shape: (n_iterations).
-        error_vector (jnp.array): Error vector.
-            Shape: (n_iterations, spin, n_orbitals, n_orbitals).
+        density_vector: Float[Array, "iterations spin orbitals orbitals"].
+            Density matrix vectorized.
+        fock_vector: Float[Array, "iterations spin orbitals orbitals"].
+            Fock matrix vectorized.
+        energy_vector: Float[Array, "iterations"].
+            Fock energy vector.
+        error_vector: Float[Array, "iterations spin orbitals orbitals"].
+            Error vector.
     """
 
-    overlap_matrix: Array
-    A: Array
-    max_diis: Optional[int] = 8
+    overlap_matrix: Float[Array, "orbitals orbitals"]
+    A: Float[Array, "orbitals orbitals"]
+    max_diis: Optional[Int] = 8
     diis_method: Optional[str] = "EDIIS2"
     ediis2_threshold: Optional[float] = 1e-2
     adiis2_threshold: Optional[float] = 1e-2
