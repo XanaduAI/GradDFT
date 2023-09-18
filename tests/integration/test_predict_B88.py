@@ -20,16 +20,17 @@ import pytest
 
 # This only works on startup!
 from jax.config import config
-
 config.update("jax_enable_x64", True)
 
-from grad_dft.interface import molecule_from_pyscf
-from grad_dft.evaluate import make_scf_loop, make_jitted_scf_loop
+from grad_dft import (
+    molecule_from_pyscf,
+    make_scf_loop, 
+    make_jitted_scf_loop
+)
 from grad_dft.utils.types import Hartree2kcalmol
 from grad_dft.popular_functionals import B88
 
 from pyscf import gto, dft
-
 import jax.numpy as jnp
 
 
@@ -75,9 +76,34 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
     e_XND = molecule_out.energy
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
     assert jnp.allclose(kcalmoldiff, 0, atol=1e-6), f"Energy difference with PySCF for B88 on {name} exceeds the threshold."
-    # Testing the training scf loop too.
+
+
+@pytest.mark.parametrize("mol_and_name", [(MOL_WATER, "water"), (MOL_LI, "Li")])
+def test_jit(mol_and_name: tuple[gto.Mole, str]) -> None:
+    r"""Compare the total energy predicted by Grad-DFT for the B88 functional versus PySCF.
+    The function is hard-coded for water and atoimic Li.
+
+    Args:
+        mol_and_name (tuple[gto.Mole, str]): PySCF molecule object and the name of the molecule.
+    """
+    mol, name = mol_and_name
+    if mol.spin == 0: mf = dft.RKS(mol)
+    else: mf = dft.UKS(mol)
+    
+    mf.xc = "B88"
+    mf.max_cycle = 0
+    mf.kernel()
+    
+    # Start from Non-SCF density
+    molecule = molecule_from_pyscf(mf, omegas=[], scf_iteration=0)
+
+    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=10)
+    molecule_out = iterator(PARAMS, molecule)
+    e_XND = molecule_out.energy
+    
     iterator = make_jitted_scf_loop(FUNCTIONAL, cycles=10)
     molecule_out = iterator(PARAMS, molecule)
     e_XND_jit = molecule_out.energy
+
     kcalmoldiff = (e_XND - e_XND_jit) * Hartree2kcalmol
     assert jnp.allclose(kcalmoldiff, 0, atol=1e-6), f"Energy difference with between jitted and non-jitted SCF for B88 on {name} exceeds the threshold."

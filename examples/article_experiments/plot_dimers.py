@@ -15,7 +15,6 @@
 import json
 from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
-from matplotlib import legend
 import numpy as np
 import os
 import pandas as pd

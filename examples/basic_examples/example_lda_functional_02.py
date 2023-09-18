@@ -13,21 +13,21 @@
 # limitations under the License.
 
 from jax import grad, numpy as jnp
-from jax.lax import stop_gradient
 from flax.core import freeze
-from grad_dft.functional import Functional
-from grad_dft.interface import molecule_from_pyscf
-from grad_dft.molecule import Molecule
+from grad_dft import (
+    Molecule,
+    Functional,
+    molecule_from_pyscf,
+    molecule_predictor
+)
 
 from jax import config
-
 config.update("jax_enable_x64", True)
 
 # In this basic tutorial we want to introduce the concept of a functional.
 
 # We we will prepare a molecule, following the previous tutorial:
 from pyscf import gto, dft
-from grad_dft.train import molecule_predictor
 
 # Define the geometry of the molecule and mean-field object
 mol = gto.M(atom=[["H", (0, 0, 0)]], basis="def2-tzvp", charge=0, spin=1)

@@ -16,8 +16,7 @@ import os
 from jax import grad, vmap, numpy as jnp
 from tqdm import tqdm
 
-from grad_dft.interface import molecule_from_pyscf, loader
-from grad_dft.interface import saver as save
+from grad_dft.interface import molecule_from_pyscf, loader, saver as save
 from grad_dft.molecule import Molecule, make_reaction
 
 # In this basic tutorial we want to introduce the concept of a molecule, which is a class that contains

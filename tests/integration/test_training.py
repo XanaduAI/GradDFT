@@ -23,31 +23,31 @@ the training set. This means that, for SCF and non-SCF training, we should have:
 
 """
 
-from jaxtyping import Array, PyTree, Scalar, Float, Int
-from jax.random import PRNGKey, normal, randint
+from jax.random import PRNGKey
 import jax.numpy as jnp
-from jax import grad, jit
+from jax import grad
 import pytest
 
 import pyscf
 
-from flax import struct
-
-from typing import Optional
-
-from grad_dft.train import mse_energy_loss, mse_density_loss, mse_energy_and_density_loss
-from grad_dft.evaluate import make_jitted_simple_scf_loop, make_scf_loop, make_jitted_scf_loop, make_simple_scf_loop, make_non_scf_predictor
-from grad_dft.interface import molecule_from_pyscf
-from grad_dft.molecule import Molecule
-from grad_dft.functional import NeuralFunctional
+from grad_dft import (
+    molecule_from_pyscf,
+    mse_energy_loss, 
+    mse_density_loss, 
+    mse_energy_and_density_loss,
+    make_jitted_simple_scf_loop, 
+    make_scf_loop, 
+    make_jitted_scf_loop, 
+    make_simple_scf_loop, 
+    make_non_scf_predictor,
+    Molecule,
+    NeuralFunctional
+)
 
 from jax.nn import sigmoid, gelu
 from flax import linen as nn
-from jax import config, value_and_grad
 from optax import adam, apply_updates
-
-import sys
-
+from jax import config, value_and_grad
 config.update("jax_enable_x64", True)
 
 # Two H2 geometries. Small basis set

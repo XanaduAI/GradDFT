@@ -29,18 +29,17 @@ import os
 from orbax.checkpoint import PyTreeCheckpointer
 import h5py
 
-from grad_dft.train import molecule_predictor
-from grad_dft.functional import (
+from grad_dft import (
+    molecule_predictor,
     NeuralFunctional,
     canonicalize_inputs,
     dm21_coefficient_inputs,
     dm21_densities,
+    loader
 )
-from grad_dft.interface.pyscf import loader
 
 import jax
 from jax import config
-
 config.update("jax_enable_x64", True)
 
 # In this example we explain how to evaluate the experiments that train

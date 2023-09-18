@@ -15,19 +15,19 @@
 import warnings
 from jax import numpy as jnp
 from optax import adam
-from grad_dft.evaluate import make_scf_loop
+from jax.nn import gelu
 
 from jax.config import config
 config.update("jax_enable_x64", True)
 
-from grad_dft.interface.pyscf import molecule_from_pyscf
-from grad_dft.functional import (
+from grad_dft import (
     NeuralFunctional,
+    make_scf_loop,
+    molecule_from_pyscf,
     canonicalize_inputs,
     dm21_coefficient_inputs,
-    dm21_densities,
+    dm21_densities
 )
-from jax.nn import gelu
 
 # In this example we aim to explain how we can implement the self-consistent loop
 # with a simple functional that does not contain Hartree-Fock components.

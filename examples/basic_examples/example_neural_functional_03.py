@@ -16,21 +16,20 @@ from jax import numpy as jnp
 from jax.random import PRNGKey
 from optax import adam, apply_updates
 from tqdm import tqdm
-from grad_dft.evaluate import (
+from grad_dft import (
+    Molecule,
+    NeuralFunctional,
+    molecule_from_pyscf,
     make_jitted_orbital_optimizer,
     make_non_scf_predictor,
     make_orbital_optimizer,
     make_scf_loop,
     make_jitted_scf_loop,
+    simple_energy_loss,
 )
-from grad_dft.train import simple_energy_loss
-from grad_dft.functional import NeuralFunctional
-from grad_dft.interface import molecule_from_pyscf
-from grad_dft.molecule import Molecule
 from jax.nn import sigmoid, gelu
 from flax import linen as nn
 from jax import config
-
 config.update("jax_enable_x64", True)
 
 # In this basic tutorial we want to introduce the concept of a functional.

@@ -19,7 +19,7 @@ from typing import Callable, Optional, List, Dict, Union
 from functools import partial
 import math
 
-from jax import grad, value_and_grad
+from jax import grad
 from jax import numpy as jnp
 from jax.lax import Precision, stop_gradient
 from jax.nn import sigmoid, gelu, elu
@@ -35,12 +35,13 @@ from flax.training.train_state import TrainState
 from optax import GradientTransformation
 from orbax.checkpoint import Checkpointer, PyTreeCheckpointer
 from typeguard import typechecked
-from grad_dft.molecule import abs_clip
 
-from grad_dft.utils import DType, default_dtype
-from grad_dft.molecule import Grid, Molecule
-
-import sys
+from grad_dft import (
+    abs_clip,
+    Grid,
+    Molecule
+)
+from grad_dft.utils.types import DType, default_dtype
 
 
 @dataclass
