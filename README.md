@@ -16,6 +16,54 @@ E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rh
 
 Grad-DFT provides significant functionality, including fully differentiable and just-in-time compilable self-consistent loop, direct optimization of the orbitals, and implementation of many of the known constraints of the exact functional in the form of loss functionals.
 
+## Functionality and limitations
+
+The current version of the library includes the capability to implement:
+
+* The capability to implement any `NeuralFunctional` that follows the expression
+
+```math
+E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}),
+```
+
+that is, under the locality assumption.
+
+* The capability to implement (non-differentiable) range-separated Hartree Fock components.
+* Fully differentiable and just-in-time (jit) compilable self-consistent interation procedures. This allows to perform the training in a fully self-consistent manner, eg, by comparing the output energy of a self-consistent loop against some high-quality data.
+* Fully differentiable and just-in-time compilable direct optimization of the atomic orbitals.
+* Loss functions that minimize the energy or reduced density matrix error.
+* Regularization terms that prevent the divergence of the self-consistent iteration, for non-scf trained functionals. This includes the regularization term suggested in DM21.
+* 15 constraints of the exact functional in the form of loss functions.
+* The [Harris functional](https://en.wikipedia.org/wiki/Harris_functional), which allows to control the error of a non-scf converged solution as a function of the electronic error, $|E_{\text{true}} - E_{\text{Harris}}| = O((\rho_{\text{true}} - \rho_{\text{Harris}})^2).$
+* A few tested classical functionals such as B3LYP and DM21.
+* A simple `DispersionFunctional` implementing DFT-D tails with a neural parametrization.
+
+Future capability should include [sharding](https://jax.readthedocs.io/en/latest/notebooks/Distributed_arrays_and_automatic_parallelization.html) the training between multiple GPUs in parallel.
+
+## Install
+
+A core dependency of Grad-DFT is [PySCF](https://pyscf.org). To successfully install this package in the forthcoming installion with `pip`, please ensure that `cmake` is installed and that
+
+```bash
+which cmake
+```
+
+returns the correct path to the `cmake` binary. For instructions on installing `cmake`, visit https://cmake.org.
+
+Now, in a fresh [conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#activating-an-environment), navigate to the root directory of this repository and issue
+
+```bash
+pip install -e .
+```
+
+to install the base package. If you wish to run the examples in `~/examples`, you can run
+
+```bash
+pip install -e ".[examples]"
+```
+
+to install the additional dependencies.
+
 ## Use example
 
 The workflow of the library is the following:
@@ -28,7 +76,8 @@ The workflow of the library is the following:
 ```math
 E_{xc} = \int d\mathbf{r} \mathbf{c}_{\theta}[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}).
 ```
-where`params` indicates neural network parameters $\theta$.
+
+where `params` indicates neural network parameters $\theta$.
 
 5. Train the neural functional using JAX autodifferentiation capabilities, in particular `jax.grad`.
 
@@ -115,30 +164,6 @@ for iteration in tqdm(range(n_epochs), desc="Training epoch"):
 # Save checkpoint
 neuralfunctional.save_checkpoints(params, tx, step=n_epochs)
 ```
-
-## Install
-
-A core dependency of Grad-DFT is [PySCF](https://pyscf.org). To successfully install this package in the forthcoming installion with `pip`, please ensure that `cmake` is installed and that
-
-```bash
-which cmake
-```
-
-returns the correct path to the `cmake` binary. For instructions on installing `cmake`, visit https://cmake.org.
-
-Now, in a fresh [conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#activating-an-environment), navigate to the root directory of this repository and issue
-
-```bash
-pip install -e .
-```
-
-to install the base package. If you wish to run the examples in `~/examples`, you can run
-
-```bash
-pip install -e ".[examples]"
-```
-
-to install the additional dependencies.
 
 ## Acknowledgements
 
