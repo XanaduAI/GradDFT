@@ -16,7 +16,7 @@ E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rh
 
 Grad-DFT provides significant functionality, including fully differentiable and just-in-time compilable self-consistent loop, direct optimization of the orbitals, and implementation of many of the known constraints of the exact functional in the form of loss functionals.
 
-## Functionality and limitations
+## Functionality 
 
 The current version of the library includes the capability to implement:
 
