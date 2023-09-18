@@ -85,7 +85,7 @@ n_epochs = 20
 molecule_predict = molecule_predictor(neuralfunctional)
 for iteration in tqdm(range(n_epochs), desc="Training epoch"):
     (cost_value, predicted_energy), grads = simple_energy_loss(
-        params, molecule_predict, HH_molecule, ground_truth_energy]
+        params, molecule_predict, HH_molecule, ground_truth_energy
     )
     print("Iteration", iteration, "Predicted energy:", predicted_energy, "Cost value:", cost_value)
     updates, opt_state = tx.update(grads, opt_state, params)
