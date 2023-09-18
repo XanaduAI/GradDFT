@@ -16,17 +16,18 @@ from typing import Callable, Optional, Tuple
 from functools import partial
 from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float
 
-from jax import grad, numpy as jnp, vmap
+from jax import numpy as jnp, vmap
 from jax import value_and_grad
 from jax.profiler import annotate_function
-from jax.lax import stop_gradient, fori_loop, cond
+from jax.lax import stop_gradient
 from optax import OptState, GradientTransformation, apply_updates
 
-from grad_dft.functional import DispersionFunctional, Functional
-from grad_dft.molecule import (
+from grad_dft import (
+    coulomb_energy,
+    DispersionFunctional, 
+    Functional,
     Molecule, 
     abs_clip, 
-    coulomb_energy
 )
 
 def molecule_predictor(

@@ -16,19 +16,21 @@ import warnings
 from jax.random import PRNGKey
 from jax.lax import stop_gradient
 from optax import adam
-from grad_dft.evaluate import make_scf_loop
 
-from grad_dft.interface.pyscf import molecule_from_pyscf
-from grad_dft.functional import DM21
+from grad_dft import (
+    molecule_from_pyscf,
+    make_scf_loop,
+    DM21
+)
+
+from jax.config import config
+config.update("jax_enable_x64", True)
 
 # In this example we aim to explain how we can implement the self-consistent loop
 # with the DM21 functional.
 
 # First we define a molecule, using pyscf:
 from pyscf import gto, dft
-
-from jax.config import config
-config.update("jax_enable_x64", True)
 
 warnings.warn('--- This example should be executed after intermediate_examples/example_HF_training.py ---')
 

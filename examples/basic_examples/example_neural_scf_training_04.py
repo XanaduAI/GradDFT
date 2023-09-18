@@ -14,29 +14,24 @@
 
 from functools import partial
 from jax import numpy as jnp, value_and_grad
-from jax.random import split, PRNGKey
+from jax.random import PRNGKey
 from jax.nn import sigmoid, gelu
 from flax import linen as nn
-from jax import config
 from optax import adam, apply_updates
 from tqdm import tqdm
 
-from grad_dft.molecule import Molecule
-from grad_dft.evaluate import (
+from grad_dft import (
+    Molecule,
+    NeuralFunctional,
+    molecule_from_pyscf,
     make_jitted_orbital_optimizer,
     make_orbital_optimizer,
     make_scf_loop,
     make_jitted_scf_loop,
 )
-from grad_dft.functional import NeuralFunctional
-from grad_dft.interface import molecule_from_pyscf
-
+from jax import config
 config.update("jax_enable_x64", True)
 config.update('jax_debug_nans', True)
-
-from optax import clip_by_global_norm
-
-clip_by_global_norm(1e-5)
 
 # In this basic tutorial we want to introduce the concept of a functional.
 

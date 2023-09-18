@@ -17,17 +17,19 @@ from jax import numpy as jnp
 import pytest
 from grad_dft.popular_functionals import B88, LSDA
 
-from grad_dft.interface.pyscf import molecule_from_pyscf
+from grad_dft import (
+    molecule_from_pyscf,
+    molecule_predictor, 
+    Harris_energy_predictor
+)
+
+from grad_dft.utils.types import Hartree2kcalmol
 
 # This file aims to test, given some electronic density, whether our
 # implementation of classical functionals closely matches libxc (pyscf default).
 
 # again, this only works on startup!
 from jax import config
-
-from grad_dft.utils.types import Hartree2kcalmol
-from grad_dft.train import molecule_predictor, Harris_energy_predictor
-
 config.update("jax_enable_x64", True)
 
 # First we define a molecule:

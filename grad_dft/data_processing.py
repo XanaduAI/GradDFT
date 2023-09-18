@@ -20,13 +20,15 @@ import pandas as pd
 from pyscf import gto
 from pyscf.data.elements import ELEMENTS, CONFIGURATION
 
-from grad_dft.interface import saver as save
-from grad_dft.interface import molecule_from_pyscf
-from grad_dft.molecule import make_reaction
+from grad_dft import (
+    saver as save,
+    molecule_from_pyscf,
+    make_reaction,
+)
+from grad_dft.utils.types import Hartree2kcalmol
 from grad_dft.interface.pyscf import process_mol
-from grad_dft.utils.types import Hartree2kcalmol, Picometers2Angstroms, Bohr2Angstroms
 
-dirpath = os.path.dirname(__file__)
+dirpath = os.path.dirname(os.path.dirname(__file__))
 data_dir = "data/"
 data_path = os.path.join(dirpath, data_dir)
 

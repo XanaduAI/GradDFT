@@ -20,16 +20,17 @@ import pytest
 
 # This only works on startup!
 from jax.config import config
-
 config.update("jax_enable_x64", True)
 
-from grad_dft.interface import molecule_from_pyscf
-from grad_dft.evaluate import make_scf_loop, make_jitted_scf_loop
+from grad_dft import (
+    molecule_from_pyscf,
+    make_scf_loop, 
+    make_jitted_scf_loop
+)
 from grad_dft.utils.types import Hartree2kcalmol
 from grad_dft.popular_functionals import B88
 
 from pyscf import gto, dft
-
 import jax.numpy as jnp
 
 

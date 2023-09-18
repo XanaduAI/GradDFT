@@ -17,18 +17,18 @@ import json
 import os
 from optax import adam
 from tqdm import tqdm
-from grad_dft.functional import (
+from grad_dft import (
     NeuralFunctional,
     canonicalize_inputs,
     dm21_coefficient_inputs,
     dm21_densities,
+    loader,
+    molecule_predictor
 )
-from grad_dft.interface.pyscf import loader
+
 from orbax.checkpoint import PyTreeCheckpointer
 from jax import numpy as jnp
 from jax.nn import gelu
-
-from grad_dft.train import molecule_predictor
 
 dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 training_data_dirpath = os.path.normpath(dirpath + "/data/training/dimers/")

@@ -28,8 +28,11 @@ from jax.nn import gelu
 from orbax.checkpoint import PyTreeCheckpointer
 from torch.utils.tensorboard import SummaryWriter
 
-from grad_dft.train import make_train_kernel, molecule_predictor
-from grad_dft.evaluate import make_jitted_scf_loop
+from grad_dft import (
+    make_train_kernel, 
+    molecule_predictor,
+    make_jitted_scf_loop
+)
 
 from jax.config import config
 config.update("jax_enable_x64", True)

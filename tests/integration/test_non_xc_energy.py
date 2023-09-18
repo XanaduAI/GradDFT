@@ -18,7 +18,7 @@ We do so by comparing the dissociation energies of three molecules
 (H_2, LiF and CaO) to the dissociation energy calculated by PySCF.
 """
 
-from grad_dft.interface import molecule_from_pyscf
+from grad_dft import molecule_from_pyscf
 
 import numpy as np
 

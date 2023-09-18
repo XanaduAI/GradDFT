@@ -13,14 +13,15 @@
 # limitations under the License.
 
 from flax.core import freeze
-from grad_dft.popular_functionals import B3LYP, LYP
-
-from grad_dft.interface.pyscf import molecule_from_pyscf
+from grad_dft import (
+    B3LYP, 
+    LYP,
+    molecule_from_pyscf
+)
 
 # This file aims to test some of the constraints implemented in constraints.py.
 
 from jax import config
-
 config.update("jax_enable_x64", True)
 
 # First we define a molecule:

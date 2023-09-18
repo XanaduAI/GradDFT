@@ -15,11 +15,13 @@
 from jax.random import PRNGKey
 from optax import adam, apply_updates
 from jax.lax import stop_gradient
-from grad_dft.evaluate import make_non_scf_predictor
 
-from grad_dft.interface.pyscf import molecule_from_pyscf
-from grad_dft.functional import DM21
-from grad_dft.train import simple_energy_loss
+from grad_dft import (
+    molecule_from_pyscf,
+    make_non_scf_predictor,
+    simple_energy_loss,
+    DM21
+)
 
 from jax.config import config
 config.update("jax_enable_x64", True)

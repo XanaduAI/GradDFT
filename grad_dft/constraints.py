@@ -16,14 +16,24 @@ from flax import struct
 from jax.lax import cond
 import jax.numpy as jnp
 from jax.lax import Precision
-from grad_dft.functional import Functional
-from grad_dft.interface.pyscf import generate_chi_tensor
-from grad_dft.molecule import Molecule, density, grad_density, abs_clip
-from grad_dft.popular_functionals import LSDA
 from jax.nn import relu
 
-from grad_dft.train import molecule_predictor # compute densities and coefficients
-from grad_dft.utils.types import Array, PyTree, Scalar
+from grad_dft import (
+    Functional,
+    Molecule,
+    density,
+    grad_density,
+    abs_clip,
+    molecule_predictor
+)
+from grad_dft.interface.pyscf import (
+    generate_chi_tensor,
+)
+
+from grad_dft.popular_functionals import (
+    LSDA,
+)
+from jaxtyping import Array, PyTree, Scalar
 
 r"""
 In this document we implement some of the constraints listed in the review paper

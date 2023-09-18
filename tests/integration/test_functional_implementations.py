@@ -15,10 +15,15 @@
 from flax.core import freeze
 from jax import numpy as jnp
 import pytest
-from grad_dft.functional import DM21 # A class, needs to be instanciated!
-from grad_dft.popular_functionals import B3LYP, B88, LSDA, LYP, VWN, PW92
+from grad_dft import (
+    DM21, 
+    molecule_from_pyscf, 
+    molecule_predictor, # A class, needs to be instanciated!
+    B3LYP, B88, LSDA, LYP, VWN, PW92
+)
+from grad_dft.utils.types import Hartree2kcalmol
 
-from grad_dft.interface.pyscf import molecule_from_pyscf
+
 from grad_dft.external import NeuralNumInt
 from grad_dft.external import Functional
 
@@ -27,14 +32,10 @@ from grad_dft.external import Functional
 
 # again, this only works on startup!
 from jax import config
-
-from grad_dft.utils.types import Hartree2kcalmol
-
 config.update("jax_enable_x64", True)
 
 # First we define a molecule:
 from pyscf import gto, dft
-from grad_dft.train import molecule_predictor
 
 mol = gto.M(atom="H 0 0 0; F 0 0 1.1")
 

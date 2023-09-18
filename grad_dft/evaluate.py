@@ -19,7 +19,7 @@ from jax.scipy.special import erfc
 from jax.scipy.optimize import minimize as scipyminimize
 from flax import struct
 import optax
-from jax.lax import stop_gradient, cond, fori_loop
+from jax.lax import cond, fori_loop
 
 import sys
 
@@ -27,23 +27,30 @@ from typing import Callable, Tuple, Optional
 from functools import partial, reduce
 import time
 from scipy.optimize import bisect
-from typeguard import typechecked
 
-from grad_dft.functional import Functional
+from grad_dft import (
+    Molecule, 
+    abs_clip, 
+    make_rdm1, 
+    orbital_grad,
+    Functional,
+    molecule_predictor,
+)
 
-from grad_dft.molecule import Molecule, abs_clip, make_rdm1, orbital_grad
-from grad_dft.train import molecule_predictor
 from grad_dft.interface.pyscf import (
     generate_chi_tensor,
     mol_from_Molecule,
     process_mol,
     mol_from_Molecule,
 )
-
-from grad_dft.external import Functional
-from grad_dft.utils import Optimizer, safe_fock_solver
-from grad_dft.utils.types import Hartree2kcalmol
-
+from grad_dft.utils import (
+    Optimizer, 
+    safe_fock_solver,
+)
+from grad_dft.utils.types import (
+    Hartree2kcalmol,
+)
+from typeguard import typechecked
 from jaxtyping import PyTree, Array, Scalar, Float, jaxtyped
 
 

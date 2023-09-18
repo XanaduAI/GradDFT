@@ -18,8 +18,8 @@ from flax import linen as nn
 from jaxtyping import Array, Float, PyTree, jaxtyped
 from typeguard import typechecked
 
-from grad_dft.molecule import Molecule
-from grad_dft.functional import (
+from grad_dft import (
+    Molecule,
     Functional,
     correlation_polarization_correction,
     exchange_polarization_correction,

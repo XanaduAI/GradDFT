@@ -15,20 +15,20 @@
 from jax.random import split, PRNGKey
 from jax import numpy as jnp
 from optax import adam, apply_updates
-from grad_dft.evaluate import make_non_scf_predictor
+from jax.nn import gelu
 
 from jax.config import config
 config.update("jax_enable_x64", True)
 
-from grad_dft.interface.pyscf import molecule_from_pyscf
-from grad_dft.train import simple_energy_loss
-from grad_dft.functional import (
+from grad_dft import (
+    make_non_scf_predictor,
+    molecule_from_pyscf,
+    simple_energy_loss,
     NeuralFunctional,
     canonicalize_inputs,
     dm21_coefficient_inputs,
-    dm21_densities,
+    dm21_densities
 )
-from jax.nn import gelu
 
 # In this example we aim to explain how we can implement the self-consistent loop
 # with a simple functional that does not contain Hartree-Fock components.

@@ -17,15 +17,8 @@ import warnings
 
 import pytest
 
-from grad_dft.interface import molecule_from_pyscf
-from grad_dft.external import NeuralNumInt
-from grad_dft.external import Functional
-
 # This only works on startup!
 from jax.config import config
-
-from grad_dft.train import molecule_predictor
-
 config.update("jax_enable_x64", True)
 
 dirpath = os.path.dirname(os.path.dirname(__file__))
@@ -39,16 +32,18 @@ model_path = os.path.normpath(dirpath + "/DM21_model")
 
 learning_rate = 1e-3
 
-from grad_dft.interface import molecule_from_pyscf
-from grad_dft.evaluate import make_scf_loop, make_orbital_optimizer
-from grad_dft.external.density_functional_approximation_dm21.density_functional_approximation_dm21.compute_hfx_density import (
-    get_hf_density,
+from grad_dft import (
+    molecule_from_pyscf, 
+    make_scf_loop, 
+    DM21
 )
+from grad_dft.utils.types import Hartree2kcalmol
+
+from grad_dft.external import NeuralNumInt
+from grad_dft.external import Functional
 
 from pyscf import gto, dft, cc, scf
 import jax.numpy as jnp
-from grad_dft.functional import DM21
-from grad_dft.utils.types import Hartree2kcalmol
 
 functional = DM21()
 params = functional.generate_DM21_weights()
@@ -81,7 +76,8 @@ def test_predict(mol):
     # e_XND_DF4T = iterator(params, molecule)
 
     iterator = make_scf_loop(functional, verbose=2, max_cycles=10)
-    e_XND = iterator(params, molecule)
+    molecule_out = iterator(params, molecule)
+    e_XND = molecule_out.energy
 
     mf = dft.RKS(mol)
     mf._numint = NeuralNumInt(Functional.DM21)
@@ -125,7 +121,8 @@ def test_predict(mol):
     # e_XND_DF4T = iterator(params, molecule)
 
     iterator = make_scf_loop(functional, verbose=2, max_cycles=1)
-    e_XND = iterator(params, molecule)
+    molecule_out = iterator(params, molecule)
+    e_XND = molecule_out.energy
 
     mf = dft.UKS(mol)
     mf._numint = NeuralNumInt(Functional.DM21)
@@ -137,16 +134,14 @@ def test_predict(mol):
 
 
 ##################
-# test_predict(mol)
+test_predict(mol)
 
 
 ###################### Check against DM21 tests ############################
 
 
 def test_rks():
-    warnings.warn(
-        "Remember to set the basis to sto-3g in the config file before running this test, and the grid level to 3."
-    )
+
     ni = NeuralNumInt(Functional.DM21)
 
     mol = gto.Mole()
@@ -155,6 +150,7 @@ def test_rks():
     mol.build()
 
     mf = dft.RKS(mol)
+    mf.grids.level = 3
     mf.small_rho_cutoff = 1.0e-20
     mf._numint = ni
     e_DM = mf.run().e_tot  # Expected -126.898521
@@ -166,16 +162,14 @@ def test_rks():
     # e_XND_DF4T = iterator(params, molecule)
 
     iterator = make_scf_loop(functional, verbose=2, functional_type="DM21")
-    e_XND = iterator(params, molecule)
+    molecule_out = iterator(params, molecule)
+    e_XND = molecule_out.energy
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
     assert jnp.allclose(kcalmoldiff, 0, atol=1)
 
 
 def test_uks():
-    warnings.warn(
-        "Remember to set the basis to sto-3g in the config file before running this test, and the grid level to 3."
-    )
     ni = NeuralNumInt(Functional.DM21)
 
     mol = gto.Mole()
@@ -184,7 +178,8 @@ def test_uks():
     mol.basis = "sto-3g"
     mol.build()
 
-    mf = dft.UKS(mol)
+    mf = dft.UKS(mol, grid)
+    mf.grids.level = 3
     mf.small_rho_cutoff = 1.0e-20
     mf._numint = ni
     e_DM = mf.run().e_tot  # Expected -37.34184876
@@ -196,7 +191,8 @@ def test_uks():
     # e_XND_DF4T = iterator(params, molecule)
 
     iterator = make_scf_loop(functional, verbose=2, functional_type="DM21")
-    e_XND = iterator(params, molecule)
+    molecule_out = iterator(params, molecule)
+    e_XND = molecule_out.energy
 
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
     assert jnp.allclose(kcalmoldiff, 0, atol=1)
@@ -217,6 +213,7 @@ mol.spin = 1
 mol.unit = "angstrom"
 mol.build()
 mf = dft.UKS(mol)
+mf.grids.level = 3
 energy = mf.kernel()
 
 grid = mf.grids
