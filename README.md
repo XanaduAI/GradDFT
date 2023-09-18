@@ -26,8 +26,7 @@ The workflow of the library is the following:
 4. Build the `Functional`, which has method `functional.energy(molecule, params)`, implementing
 
 $$
-E_{xc} = \int d\bm{r} \bm{c}_\theta[\rho](\bm{r})\cdot\bm{e}[\rho](\bm{r}),
-
+E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}),
 $$
 
     where`params` indicates neural network parameters $\theta$.
