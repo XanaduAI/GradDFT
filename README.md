@@ -28,7 +28,7 @@ The workflow of the library is the following:
 ```math
 E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}).
 ```
-    where`params` indicates neural network parameters $\theta$.
+where`params` indicates neural network parameters $\theta$.
 
 5. Train the neural functional using JAX autodifferentiation capabilities, in particular `jax.grad`.
 
