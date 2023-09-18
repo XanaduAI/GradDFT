@@ -2,30 +2,11 @@
 
 # Grad-DFT: a software library for machine learning enhanced density functional theory
 
-<!-- Light Theme Logo -->
 
-<img src="image/README/light_logo.svg" alt="Light Theme Logo" id="light-logo" />
+![Light Theme Image](images/image-light.png)
 
-<!-- Dark Theme Logo -->
+![Dark Theme Image](images/image-dark.png)
 
-<img src="image/README/dark_logo.svg" alt="Dark Theme Logo" id="dark-logo" />
-
-<style>
-  /* Hide the dark theme image by default */
-  #dark-logo {
-    display: none;
-  }
-
-  /* Show the dark theme image when in dark mode */
-  @media (prefers-color-scheme: dark) {
-    #light-logo {
-      display: none;
-    }
-    #dark-logo {
-      display: inline;
-    }
-  }
-</style>
 
 [![build](https://img.shields.io/badge/build-passing-graygreen.svg "https://github.com/XanaduAI/GradDFT/actions")](https://github.com/XanaduAI/GradDFT/actions)
 [![arXiv](http://img.shields.io/badge/arXiv-2101.10279-B31B1B.svg "Grad-DFT")](https://arxiv.org/)
