@@ -134,7 +134,7 @@ def test_predict(mol):
 
 
 ##################
-test_predict(mol)
+# test_predict(mol)
 
 
 ###################### Check against DM21 tests ############################
