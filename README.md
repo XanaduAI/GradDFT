@@ -25,10 +25,9 @@ The workflow of the library is the following:
 3. Implement the function `coefficients`, which may include a neural network, and computes $\bm{c}_\theta[\rho](\bm{r})$. If the function `coefficients` requires inputs, specify function `coefficient_inputs` too.
 4. Build the `Functional`, which has method `functional.energy(molecule, params)`, implementing
 
-$$
-E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}),
-$$
-
+```math
+E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}).
+```
     where`params` indicates neural network parameters $\theta$.
 
 5. Train the neural functional using JAX autodifferentiation capabilities, in particular `jax.grad`.
