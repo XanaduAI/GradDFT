@@ -44,7 +44,7 @@ as quadratic loss functions.
 ###################### Constraints ############################
 
 
-def constraints_x1_c1(
+def x1_c1(
     functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST
 ):
     r"""
@@ -68,7 +68,7 @@ def constraints_x1_c1(
     return Ex**2, Ec**2
 
 
-def constraint_c2(
+def c2(
     functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST
 ):
     r"""
@@ -95,7 +95,7 @@ def constraint_c2(
     return Ec**2
 
 
-def constraint_x2(
+def x2(
     functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST
 ):
     r"""
@@ -148,7 +148,7 @@ def constraint_x2(
     return (Exc - (Excu + Excd) / 2.0) ** 2
 
 
-def constraints_x3_c3_c4(
+def x3_c3_c4(
     functional: Functional,
     params: PyTree,
     molecule: Molecule,
@@ -286,7 +286,7 @@ def constraints_x3_c3_c4(
     return exchange_constraint_losses, correlation_constraint_losses
 
 
-def constraint_x4(
+def x4(
     functional: Functional,
     params: PyTree,
     molecule: Molecule,
@@ -382,7 +382,7 @@ def constraint_x4(
     )
 
 
-def constraint_x5(
+def x5(
     functional: Functional,
     params: PyTree,
     molecule: Molecule,
@@ -535,7 +535,7 @@ def constraint_x5(
     return e, e_
 
 
-def constraint_x6(
+def x6(
     functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST, clip_cte = 1e-30
 ):
     r"""
@@ -573,7 +573,7 @@ def constraint_x6(
     )
 
 
-def constraint_x7(
+def x7(
     functional: Functional, params: PyTree, molecule2e: Molecule, precision=Precision.HIGHEST, clip_cte = 1e-30
 ):
     r"""
@@ -639,7 +639,7 @@ def constraint_x7(
     )
 
 
-def constraint_c6(
+def c6(
     functional: Functional, params: PyTree, molecule: Molecule, multiplier: Scalar = 1e-7, precision=Precision.HIGHEST
 ):
     r"""
@@ -699,7 +699,7 @@ def constraint_c6(
     return Ec**2
 
 
-def constraint_xc2(
+def xc2(
     functional: Functional, params: PyTree, molecule: Molecule, gamma: Scalar = 1e-7, precision=Precision.HIGHEST
 ):
     r"""
@@ -756,7 +756,7 @@ def constraint_xc2(
     return (Ec - Ec_sym) ** 2
 
 
-def constraint_xc4(
+def xc4(
     functional: Functional, params: PyTree, molecule2e: Molecule, precision=Precision.HIGHEST
 ):
     r"""
@@ -777,7 +777,7 @@ def constraint_xc4(
     return (relu(1.671 * Exc_lda - Exc)) ** 2
 
 
-def constraints_fractional_charge_spin(
+def xc1(
     functional: Functional,
     params: PyTree,
     molecule1: Molecule,
@@ -792,6 +792,8 @@ def constraints_fractional_charge_spin(
     Assumes gamma is between 0 and 1.
     Assumes molecule1 and molecule2 have the same nuclear positions and grid, and differ in that
     molecule2 has one (or 0) more electrons than molecule1.
+
+    Also named as the fractional charge and spin constraint.
     """
 
     predict = molecule_predictor(functional)
