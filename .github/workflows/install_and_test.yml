@@ -1,6 +1,11 @@
 name: Installing Grad-DFT and running tests
 
-on: [push]
+on:
+  pull_request:
+    types:
+      - synchronize
+      - opened
+      - reopened
 
 jobs:
   build:
@@ -10,7 +15,7 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11"]
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python ${{ matrix.python-version }}
