@@ -21,7 +21,7 @@ Grad-DFT provides significant functionality, including fully differentiable and 
 The workflow of the library is the following:
 
 1. Specify `Molecule`, which has methods to compute the electronic density $\rho$ and derived quantities.
-2. Define the function `energy`, that computes $\mathbf{e}\[\rho\](\mathbf{r})$.
+2. Define the function `energy_density`, that computes $\mathbf{e}\[\rho\](\mathbf{r})$.
 3. Implement the function `coefficients`, which may include a neural network, and computes $\mathbf{c}_{\theta}\[\rho\](\mathbf{r})$. If the function `coefficients` requires inputs, specify function `coefficient_inputs` too.
 4. Build the `Functional`, which has method `functional.energy(molecule, params)`, implementing
 
