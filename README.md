@@ -2,6 +2,31 @@
 
 # Grad-DFT: a software library for machine learning enhanced density functional theory
 
+<!-- Light Theme Logo -->
+
+<img src="image/README/light_logo.svg" alt="Light Theme Logo" id="light-logo" />
+
+<!-- Dark Theme Logo -->
+
+<img src="image/README/dark_logo.svg" alt="Dark Theme Logo" id="dark-logo" />
+
+<style>
+  /* Hide the dark theme image by default */
+  #dark-logo {
+    display: none;
+  }
+
+  /* Show the dark theme image when in dark mode */
+  @media (prefers-color-scheme: dark) {
+    #light-logo {
+      display: none;
+    }
+    #dark-logo {
+      display: inline;
+    }
+  }
+</style>
+
 [![build](https://img.shields.io/badge/build-passing-graygreen.svg "https://github.com/XanaduAI/GradDFT/actions")](https://github.com/XanaduAI/GradDFT/actions)
 [![arXiv](http://img.shields.io/badge/arXiv-2101.10279-B31B1B.svg "Grad-DFT")](https://arxiv.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-9F9F9F "https://github.com/XanaduAI/GradDFT/blob/main/LICENSE")](https://github.com/XanaduAI/GradDFT/blob/main/LICENSE)
@@ -16,7 +41,7 @@ E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rh
 
 Grad-DFT provides significant functionality, including fully differentiable and just-in-time compilable self-consistent loop, direct optimization of the orbitals, and implementation of many of the known constraints of the exact functional in the form of loss functionals.
 
-## Functionality 
+## Functionality
 
 The current version of the library includes the capability to implement:
 
