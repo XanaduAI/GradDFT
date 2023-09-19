@@ -52,16 +52,14 @@ HH_molecule = molecule_from_pyscf(mf)
 # which compute the two vectors that get dot-multiplied and then integrated over space. If the functional is a
 # neural functional we also need to define coefficient_inputs, for which in this case we will reuse the densities function.
 def coefficient_inputs(molecule: Molecule, *_, **__):
-    rho = jnp.clip(molecule.density(), a_min = 1e-30)
-    kinetic = jnp.clip(molecule.kinetic_density(), a_min = 1e-30)
+    rho = molecule.density()
+    kinetic = molecule.kinetic_density()
     return jnp.concatenate((rho, kinetic), axis = 1)
 
 def energy_densities(molecule: Molecule, clip_cte: float = 1e-30, *_, **__):
     r"""Auxiliary function to generate the features of LSDA."""
     # Molecule can compute the density matrix.
     rho = molecule.density()
-    # To avoid numerical issues in JAX we limit too small numbers.
-    rho = jnp.clip(rho, a_min = clip_cte)
     # Now we can implement the LDA energy density equation in the paper.
     lda_e = -3/2 * (3/(4*jnp.pi)) ** (1/3) * (rho**(4/3)).sum(axis = 1, keepdims = True)
     # For simplicity we do not include the exchange polarization correction
@@ -81,7 +79,6 @@ def coefficients(instance, rhoinputs):
 
     x = nn.Dense(features=out_features)(rhoinputs)
     x = nn.LayerNorm()(x)
-    x = gelu(x)
     return sigmoid(x)
 
 neuralfunctional = NeuralFunctional(coefficients, energy_densities, coefficient_inputs)
