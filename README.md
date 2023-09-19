@@ -75,13 +75,19 @@ The workflow of the library is the following:
 1. Specify `Molecule`, which has methods to compute the electronic density $\rho$ and derived quantities.
 2. Define the function `energy_densities`, that computes $\mathbf{e}\[\rho\](\mathbf{r})$.
 3. Implement the function `coefficients`, which may include a neural network, and computes $\mathbf{c}_{\theta}\[\rho\](\mathbf{r})$. If the function `coefficients` requires inputs, specify function `coefficient_inputs` too.
-4. Build the `Functional`, which has the method `functional.energy(molecule, params)`, implementing
+4. Build the `Functional`, which has method `functional.energy(molecule, params)`, computing
 
 ```math
-E_{xc} = \int d\mathbf{r} \mathbf{c}_{\theta}[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}).
+E_{KS}[\rho] = \sum_{i=0}^{\text{occ}} \int d\mathbf{r}\; |\nabla \varphi_{i}(\mathbf{r})|^2  + \frac{1}{2}\int d\mathbf{r} d\mathbf{r}'\frac{\rho(\mathbf{r})\rho(\mathbf{r}')}{|\mathbf{r}-\mathbf{r}'|} +\int d\mathbf{r} U(\mathbf{r}) \rho(\mathbf{r}) + E_{xc}[\rho],
 ```
 
-where `params` indicates neural network parameters $\theta$.
+with
+
+```math
+E_{xc}[\rho] = \int d\mathbf{r} \mathbf{c}_{\theta}[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}),
+```
+
+and where `params` indicates neural network parameters $\theta$.
 
 5. Train the neural functional using JAX autodifferentiation capabilities, in particular `jax.grad`.
 
