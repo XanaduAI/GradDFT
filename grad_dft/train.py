@@ -607,8 +607,8 @@ def mse_energy_and_density_loss(
     molecules: list[Molecule],
     truth_densities: list[Float[Array, "ngrid nspin"]],
     truth_energies: Float[Array, "energy"],
-    energy_factor: Scalar = 1.0,
     rho_factor: Scalar = 1.0,
+    energy_factor: Scalar = 1.0,
     elec_num_norm: Scalar = True,
 ) -> Scalar:
     r"""
