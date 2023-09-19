@@ -2,11 +2,9 @@
 
 # Grad-DFT: a software library for machine learning enhanced density functional theory
 
-
 ![Light Theme Image](image/README/light_logo.svg#gh-light-mode-only)
 
 ![Dark Theme Image](image/README/dark_logo.svg#gh-dark-mode-only)
-
 
 [![build](https://img.shields.io/badge/build-passing-graygreen.svg "https://github.com/XanaduAI/GradDFT/actions")](https://github.com/XanaduAI/GradDFT/actions)
 [![arXiv](http://img.shields.io/badge/arXiv-2101.10279-B31B1B.svg "Grad-DFT")](https://arxiv.org/)
@@ -75,7 +73,7 @@ to install the additional dependencies.
 The workflow of the library is the following:
 
 1. Specify `Molecule`, which has methods to compute the electronic density $\rho$ and derived quantities.
-2. Define the function `energy_density`, that computes $\mathbf{e}\[\rho\](\mathbf{r})$.
+2. Define the function `energy_densities`, that computes $\mathbf{e}\[\rho\](\mathbf{r})$.
 3. Implement the function `coefficients`, which may include a neural network, and computes $\mathbf{c}_{\theta}\[\rho\](\mathbf{r})$. If the function `coefficients` requires inputs, specify function `coefficient_inputs` too.
 4. Build the `Functional`, which has method `functional.energy(molecule, params)`, implementing
 

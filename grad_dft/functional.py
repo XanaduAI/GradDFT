@@ -64,7 +64,7 @@ class Functional(nn.Module):
         A function that computes and returns the weights c_\theta. If it requires
         some inputs, these may be computed via function compute_coefficient_inputs below.
 
-    densities : Callable
+    energy_densities : Callable
         A function that computes and returns the energy densities e_\theta that can be autodifferentiated
         with respect to the reduced density matrix.
 
