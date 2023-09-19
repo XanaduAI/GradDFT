@@ -1,6 +1,6 @@
 <div align="center">
 
-# Grad-DFT: a software library for machine learning enhanced density functional theory
+# Grad DFT: a software library for machine learning enhanced density functional theory
 
 ![Light Theme Image](image/README/light_logo.svg#gh-light-mode-only)
 
@@ -12,13 +12,13 @@
 
 </div>
 
-Grad-DFT is a JAX-based library enabling the differentiable design and experimentation of exchange-correlation functionals using machine learning techniques. This library supports a parametrization of exchange-correlation functionals based on energy densities and associated coefficient functions; the latter typically constructed using neural networks:
+Grad DFT is a JAX-based library enabling the differentiable design and experimentation of exchange-correlation functionals using machine learning techniques. This library supports a parametrization of exchange-correlation functionals based on energy densities and associated coefficient functions; the latter typically constructed using neural networks:
 
 ```math
 E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}).
 ```
 
-Grad-DFT provides significant functionality, including fully differentiable and just-in-time compilable self-consistent loop, direct optimization of the orbitals, and implementation of many of the known constraints of the exact functional in the form of loss functionals.
+Grad DFT provides significant functionality, including a fully differentiable and just-in-time compilable self-consistent loop, direct optimization of the orbitals, and implementation of many of the known constraints of the exact functional in the form of loss functionals.
 
 ## Functionality
 
@@ -33,12 +33,12 @@ E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rh
 that is, under the locality assumption.
 
 * The capability to implement (non-differentiable) range-separated Hartree Fock components.
-* Fully differentiable and just-in-time (jit) compilable self-consistent interation procedures. This allows to perform the training in a fully self-consistent manner, eg, by comparing the output energy of a self-consistent loop against some high-quality data.
+* Fully differentiable and just-in-time (jit) compilable self-consistent interaction procedures. This allows us to perform the training in a fully self-consistent manner, eg, by comparing the output energy of a self-consistent loop against some high-quality data.
 * Fully differentiable and just-in-time compilable direct optimization of the atomic orbitals.
 * Loss functions that minimize the energy or reduced density matrix error.
 * Regularization terms that prevent the divergence of the self-consistent iteration, for non-scf trained functionals. This includes the regularization term suggested in DM21.
 * 15 constraints of the exact functional in the form of loss functions.
-* The [Harris functional](https://en.wikipedia.org/wiki/Harris_functional), which allows to control the error of a non-scf converged solution as a function of the electronic error, $|E_{\text{true}} - E_{\text{Harris}}| = O((\rho_{\text{true}} - \rho_{\text{Harris}})^2).$
+* The [Harris functional](https://en.wikipedia.org/wiki/Harris_functional), which allows controlling the error of a non-scf converged solution as a function of the electronic error, $|E_{\text{true}} - E_{\text{Harris}}| = O((\rho_{\text{true}} - \rho_{\text{Harris}})^2).$
 * A few tested classical functionals such as B3LYP and DM21.
 * A simple `DispersionFunctional` implementing DFT-D tails with a neural parametrization.
 
@@ -46,7 +46,7 @@ Future capability should include [sharding](https://jax.readthedocs.io/en/latest
 
 ## Install
 
-A core dependency of Grad-DFT is [PySCF](https://pyscf.org). To successfully install this package in the forthcoming installion with `pip`, please ensure that `cmake` is installed and that
+A core dependency of Grad DFT is [PySCF](https://pyscf.org). To successfully install this package in the forthcoming installation with `pip`, please ensure that `cmake` is installed and that
 
 ```bash
 which cmake
@@ -75,7 +75,7 @@ The workflow of the library is the following:
 1. Specify `Molecule`, which has methods to compute the electronic density $\rho$ and derived quantities.
 2. Define the function `energy_densities`, that computes $\mathbf{e}\[\rho\](\mathbf{r})$.
 3. Implement the function `coefficients`, which may include a neural network, and computes $\mathbf{c}_{\theta}\[\rho\](\mathbf{r})$. If the function `coefficients` requires inputs, specify function `coefficient_inputs` too.
-4. Build the `Functional`, which has method `functional.energy(molecule, params)`, implementing
+4. Build the `Functional`, which has the method `functional.energy(molecule, params)`, implementing
 
 ```math
 E_{xc} = \int d\mathbf{r} \mathbf{c}_{\theta}[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}).
@@ -179,7 +179,7 @@ GradDFT often follows similar calculations and naming conventions as PySCF, thou
 
 ```
 @article{graddft,
-  title={Grad-DFT: a software library for machine learning density functional theory},
+  title={Grad DFT: a software library for machine learning density functional theory},
   author={Casares, Pablo Antonio Moreno and Baker, Jack and Medvidovi{\'c}, Matija and Dos Reis, Roberto, and Arrazola, Juan Miguel},
   journal={arXiv preprint [number]},
   year={2023}
