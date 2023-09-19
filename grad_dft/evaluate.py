@@ -44,6 +44,7 @@ from grad_dft.interface.pyscf import (
 from grad_dft.utils import (
     Optimizer,
     safe_fock_solver,
+    safe_eigh
 )
 from grad_dft.utils.types import (
     Hartree2kcalmol,
@@ -723,7 +724,7 @@ def make_orbital_optimizer(
         C = molecule.mo_coeff
 
         if whitening == "PCA":
-            w, v = jnp.linalg.eigh(molecule.s1e)
+            w, v = safe_eigh(molecule.s1e)
             D = (jnp.diag(jnp.sqrt(1 / w)) @ v.T).real
             S_1 = (v @ jnp.diag(w) @ v.T).real
             diff = S_1 - molecule.s1e
@@ -732,7 +733,7 @@ def make_orbital_optimizer(
         elif whitening == "Cholesky":
             D = jnp.linalg.cholesky(jnp.linalg.inv(molecule.s1e)).T
         elif whitening == "ZCA":
-            w, v = jnp.linalg.eigh(molecule.s1e)
+            w, v = safe_eigh(molecule.s1e)
             D = (v @ jnp.diag(jnp.sqrt(1 / w)) @ v.T).real
 
         Q = jnp.einsum("sji,jk->sik", C, jnp.linalg.inv(D))  # C transposed
@@ -884,7 +885,7 @@ def make_jitted_orbital_optimizer(
         """
         predicted_e, _ = predict_molecule(params, molecule, *args)
 
-        w, v = jnp.linalg.eigh(molecule.s1e)
+        w, v = safe_eigh(molecule.s1e)
         D = (jnp.diag(jnp.sqrt(1 / w)) @ v.T).real
         Q = jnp.einsum("sji,jk->sik", molecule.mo_coeff, jnp.linalg.inv(D))  # C transposed
         W = Q
@@ -1366,11 +1367,11 @@ class Diis:
         C = jnp.zeros((2, len(error_vector) + 1))
         C = C.at[:, 0].set(1)
 
-        w, v = jnp.linalg.eigh(B[0])
+        w, v = safe_eigh(B[0])
         w, v = w.real, v.real
         x0 = jnp.einsum("ij,jk,km,m-> i", v, jnp.diag(1.0 / w), v.T.conj(), C[0])
 
-        w, v = jnp.linalg.eigh(B[1])
+        w, v = safe_eigh(B[1])
         w, v = w.real, v.real
         x1 = jnp.einsum("ij,jk,km,m-> i", v, jnp.diag(1.0 / w), v.T.conj(), C[1])
 
