@@ -78,7 +78,7 @@ The workflow of the library is the following:
 4. Build the `Functional`, which has method `functional.energy(molecule, params)`, computing
 
 ```math
-E_{KS}[\rho] = \sum_{i=0}^{\text{occ}} \int d\mathbf{r}\; |\nabla \varphi_{i}(\mathbf{r})|^2  + \frac{1}{2}\int d\mathbf{r} d\mathbf{r}'\frac{\rho(\mathbf{r})\rho(\mathbf{r}')}{|\mathbf{r}-\mathbf{r}'|} +\int d\mathbf{r} U(\mathbf{r}) \rho(\mathbf{r}) + E_{xc}[\rho],
+E_{KS}[\rho] = \sum_{i=0}^{\text{occ}} \int d\mathbf{r}\; |\nabla \varphi_{i}(\mathbf{r})|^2  + \frac{1}{2}\int d\mathbf{r} d\mathbf{r}'\frac{\rho(\mathbf{r})\rho(\mathbf{r}')}{|\mathbf{r}-\mathbf{r}'|} +\int d\mathbf{r} U(\mathbf{r}) \rho(\mathbf{r}) + E_{II} + E_{xc}[\rho],
 ```
 
 with
