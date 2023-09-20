@@ -130,8 +130,8 @@ def energy_densities(molecule):
     return lda_e
 
 def coefficient_inputs(molecule):
-    rho = jnp.clip(molecule.density(), a_min = 1e-30)
-    kinetic = jnp.clip(molecule.kinetic_density(), a_min = 1e-30)
+    rho = molecule.density()
+    kinetic = molecule.kinetic_density()
     return jnp.concatenate((rho, kinetic))
 
 def coefficients(self, rhoinputs):
