@@ -779,7 +779,7 @@ def make_orbital_optimizer(
 def make_jitted_orbital_optimizer(
     functional: Functional,
     tx: Optimizer,
-    cycles: int = 500,
+    max_cycles: int = 500,
     **kwargs
 ) -> Callable:
     r"""
@@ -900,7 +900,7 @@ def make_jitted_orbital_optimizer(
 
         # Compute the scf loop
         state = W, opt_state, predicted_e
-        final_state = fori_loop(0, cycles, body_fun=loop_body, init_val=state)
+        final_state = fori_loop(0, max_cycles, body_fun=loop_body, init_val=state)
         W, opt_state, predicted_e = final_state
 
         molecule = molecule.replace(energy = predicted_e)
