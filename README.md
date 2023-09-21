@@ -177,13 +177,13 @@ neuralfunctional.save_checkpoints(params, tx, step=n_epochs)
 
 <p align="center">
 
-<img src="/image/README/light_mode_disodium_animation.gif#gh-light-mode-only" width="35%" height="35%"/>
+<img src="/image/README/light_mode_disodium_animation.gif#gh-light-mode-only" width="45%" height="45%"/>
 
 </p>
 
 <p align="center">
 
-<img src="/image/README/dark_mode_disodium_animation.gif#gh-dark-mode-only#gh-dark-mode-only" width="35%" height="35%"/>
+<img src="/image/README/dark_mode_disodium_animation.gif#gh-dark-mode-only#gh-dark-mode-only" width="45%" height="45%"/>
 
 </p>
 
