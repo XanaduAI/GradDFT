@@ -2,9 +2,9 @@
 
 # Grad DFT: a software library for machine learning enhanced density functional theory
 
-![Light Theme Image](image/README/light_logo.svg#gh-light-mode-only)
+![Light Theme Image](media/README/light_logo.svg#gh-light-mode-only)
 
-![Dark Theme Image](image/README/dark_logo.svg#gh-dark-mode-only)
+![Dark Theme Image](media/README/dark_logo.svg#gh-dark-mode-only)
 
 [![build](https://img.shields.io/badge/build-passing-graygreen.svg "https://github.com/XanaduAI/GradDFT/actions")](https://github.com/XanaduAI/GradDFT/actions)
 [![arXiv](http://img.shields.io/badge/arXiv-2101.10279-B31B1B.svg "Grad-DFT")](https://arxiv.org/)
@@ -177,13 +177,13 @@ neuralfunctional.save_checkpoints(params, tx, step=n_epochs)
 
 <p align="center">
 
-<img src="/image/README/light_mode_disodium_animation.gif#gh-light-mode-only" width="45%" height="45%"/>
+<img src="/media/README/light_mode_disodium_animation.gif#gh-light-mode-only" width="45%" height="45%"/>
 
 </p>
 
 <p align="center">
 
-<img src="/image/README/dark_mode_disodium_animation.gif#gh-dark-mode-only#gh-dark-mode-only" width="45%" height="45%"/>
+<img src="/media/README/dark_mode_disodium_animation.gif#gh-dark-mode-only#gh-dark-mode-only" width="45%" height="45%"/>
 
 </p>
 
