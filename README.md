@@ -178,14 +178,15 @@ neuralfunctional.save_checkpoints(params, tx, step=n_epochs)
 <p align="center">
 
 <img src="/media/README/light_mode_disodium_animation.gif#gh-light-mode-only" width="45%" height="45%"/>
-
 </p>
 
 <p align="center">
 
 <img src="/media/README/dark_mode_disodium_animation.gif#gh-dark-mode-only#gh-dark-mode-only" width="45%" height="45%"/>
 
+
 </p>
+<p align="center"> Using a scaled down version of the neural functional used in the main Grad DFT article, we train it using the total energies and densities derived from the experimental equilibrium geometries of Li<sub>2</sub> and K<sub>2</sub> at the Coupled Cluster Singles & Doubles (CCSD) level of accuracy. The animation shows that during this training, the neural functional also generalized to predict the CCSD density of Na<sub>2</sub> </p>
 
 ## Acknowledgements
 
@@ -198,7 +199,7 @@ GradDFT often follows similar calculations and naming conventions as PySCF, thou
 ```
 @article{graddft,
   title={Grad DFT: a software library for machine learning density functional theory},
-  author={Casares, Pablo Antonio Moreno and Baker, Jack and Medvidovi{\'c}, Matija and Dos Reis, Roberto, and Arrazola, Juan Miguel},
+  author={Casares, Pablo Antonio Moreno and Baker, Jack Stephen and Medvidovi{\'c}, Matija and Dos Reis, Roberto, and Arrazola, Juan Miguel},
   journal={arXiv preprint [number]},
   year={2023}
 }
