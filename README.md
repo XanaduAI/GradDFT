@@ -20,14 +20,6 @@ E_{xc} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rh
 
 Grad DFT provides significant functionality, including a fully differentiable and just-in-time compilable self-consistent loop, direct optimization of the orbitals, and implementation of many of the known constraints of the exact functional in the form of loss functionals.
 
-<div align="center"">
-	
-![Light Theme Animation](image/README/light_mode_disodium_animation.gif#gh-light-mode-only)
-
-![Dark Theme Animation](image/README/dark_mode_disodium_animation.gif#gh-dark-mode-only)
-
-</div>
-
 ## Functionality
 
 The current version of the library includes the capability to implement:
@@ -182,6 +174,18 @@ for iteration in tqdm(range(n_epochs), desc="Training epoch"):
 # Save checkpoint
 neuralfunctional.save_checkpoints(params, tx, step=n_epochs)
 ```
+
+<p align="center">
+
+<img src="/image/README/light_mode_disodium_animation.gif#gh-light-mode-only" width="35%" height="35%"/>
+
+</p>
+
+<p align="center">
+
+<img src="/image/README/dark_mode_disodium_animation.gif#gh-dark-mode-only#gh-dark-mode-only" width="35%" height="35%"/>
+
+</p>
 
 ## Acknowledgements
 
