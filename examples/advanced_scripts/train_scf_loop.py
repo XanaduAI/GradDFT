@@ -20,6 +20,7 @@ from jax import numpy as jnp, value_and_grad
 import numpy as np
 from optax import adam
 import tqdm
+import warnings
 
 from grad_dft.interface.pyscf import molecule_from_pyscf
 from grad_dft.interface.pyscf import loader
@@ -29,9 +30,9 @@ from orbax.checkpoint import PyTreeCheckpointer
 from torch.utils.tensorboard import SummaryWriter
 
 from grad_dft import (
-    make_train_kernel, 
-    molecule_predictor,
-    make_jitted_scf_loop
+    train_kernel, 
+    energy_predictor,
+    diff_scf_loop
 )
 
 from jax.config import config
@@ -39,6 +40,8 @@ config.update("jax_enable_x64", True)
 config.update('jax_debug_nans', True)
 
 orbax_checkpointer = PyTreeCheckpointer()
+
+warnings.warn("This script takes a long time to run.")
 
 # In this example we aim to train a model on the result of a self-consistent loop.
 
@@ -124,13 +127,13 @@ training_files = "dissociation/H2_extrapolation_train.hdf5"
 ####### Loss function and train kernel #######
 
 # Here we use one of the following. We will use the second here.
-molecule_predict = molecule_predictor(functional)
-scf_train_loop = make_jitted_scf_loop(functional, cycles=50)
+compute_energy = energy_predictor(functional)
+scf_train_loop = diff_scf_loop(functional, cycles=50)
 
 
 @partial(value_and_grad, has_aux=True)
 def loss(params, molecule, ground_truth_energy):
-    # predicted_energy, fock = molecule_predict(params, molecule)
+    # predicted_energy, fock = compute_energy(params, molecule)
     modified_molecule = scf_train_loop(params, molecule)
     predicted_energy = modified_molecule.energy
     cost_value = (predicted_energy - ground_truth_energy) ** 2
@@ -151,7 +154,7 @@ def loss(params, molecule, ground_truth_energy):
     return cost_value, metrics
 
 
-kernel = jax.jit(make_train_kernel(tx, loss))
+kernel = jax.jit(train_kernel(tx, loss))
 
 ######## Training epoch ########
 

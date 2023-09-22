@@ -23,7 +23,7 @@ from grad_dft import (
     dm21_coefficient_inputs,
     dm21_densities,
     loader,
-    molecule_predictor
+    energy_predictor
 )
 
 from orbax.checkpoint import PyTreeCheckpointer
@@ -102,7 +102,7 @@ epoch = train_state.step
 test_files = ["dimers_SCAN.hdf5"]
 prediction_dict = {}
 
-predict_molecule = molecule_predictor(functional)
+compute_energy = energy_predictor(functional)
 
 for file in tqdm(test_files, "Files"):
     fpath = os.path.join(training_data_dirpath, file)
@@ -110,7 +110,7 @@ for file in tqdm(test_files, "Files"):
 
     load = loader(fname=fpath, randomize=True, training=True, config_omegas=[])
     for _, system in tqdm(load, "Molecules/reactions per file"):
-        predicted_energy, fock = predict_molecule(params, system)
+        predicted_energy, fock = compute_energy(params, system)
         name = "".join(chr(num) for num in list(system.name))
         name = name.replace("b'", "").replace("'", "")
         prediction_dict[name] = float(predicted_energy)

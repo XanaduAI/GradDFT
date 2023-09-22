@@ -97,7 +97,7 @@ The first step is to create a `Molecule` object.
 
 ```python
 from grad_dft import (
-	molecule_predictor,
+	energy_predictor,
 	simple_energy_loss,
 	NeuralFunctional,
 	molecule_from_pyscf
@@ -162,10 +162,10 @@ opt_state = tx.init(params)
 
 # and implement the optimization loop
 n_epochs = 20
-molecule_predict = molecule_predictor(neuralfunctional)
+compute_energy = energy_predictor(neuralfunctional)
 for iteration in tqdm(range(n_epochs), desc="Training epoch"):
     (cost_value, predicted_energy), grads = simple_energy_loss(
-        params, molecule_predict, molecule, ground_truth_energy
+        params, compute_energy, molecule, ground_truth_energy
     )
     print("Iteration", iteration, "Predicted energy:", predicted_energy, "Cost value:", cost_value)
     updates, opt_state = tx.update(grads, opt_state, params)
@@ -184,9 +184,8 @@ neuralfunctional.save_checkpoints(params, tx, step=n_epochs)
 
 <img src="/media/README/dark_mode_disodium_animation.gif#gh-dark-mode-only#gh-dark-mode-only" width="45%" height="45%"/>
 
-
 </p>
-<p align="center"> Using a scaled down version of the neural functional used in the main Grad DFT article, we train it using the total energies and densities derived from the experimental equilibrium geometries of Li<sub>2</sub> and K<sub>2</sub> at the Coupled Cluster Singles & Doubles (CCSD) level of accuracy. The animation shows that during this training, the neural functional also generalized to predict the CCSD density of Na<sub>2</sub> </p>
+<p align="center"> Using a scaled down version of the neural functional used in the main Grad DFT article, we train it using the total energies and densities derived from the experimental equilibrium geometries of Li<sub>2</sub> and K<sub>2</sub> at the Coupled Cluster Singles & Doubles (CCSD) level of accuracy. The animation shows that during this training, the neural functional also generalized to predict the CCSD density of Na<sub>2</sub>. </p>
 
 ## Acknowledgements
 
