@@ -16,7 +16,7 @@
 
 (1) Values which make sense given dummy innput
 
-(2) Gradients free of NaN's when the used with a dummy make_energy_predictor
+(2) Gradients free of NaN's when the used with a dummy energy_predictor
 """
 
 from re import A
