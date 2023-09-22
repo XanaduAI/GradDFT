@@ -71,7 +71,7 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
     # Start from Non-SCF density
     molecule = molecule_from_pyscf(mf, energy=e_DM, omegas=[], scf_iteration=0)
 
-    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=10)
+    iterator = make_scf_loop(FUNCTIONAL, verbose=2, cycles=10)
     molecule_out = iterator(PARAMS, molecule)
     e_XND = molecule_out.energy
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
@@ -97,7 +97,7 @@ def test_jit(mol_and_name: tuple[gto.Mole, str]) -> None:
     # Start from Non-SCF density
     molecule = molecule_from_pyscf(mf, omegas=[], scf_iteration=0)
 
-    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=10)
+    iterator = make_scf_loop(FUNCTIONAL, verbose=2, cycles=10)
     molecule_out = iterator(PARAMS, molecule)
     e_XND = molecule_out.energy
     

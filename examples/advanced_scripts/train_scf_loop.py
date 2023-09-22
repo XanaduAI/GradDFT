@@ -125,7 +125,7 @@ training_files = "dissociation/H2_extrapolation_train.hdf5"
 
 # Here we use one of the following. We will use the second here.
 molecule_predict = molecule_predictor(functional)
-scf_train_loop = make_jitted_scf_loop(functional, max_cycles=50)
+scf_train_loop = make_jitted_scf_loop(functional, cycles=50)
 
 
 @partial(value_and_grad, has_aux=True)

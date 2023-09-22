@@ -130,7 +130,7 @@ def make_simple_scf_loop(
     functional: Functional,
     mixing_factor: float = 0.4,
     chunk_size: int = 1024,
-    max_cycles: int = 50,
+    cycles: int = 50,
     start_cycle: int = 0,
     e_conv: float = 1e-5,
     g_conv: float = 1e-5,
@@ -176,7 +176,7 @@ def make_simple_scf_loop(
         # fock = abs_clip(fock, clip_cte)
         # fock = molecule.fock
         old_e = 100000 # we should set the energy in a molecule object really
-        for cycle in range(max_cycles):
+        for cycle in range(cycles):
             # Convergence criterion is energy difference (default 1) kcal/mol and norm of gradient of orbitals < g_conv
             start_time = time.time()
             # old_e = molecule.energy
@@ -261,7 +261,7 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
     Main parameters
     ---------------
     functional: Functional
-    max_cycles: int, default to 25
+    cycles: int, default to 25
 
     Returns
     ---------
@@ -355,7 +355,7 @@ def make_scf_loop(
     level_shift_factor: tuple[float, float] = (0.0, 0.0),
     damp_factor: tuple[float, float] = (0.0, 0.0),
     chunk_size: int = 1024,
-    max_cycles: int = 50,
+    cycles: int = 50,
     diis_start_cycle: int = 0,
     e_conv: float = 1e-5,
     g_conv: float = 1e-5,
@@ -423,7 +423,7 @@ def make_scf_loop(
 
         while (
             abs(predicted_e - old_e) * Hartree2kcalmol > e_conv or norm_gorb > g_conv
-        ) and cycle < max_cycles:
+        ) and cycle < cycles:
             # Convergence criterion is energy difference (default 1) kcal/mol and norm of gradient of orbitals < g_conv
             start_time = time.time()
             old_e = predicted_e
@@ -593,7 +593,7 @@ def make_orbital_optimizer(
     fxc: Functional,
     tx: Optimizer,
     chunk_size: int = 1024,
-    max_cycles: int = 500,
+    cycles: int = 500,
     e_conv: float = 1e-7,
     whitening: str = "PCA",
     precision=Precision.HIGHEST,
@@ -614,7 +614,7 @@ def make_orbital_optimizer(
     tx: optax.GradientTransformation
     chunk_size: int, default to 1024
         The chunk size for the calculation of the chi tensor.
-    max_cycles: int, default to 500.
+    cycles: int, default to 500.
     e_conv: float, default to 1e-7.
         The convergence criterion for the energy.
     whitening: str, default to "PCA".
@@ -750,7 +750,7 @@ def make_orbital_optimizer(
 
         opt_state = tx.init(W)
 
-        while abs(predicted_e - old_e) * Hartree2kcalmol > e_conv and cycle < max_cycles:
+        while abs(predicted_e - old_e) * Hartree2kcalmol > e_conv and cycle < cycles:
             start_time = time.time()
             old_e = predicted_e
 
@@ -779,7 +779,7 @@ def make_orbital_optimizer(
 def make_jitted_orbital_optimizer(
     functional: Functional,
     tx: Optimizer,
-    max_cycles: int = 500,
+    cycles: int = 500,
     **kwargs
 ) -> Callable:
     r"""
@@ -796,7 +796,7 @@ def make_jitted_orbital_optimizer(
     tx: optax.GradientTransformation
     chunk_size: int, default to 1024
         The chunk size for the calculation of the chi tensor.
-    max_cycles: int, default to 500.
+    cycles: int, default to 500.
     e_conv: float, default to 1e-7.
         The convergence criterion for the energy.
     whitening: str, default to "PCA".
@@ -900,7 +900,7 @@ def make_jitted_orbital_optimizer(
 
         # Compute the scf loop
         state = W, opt_state, predicted_e
-        final_state = fori_loop(0, max_cycles, body_fun=loop_body, init_val=state)
+        final_state = fori_loop(0, cycles, body_fun=loop_body, init_val=state)
         W, opt_state, predicted_e = final_state
 
         molecule = molecule.replace(energy = predicted_e)
@@ -919,7 +919,7 @@ def make_jitted_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> 
     Main parameters
     ---------------
     functional: Functional
-    max_cycles: int, default to 25
+    cycles: int, default to 25
 
     Returns
     ---------

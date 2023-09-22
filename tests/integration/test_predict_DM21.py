@@ -75,7 +75,7 @@ def test_predict(mol):
     # iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     # e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_scf_loop(functional, verbose=2, max_cycles=10)
+    iterator = make_scf_loop(functional, verbose=2, cycles=10)
     molecule_out = iterator(params, molecule)
     e_XND = molecule_out.energy
 
@@ -120,7 +120,7 @@ def test_predict(mol):
     # iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     # e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_scf_loop(functional, verbose=2, max_cycles=1)
+    iterator = make_scf_loop(functional, verbose=2, cycles=1)
     molecule_out = iterator(params, molecule)
     e_XND = molecule_out.energy
 

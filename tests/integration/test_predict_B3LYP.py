@@ -70,7 +70,7 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
 
     molecule = molecule_from_pyscf(mf, energy=e_DM, omegas=[0.0], scf_iteration=0)
 
-    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=10)
+    iterator = make_scf_loop(FUNCTIONAL, verbose=2, cycles=10)
     molecule_out = iterator(PARAMS, molecule)
     e_XND = molecule_out.energy
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
