@@ -34,7 +34,7 @@ that is, under the locality assumption.
 
 * The capability to implement (non-differentiable) range-separated Hartree Fock components.
 * Fully differentiable and just-in-time (jit) compilable self-consistent interaction procedures. This allows us to perform the training in a fully self-consistent manner, eg, by comparing the output energy of a self-consistent loop against some high-quality data.
-* Fully differentiable and just-in-time compilable [direct optimization of the atomic orbitals](https://openreview.net/forum?id=aBWnqqsuot7).
+* Fully differentiable and just-in-time compilable [direct optimization of the molecular orbitals](https://openreview.net/forum?id=aBWnqqsuot7).
 * Loss functions that minimize the energy or reduced density matrix error.
 * Regularization terms that prevent the divergence of the self-consistent iteration, for non-scf trained functionals. This includes the regularization term suggested in the supplementary material of [DM21](https://www.science.org/doi/full/10.1126/science.abj6511).
 * [15 constraints of the exact functional](https://www.annualreviews.org/doi/abs/10.1146/annurev-physchem-062422-013259) in the form of loss functions.
