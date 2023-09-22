@@ -20,6 +20,7 @@ from jax import numpy as jnp, value_and_grad
 import numpy as np
 from optax import adam
 import tqdm
+import warnings
 
 from grad_dft.interface.pyscf import molecule_from_pyscf
 from grad_dft.interface.pyscf import loader
@@ -39,6 +40,8 @@ config.update("jax_enable_x64", True)
 config.update('jax_debug_nans', True)
 
 orbax_checkpointer = PyTreeCheckpointer()
+
+warnings.warn("This script takes a long time to run.")
 
 # In this example we aim to train a model on the result of a self-consistent loop.
 

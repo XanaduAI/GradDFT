@@ -25,9 +25,9 @@ from optax import adam
 from tqdm import tqdm
 import os
 from orbax.checkpoint import PyTreeCheckpointer
+import warnings
 
 from grad_dft import (
-    Molecule,
     train_kernel, 
     energy_predictor,
     DispersionFunctional,
@@ -46,8 +46,9 @@ from torch.utils.tensorboard import SummaryWriter
 import jax
 
 from jax.config import config
-
-config.update("jax_disable_jit", True)
+config.update("jax_enable_x64", True)
+config.update('jax_debug_nans', True)
+warnings.warn("This script takes a long time to run.")
 
 # In this example we explain how to replicate the experiments that train
 # the functional in some points of the dissociation curve of H2 or H2^+.
