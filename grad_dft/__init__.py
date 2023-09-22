@@ -42,7 +42,7 @@ from .functional import (
 )
 from .train import (
     train_kernel,
-    energy_predictor, 
+    energy_predictor,
     Harris_energy_predictor,
     simple_energy_loss,
     mse_energy_loss, 
@@ -50,11 +50,11 @@ from .train import (
     mse_energy_and_density_loss
 )
 from .evaluate import (
-    molecular_orbital_optimizer,
-    jitted_molecular_orbital_optimizer,
+    mol_orb_optimizer,
+    jitted_mol_orb_optimizer,
     non_scf_predictor,
     simple_scf_loop,
-    jitted_simple_scf_loop,
+    diff_simple_scf_loop,
     scf_loop,
     diff_scf_loop
 )

@@ -72,7 +72,7 @@ def test_predict(mol):
     molecule = molecule_from_pyscf(mf, energy=energy, omegas=[0.0, 0.4], scf_iteration=0)
 
     # tx = adam(learning_rate = learning_rate)
-    # iterator = molecular_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
+    # iterator = mol_orb_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     # e_XND_DF4T = iterator(params, molecule)
 
     iterator = scf_loop(functional, verbose=2, cycles=10)
@@ -117,7 +117,7 @@ def test_predict(mol):
     molecule = molecule_from_pyscf(mf, energy=energy, omegas=[0, 0.4], scf_iteration=0)
 
     # tx = adam(learning_rate = learning_rate)
-    # iterator = molecular_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
+    # iterator = mol_orb_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     # e_XND_DF4T = iterator(params, molecule)
 
     iterator = scf_loop(functional, verbose=2, cycles=1)
@@ -158,7 +158,7 @@ def test_rks():
     molecule = molecule_from_pyscf(mf, energy=energy, omegas=[0.0, 0.4])
 
     # tx = adam(learning_rate = learning_rate)
-    # iterator = molecular_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
+    # iterator = mol_orb_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     # e_XND_DF4T = iterator(params, molecule)
 
     iterator = scf_loop(functional, verbose=2, functional_type="DM21")
@@ -187,7 +187,7 @@ def test_uks():
     molecule = molecule_from_pyscf(mf, energy=energy, omegas=[0.0, 0.4])
 
     # tx = adam(learning_rate = learning_rate)
-    # iterator = molecular_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
+    # iterator = mol_orb_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     # e_XND_DF4T = iterator(params, molecule)
 
     iterator = scf_loop(functional, verbose=2, functional_type="DM21")

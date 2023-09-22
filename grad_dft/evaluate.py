@@ -252,7 +252,7 @@ def simple_scf_loop(
     return simple_scf_iterator
 
 
-def jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing_factor: float = 0.4, **kwargs) -> Callable:
+def diff_simple_scf_loop(functional: Functional, cycles: int = 25, mixing_factor: float = 0.4, **kwargs) -> Callable:
     r"""
     Creates an scf_iterator object that can be called to implement a self-consistent loop using linear mixing.
     intented to be jax.jit compatible (fully self-differentiable).
@@ -589,7 +589,7 @@ def scf_loop(
     return scf_iterator
 
 
-def molecular_orbital_optimizer(
+def mol_orb_optimizer(
     fxc: Functional,
     tx: Optimizer,
     chunk_size: int = 1024,
@@ -776,7 +776,7 @@ def molecular_orbital_optimizer(
 ######### Jitted versions #########
 
 
-def jitted_molecular_orbital_optimizer(
+def jitted_mol_orb_optimizer(
     functional: Functional,
     tx: Optimizer,
     cycles: int = 500,
