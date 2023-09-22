@@ -42,7 +42,7 @@ from .functional import (
 )
 from .train import (
     make_train_kernel,
-    molecule_predictor, 
+    make_energy_predictor, 
     Harris_energy_predictor,
     simple_energy_loss,
     mse_energy_loss, 
@@ -56,7 +56,7 @@ from .evaluate import (
     make_simple_scf_loop,
     make_jitted_simple_scf_loop,
     make_scf_loop,
-    make_jitted_scf_loop
+    make_differentiable_scf_loop
 )
 from .interface import (
     molecule_from_pyscf, 

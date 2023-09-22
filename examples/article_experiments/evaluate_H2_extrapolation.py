@@ -30,7 +30,7 @@ from orbax.checkpoint import PyTreeCheckpointer
 import h5py
 
 from grad_dft import (
-    molecule_predictor,
+    make_energy_predictor,
     NeuralFunctional,
     canonicalize_inputs,
     dm21_coefficient_inputs,
@@ -144,7 +144,7 @@ if loadcheckpoint:
 ########### Definition of the molecule energy prediction function #####################
 
 # Here we use one of the following. We will use the second here.
-molecule_predict = jax.jit(molecule_predictor(functional))
+molecule_predict = jax.jit(make_energy_predictor(functional))
 
 ######## Predict function ########
 

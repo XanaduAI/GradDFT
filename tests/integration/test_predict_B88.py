@@ -25,7 +25,7 @@ config.update("jax_enable_x64", True)
 from grad_dft import (
     molecule_from_pyscf,
     make_scf_loop, 
-    make_jitted_scf_loop
+    make_differentiable_scf_loop
 )
 from grad_dft.utils.types import Hartree2kcalmol
 from grad_dft.popular_functionals import B88
@@ -101,7 +101,7 @@ def test_jit(mol_and_name: tuple[gto.Mole, str]) -> None:
     molecule_out = iterator(PARAMS, molecule)
     e_XND = molecule_out.energy
     
-    iterator = make_jitted_scf_loop(FUNCTIONAL, cycles=10)
+    iterator = make_differentiable_scf_loop(FUNCTIONAL, cycles=10)
     molecule_out = iterator(PARAMS, molecule)
     e_XND_jit = molecule_out.energy
 

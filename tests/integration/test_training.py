@@ -37,7 +37,7 @@ from grad_dft import (
     mse_energy_and_density_loss,
     make_jitted_simple_scf_loop, 
     make_scf_loop, 
-    make_jitted_scf_loop, 
+    make_differentiable_scf_loop, 
     make_simple_scf_loop, 
     make_non_scf_predictor,
     Molecule,
@@ -140,11 +140,11 @@ TRAIN_RECIPES = [
     (mse_energy_and_density_loss, [PARAMS, make_scf_loop(NF, cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, TRUTH_ENERGIES, 1.0, 1.0, True]),
     
     # Jitted DIIS-SCF training on the energy only
-    (mse_energy_loss, [PARAMS, make_jitted_scf_loop(NF, cycles=SCF_ITERS), MOLECULES, TRUTH_ENERGIES, True]),
+    (mse_energy_loss, [PARAMS, make_differentiable_scf_loop(NF, cycles=SCF_ITERS), MOLECULES, TRUTH_ENERGIES, True]),
     # Jitted DIIS-SCF training on the density only
-    (mse_density_loss, [PARAMS, make_jitted_scf_loop(NF, cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, True]),
+    (mse_density_loss, [PARAMS, make_differentiable_scf_loop(NF, cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, True]),
     # Jitted DIIS-SCF training on energy and density
-    (mse_energy_and_density_loss, [PARAMS, make_jitted_scf_loop(NF, cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, TRUTH_ENERGIES, 1.0, 1.0, True]),
+    (mse_energy_and_density_loss, [PARAMS, make_differentiable_scf_loop(NF, cycles=SCF_ITERS), MOLECULES, TRUTH_DENSITIES, TRUTH_ENERGIES, 1.0, 1.0, True]),
     
     # Linear mixing SCF training on the energy only
     (mse_energy_loss, [PARAMS, make_simple_scf_loop(NF, cycles=SCF_ITERS), MOLECULES, TRUTH_ENERGIES, True]),

@@ -30,7 +30,7 @@ from grad_dft import (
     abs_clip, 
 )
 
-def molecule_predictor(
+def make_energy_predictor(
     functional: Functional,
     nlc_functional: Optional[DispersionFunctional] = None,
     clip_cte: float = 1e-30,
@@ -75,7 +75,7 @@ def molecule_predictor(
     >>> from qdft import FeedForwardFunctional
     >>> Fxc = FeedForwardFunctional(layer_widths=[128, 128])
     >>> params = Fxc.init(jax.random.PRNGKey(42), jnp.zeros(shape=(32, 11)))
-    >>> predictor = make_molecule_predictor(Fxc, chunk_size=1000)
+    >>> predictor = make_energy_predictor(Fxc, chunk_size=1000)
     `chunk` size is forwarded to the default feature function as a keyword parameter.
     >>> e, fock = predictor(params, molecule) # `Might take a while for the default_features`
     >>> fock.shape == molecule.density_matrix.shape
@@ -459,7 +459,7 @@ def get_grad(
 
 def mse_energy_loss(
     params: PyTree,
-    molecule_predictor: Callable,
+    make_energy_predictor: Callable,
     molecules: list[Molecule],
     truth_energies: Float[Array, "energy"],
     elec_num_norm: Scalar = True,
@@ -490,7 +490,7 @@ def mse_energy_loss(
     if isinstance(molecules, Molecule): molecules = [molecules]
     sum = 0
     for i, molecule in enumerate(molecules):
-        molecule_out = molecule_predictor(params, molecule)
+        molecule_out = make_energy_predictor(params, molecule)
         E_predict = molecule_out.energy
         diff = E_predict - truth_energies[i]
         # Not jittable because of if.
@@ -504,7 +504,7 @@ def mse_energy_loss(
 
 @partial(value_and_grad, has_aux=True)
 def simple_energy_loss(params: PyTree,
-    molecule_predictor: Callable,
+    make_energy_predictor: Callable,
     molecule: Molecule,
     truth_energy: Float,
     ):
@@ -518,7 +518,7 @@ def simple_energy_loss(params: PyTree,
     molecule_predict: Callable.
         any non SCF or SCF method in evaluate.py
     """
-    molecule_out = molecule_predictor(params, molecule)
+    molecule_out = make_energy_predictor(params, molecule)
     E_predict = molecule_out.energy
     diff = E_predict - truth_energy
     return diff**2, E_predict
@@ -558,7 +558,7 @@ def sq_electron_err_int(
 
 def mse_density_loss(
     params: PyTree,
-    molecule_predictor: Callable,
+    make_energy_predictor: Callable,
     molecules: list[Molecule],
     truth_rhos: list[Float[Array, "ngrid nspin"]],
     elec_num_norm: Scalar = True,
@@ -588,7 +588,7 @@ def mse_density_loss(
     """
     sum = 0
     for i, molecule in enumerate(molecules):
-        molecule_out = molecule_predictor(params, molecule)
+        molecule_out = make_energy_predictor(params, molecule)
         rho_predict = molecule_out.density()
         diff = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
         # Not jittable because of if.
@@ -603,7 +603,7 @@ def mse_density_loss(
 
 def mse_energy_and_density_loss(
     params: PyTree,
-    molecule_predictor: Callable,
+    make_energy_predictor: Callable,
     molecules: list[Molecule],
     truth_densities: list[Float[Array, "ngrid nspin"]],
     truth_energies: Float[Array, "energy"],
@@ -643,7 +643,7 @@ def mse_energy_and_density_loss(
     sum_energy = 0
     sum_rho = 0
     for i, molecule in enumerate(molecules):
-        molecule_out = molecule_predictor(params, molecule)
+        molecule_out = make_energy_predictor(params, molecule)
         rho_predict = molecule_out.density()
         energy_predict = molecule_out.energy
         diff_rho = sq_electron_err_int(rho_predict, truth_densities[i], molecule)

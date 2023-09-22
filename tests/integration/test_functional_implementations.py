@@ -18,7 +18,7 @@ import pytest
 from grad_dft import (
     DM21, 
     molecule_from_pyscf, 
-    molecule_predictor, # A class, needs to be instanciated!
+    make_energy_predictor, # A class, needs to be instanciated!
     B3LYP, B88, LSDA, LYP, VWN, PW92
 )
 from grad_dft.utils.types import Hartree2kcalmol
@@ -62,8 +62,8 @@ def test_lda(mol):
     ground_truth_energy = mf.kernel()
 
     molecule = molecule_from_pyscf(mf, omegas=[])
-    predict_molecule = molecule_predictor(LSDA)
-    predicted_e, fock = predict_molecule(params, molecule)
+    compute_energy = make_energy_predictor(LSDA)
+    predicted_e, fock = compute_energy(params, molecule)
 
     lsdadiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
 
@@ -79,8 +79,8 @@ def test_b88(mol):
     ground_truth_energy = mf.kernel()
 
     molecule = molecule_from_pyscf(mf, omegas=[])
-    predict_molecule = molecule_predictor(B88)
-    predicted_e, fock = predict_molecule(params, molecule)
+    compute_energy = make_energy_predictor(B88)
+    predicted_e, fock = compute_energy(params, molecule)
 
     b88diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
 
@@ -96,8 +96,8 @@ def test_vwn(mol):
     ground_truth_energy = mf.kernel()
 
     molecule = molecule_from_pyscf(mf, omegas=[])
-    predict_molecule = molecule_predictor(VWN)
-    predicted_e, fock = predict_molecule(params, molecule)
+    compute_energy = make_energy_predictor(VWN)
+    predicted_e, fock = compute_energy(params, molecule)
 
     vwndiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
     
@@ -116,8 +116,8 @@ def test_lyp(mol):
     ground_truth_energy = mf.kernel()
 
     molecule = molecule_from_pyscf(mf, omegas=[])
-    predict_molecule = molecule_predictor(LYP)
-    predicted_e, fock = predict_molecule(params, molecule)
+    compute_energy = make_energy_predictor(LYP)
+    predicted_e, fock = compute_energy(params, molecule)
 
     lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
 
@@ -138,8 +138,8 @@ def test_b3lyp(mol):
     ground_truth_energy = mf.kernel()
 
     molecule = molecule_from_pyscf(mf, omegas=[0.0])
-    predict_molecule = molecule_predictor(B3LYP)
-    predicted_e, fock = predict_molecule(params, molecule)
+    compute_energy = make_energy_predictor(B3LYP)
+    predicted_e, fock = compute_energy(params, molecule)
 
     b3lypdiff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
 
@@ -156,8 +156,8 @@ def test_pw92(mol):
     ground_truth_energy = mf.kernel()
 
     molecule = molecule_from_pyscf(mf, omegas=[])
-    predict_molecule = molecule_predictor(PW92)
-    predicted_e, fock = predict_molecule(params, molecule)
+    compute_energy = make_energy_predictor(PW92)
+    predicted_e, fock = compute_energy(params, molecule)
 
     pw92diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
 
@@ -176,8 +176,8 @@ def test_dm21(mol):
     params = functional.generate_DM21_weights() 
 
     molecule = molecule_from_pyscf(mf, omegas=[0.0, 0.4])
-    predict_molecule = molecule_predictor(functional)
-    predicted_e, fock = predict_molecule(params, molecule)
+    compute_energy = make_energy_predictor(functional)
+    predicted_e, fock = compute_energy(params, molecule)
 
     dm21diff = (ground_truth_energy - predicted_e) * Hartree2kcalmol
 

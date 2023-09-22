@@ -97,7 +97,7 @@ The first step is to create a `Molecule` object.
 
 ```python
 from grad_dft import (
-	molecule_predictor,
+	make_energy_predictor,
 	simple_energy_loss,
 	NeuralFunctional,
 	molecule_from_pyscf
@@ -162,7 +162,7 @@ opt_state = tx.init(params)
 
 # and implement the optimization loop
 n_epochs = 20
-molecule_predict = molecule_predictor(neuralfunctional)
+molecule_predict = make_energy_predictor(neuralfunctional)
 for iteration in tqdm(range(n_epochs), desc="Training epoch"):
     (cost_value, predicted_energy), grads = simple_energy_loss(
         params, molecule_predict, molecule, ground_truth_energy

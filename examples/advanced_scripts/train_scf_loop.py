@@ -30,8 +30,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from grad_dft import (
     make_train_kernel, 
-    molecule_predictor,
-    make_jitted_scf_loop
+    make_energy_predictor,
+    make_differentiable_scf_loop
 )
 
 from jax.config import config
@@ -124,8 +124,8 @@ training_files = "dissociation/H2_extrapolation_train.hdf5"
 ####### Loss function and train kernel #######
 
 # Here we use one of the following. We will use the second here.
-molecule_predict = molecule_predictor(functional)
-scf_train_loop = make_jitted_scf_loop(functional, cycles=50)
+molecule_predict = make_energy_predictor(functional)
+scf_train_loop = make_differentiable_scf_loop(functional, cycles=50)
 
 
 @partial(value_and_grad, has_aux=True)

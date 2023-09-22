@@ -28,7 +28,7 @@ from orbax.checkpoint import PyTreeCheckpointer
 
 from grad_dft import (
     make_train_kernel,
-    molecule_predictor,
+    make_energy_predictor,
     NeuralFunctional,
     canonicalize_inputs,
     dm21_coefficient_inputs,
@@ -129,7 +129,7 @@ if loadcheckpoint:
 ########### Definition of the loss function #####################
 
 # Here we use one of the following. We will use the second here.
-molecule_predict = molecule_predictor(functional)
+molecule_predict = make_energy_predictor(functional)
 
 
 @partial(value_and_grad, has_aux=True)
