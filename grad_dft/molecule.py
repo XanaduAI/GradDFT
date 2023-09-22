@@ -919,6 +919,9 @@ def make_reaction(
 def _canonicalize_molecules(
     molecules: Union[Molecule, Sequence[Molecule]], numbers: Optional[Sequence[int]]
 ) -> Tuple[Sequence[Molecule], Sequence[int]]:
+    r"""
+    Makes sure that the molecules are a sequence and that the numbers are a sequence of the same length.
+    """
     if isinstance(molecules, Molecule):
         molecules = (molecules,)
 

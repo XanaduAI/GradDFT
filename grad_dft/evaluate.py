@@ -74,6 +74,9 @@ def test_kernel(tx: optax.GradientTransformation, loss: Callable) -> Callable:
     def kernel(
         params: PyTree, system: Molecule, ground_truth_energy: float, *args
     ) -> Tuple[PyTree, optax.OptState, Scalar, Scalar]:
+        r"""
+        Evaluates the loss function and returns it with other additional metrics.
+        """
         (cost_value, metrics), _ = loss(params, system, ground_truth_energy)
 
         return metrics, cost_value
@@ -1469,7 +1472,25 @@ class Diis:
 
 
 def damping(s, d, f, factor):
-    r"""Copied from pyscf.scf.hf.damping"""
+    r"""Copied from pyscf.scf.hf.damping
+    
+    # Copyright 2014-2018 The PySCF Developers. All Rights Reserved.
+    #
+    # Licensed under the Apache License, Version 2.0 (the "License");
+    # you may not use this file except in compliance with the License.
+    # You may obtain a copy of the License at
+    #
+    #     http://www.apache.org/licenses/LICENSE-2.0
+    #
+    # Unless required by applicable law or agreed to in writing, software
+    # distributed under the License is distributed on an "AS IS" BASIS,
+    # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    # See the License for the specific language governing permissions and
+    # limitations under the License.
+    #
+    # Author: Qiming Sun <osirpt.sun@gmail.com>
+    #
+    """
     # dm_vir = s - reduce(numpy.dot, (s,d,s))
     # sinv = numpy.linalg.inv(s)
     # f0 = reduce(numpy.dot, (dm_vir, sinv, f, d, s))
@@ -1499,6 +1520,23 @@ def level_shift(s, d, f, factor):
 
     Returns:
         New Fock matrix, 2D ndarray
+
+    # Copyright 2014-2018 The PySCF Developers. All Rights Reserved.
+    #
+    # Licensed under the Apache License, Version 2.0 (the "License");
+    # you may not use this file except in compliance with the License.
+    # You may obtain a copy of the License at
+    #
+    #     http://www.apache.org/licenses/LICENSE-2.0
+    #
+    # Unless required by applicable law or agreed to in writing, software
+    # distributed under the License is distributed on an "AS IS" BASIS,
+    # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    # See the License for the specific language governing permissions and
+    # limitations under the License.
+    #
+    # Author: Qiming Sun <osirpt.sun@gmail.com>
+    #
     """
     dm_vir = s - reduce(jnp.dot, (s, d, s))
     return f + dm_vir * factor
