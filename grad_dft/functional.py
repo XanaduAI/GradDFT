@@ -227,7 +227,7 @@ class Functional(nn.Module):
         r"""
         Total energy of local functional
 
-        Paramters
+        Parameters
         ---------
         params: PyTree
             params of the neural network if there is one in self.f
@@ -255,7 +255,7 @@ class Functional(nn.Module):
         r"""
         Total energy of local functional
 
-        Paramters
+        Parameters
         ---------
         params: PyTree
             params of the neural network if there is one in self.f
