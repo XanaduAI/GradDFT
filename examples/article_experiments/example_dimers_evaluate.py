@@ -23,7 +23,7 @@ from grad_dft import (
     dm21_coefficient_inputs,
     dm21_densities,
     loader,
-    make_energy_predictor
+    energy_predictor
 )
 
 from orbax.checkpoint import PyTreeCheckpointer
@@ -102,7 +102,7 @@ epoch = train_state.step
 test_files = ["dimers_SCAN.hdf5"]
 prediction_dict = {}
 
-compute_energy = make_energy_predictor(functional)
+compute_energy = energy_predictor(functional)
 
 for file in tqdm(test_files, "Files"):
     fpath = os.path.join(training_data_dirpath, file)

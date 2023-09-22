@@ -28,8 +28,8 @@ from orbax.checkpoint import PyTreeCheckpointer
 
 from grad_dft import (
     Molecule,
-    make_train_kernel, 
-    make_energy_predictor,
+    train_kernel, 
+    energy_predictor,
     DispersionFunctional,
     NeuralFunctional,
     canonicalize_inputs,
@@ -221,14 +221,14 @@ if loadcheckpoint:
 ########### Definition of the loss function #####################
 
 # Here we use one of the following. We will use the second here.
-molecule_predict = make_energy_predictor(functional, nlc_functional=DispersionNN)
+compute_energy = energy_predictor(functional, nlc_functional=DispersionNN)
 
 
 @partial(value_and_grad, has_aux=True)
 def loss(params, molecule, true_energy):
     # In general the loss function should be able to accept [params, system (eg, molecule or reaction), true_energy]
 
-    predicted_energy, fock = molecule_predict(params, molecule)
+    predicted_energy, fock = compute_energy(params, molecule)
     cost_value = (predicted_energy - true_energy) ** 2
 
     # We may want to add a regularization term to the cost, be it one of the
@@ -247,7 +247,7 @@ def loss(params, molecule, true_energy):
     return cost_value, metrics
 
 
-kernel = jax.jit(make_train_kernel(tx, loss))
+kernel = jax.jit(train_kernel(tx, loss))
 
 ######## Training epoch ########
 

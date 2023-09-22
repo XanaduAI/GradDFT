@@ -24,7 +24,7 @@ from grad_dft import (
     density,
     grad_density,
     abs_clip,
-    make_energy_predictor
+    energy_predictor
 )
 from grad_dft.interface.pyscf import (
     generate_chi_tensor,
@@ -796,7 +796,7 @@ def xc1(
     Also named as the fractional charge and spin constraint.
     """
 
-    predict = make_energy_predictor(functional)
+    predict = energy_predictor(functional)
     E1, _ = predict(params, molecule1)
     E2, _ = predict(params, molecule2)
 

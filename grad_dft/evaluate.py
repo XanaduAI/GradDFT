@@ -34,7 +34,7 @@ from grad_dft import (
     make_rdm1, 
     orbital_grad,
     Functional,
-    make_energy_predictor,
+    energy_predictor,
 )
 from grad_dft.interface.pyscf import (
     generate_chi_tensor,
@@ -55,7 +55,7 @@ from jaxtyping import PyTree, Array, Scalar, Float, Int, jaxtyped
 ######## Test kernel ########
 
 
-def make_test_kernel(tx: optax.GradientTransformation, loss: Callable) -> Callable:
+def test_kernel(tx: optax.GradientTransformation, loss: Callable) -> Callable:
     r"""
     Creates a kernel object that can be called to evaluate the loss and other metrics.
 
@@ -82,7 +82,7 @@ def make_test_kernel(tx: optax.GradientTransformation, loss: Callable) -> Callab
 
 ######## Non self-consistent iterator ################
 
-def make_non_scf_predictor(
+def non_scf_predictor(
     functional: Functional,
     chunk_size: int = 1024,
     **kwargs,
@@ -99,7 +99,7 @@ def make_non_scf_predictor(
     ---------
     Callable
     """
-    compute_energy = make_energy_predictor(functional, chunk_size=chunk_size, **kwargs)
+    compute_energy = energy_predictor(functional, chunk_size=chunk_size, **kwargs)
     def non_scf_predictor(params: PyTree, molecule: Molecule, *args) -> Molecule:
         r"""Calculates the total energy at a fixed density non-self consistently.
 
@@ -122,11 +122,10 @@ def make_non_scf_predictor(
     
     return non_scf_predictor
 
-# Add Harris-Foulkes predictor here too! 
 
 ######## Test scf loop and orbital optimizers ########
 
-def make_simple_scf_loop(
+def simple_scf_loop(
     functional: Functional,
     mixing_factor: float = 0.4,
     chunk_size: int = 1024,
@@ -152,7 +151,7 @@ def make_simple_scf_loop(
     Callable
     """
 
-    compute_energy = make_energy_predictor(functional, chunk_size=chunk_size, **kwargs)
+    compute_energy = energy_predictor(functional, chunk_size=chunk_size, **kwargs)
 
     def simple_scf_iterator(params: PyTree, molecule: Molecule, clip_cte = 1e-30, *args) -> Molecule:
         r"""
@@ -252,11 +251,12 @@ def make_simple_scf_loop(
 
     return simple_scf_iterator
 
-def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing_factor: float = 0.4, **kwargs) -> Callable:
+
+def jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing_factor: float = 0.4, **kwargs) -> Callable:
     r"""
     Creates an scf_iterator object that can be called to implement a self-consistent loop using linear mixing.
     intented to be jax.jit compatible (fully self-differentiable).
-    If you are looking for a more flexible but not differentiable scf loop, see evaluate.py make_scf_loop.
+    If you are looking for a more flexible but not differentiable scf loop, see evaluate.py scf_loop.
 
     Main parameters
     ---------------
@@ -268,7 +268,7 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
     Callable
     """
 
-    compute_energy = make_energy_predictor(functional, chunk_size=None, **kwargs)
+    compute_energy = energy_predictor(functional, chunk_size=None, **kwargs)
 
     @jit
     def simple_scf_jitted_iterator(
@@ -279,7 +279,7 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
 
         r"""
         Implements a scf loop intented for use in a jax.jit compiled function (training loop).
-        If you are looking for a more flexible but not differentiable scf loop, see evaluate.py make_scf_loop.
+        If you are looking for a more flexible but not differentiable scf loop, see evaluate.py scf_loop.
         It asks for a Molecule and a functional implicitly defined compute_energy with
         parameters params
 
@@ -350,7 +350,7 @@ def make_jitted_simple_scf_loop(functional: Functional, cycles: int = 25, mixing
     return simple_scf_jitted_iterator
 
 
-def make_scf_loop(
+def scf_loop(
     functional: Functional,
     level_shift_factor: tuple[float, float] = (0.0, 0.0),
     damp_factor: tuple[float, float] = (0.0, 0.0),
@@ -380,7 +380,7 @@ def make_scf_loop(
     Callable
     """
 
-    compute_energy = make_energy_predictor(functional, chunk_size=chunk_size, **kwargs)
+    compute_energy = energy_predictor(functional, chunk_size=chunk_size, **kwargs)
 
     def scf_iterator(params: PyTree, molecule: Molecule, *args) -> Molecule:
         r"""
@@ -589,7 +589,7 @@ def make_scf_loop(
     return scf_iterator
 
 
-def make_orbital_optimizer(
+def molecular_orbital_optimizer(
     fxc: Functional,
     tx: Optimizer,
     chunk_size: int = 1024,
@@ -631,7 +631,7 @@ def make_orbital_optimizer(
     The calculation of tensor chi is not implemented self differentiably, so the functional cannot include exact exchange.
     """
 
-    compute_energy = make_energy_predictor(fxc, chunk_size=chunk_size, **kwargs)
+    compute_energy = energy_predictor(fxc, chunk_size=chunk_size, **kwargs)
 
     @jaxtyped
     @typechecked
@@ -776,7 +776,7 @@ def make_orbital_optimizer(
 ######### Jitted versions #########
 
 
-def make_jitted_orbital_optimizer(
+def jitted_molecular_orbital_optimizer(
     functional: Functional,
     tx: Optimizer,
     cycles: int = 500,
@@ -813,7 +813,7 @@ def make_jitted_orbital_optimizer(
     The calculation of tensor chi is not implemented self differentiably, so the functional cannot include exact exchange.
     """
 
-    compute_energy = make_energy_predictor(functional, **kwargs)
+    compute_energy = energy_predictor(functional, **kwargs)
 
     @jaxtyped
     @typechecked
@@ -910,11 +910,11 @@ def make_jitted_orbital_optimizer(
     return neural_iterator
 
 
-def make_differentiable_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> Callable:
+def diff_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> Callable:
     r"""
     Creates an scf_iterator object that can be called to implement a self-consistent loop,
     intented to be jax.jit compatible (fully self-differentiable).
-    If you are looking for a more flexible but not differentiable scf loop, see evaluate.py make_scf_loop.
+    If you are looking for a more flexible but not differentiable scf loop, see evaluate.py scf_loop.
 
     Main parameters
     ---------------
@@ -926,7 +926,7 @@ def make_differentiable_scf_loop(functional: Functional, cycles: int = 25, **kwa
     scf_jitted_iterator: Callable
     """
 
-    compute_energy = make_energy_predictor(functional, chunk_size=None, **kwargs)
+    compute_energy = energy_predictor(functional, chunk_size=None, **kwargs)
 
     @jit
     def scf_jitted_iterator(
@@ -936,7 +936,7 @@ def make_differentiable_scf_loop(functional: Functional, cycles: int = 25, **kwa
     ) -> Molecule:
         r"""
         Implements a scf loop intented for use in a jax.jit compiled function (training loop).
-        If you are looking for a more flexible but not differentiable scf loop, see evaluate.py make_scf_loop.
+        If you are looking for a more flexible but not differentiable scf loop, see evaluate.py scf_loop.
         It asks for a Molecule and a functional implicitly defined compute_energy with
         parameters params
 

@@ -30,7 +30,7 @@ from grad_dft import (
     abs_clip, 
 )
 
-def make_energy_predictor(
+def energy_predictor(
     functional: Functional,
     nlc_functional: Optional[DispersionFunctional] = None,
     clip_cte: float = 1e-30,
@@ -75,7 +75,7 @@ def make_energy_predictor(
     >>> from qdft import FeedForwardFunctional
     >>> Fxc = FeedForwardFunctional(layer_widths=[128, 128])
     >>> params = Fxc.init(jax.random.PRNGKey(42), jnp.zeros(shape=(32, 11)))
-    >>> predictor = make_energy_predictor(Fxc, chunk_size=1000)
+    >>> predictor = energy_predictor(Fxc, chunk_size=1000)
     `chunk` size is forwarded to the default feature function as a keyword parameter.
     >>> e, fock = predictor(params, molecule) # `Might take a while for the default_features`
     >>> fock.shape == molecule.density_matrix.shape
@@ -292,7 +292,7 @@ def Harris_energy_predictor(
 
 
 
-def make_train_kernel(tx: GradientTransformation, loss: Callable) -> Callable:
+def train_kernel(tx: GradientTransformation, loss: Callable) -> Callable:
     r"""Generate a training kernel for a given optimizer and loss function.
 
     Parameters
@@ -459,7 +459,7 @@ def get_grad(
 
 def mse_energy_loss(
     params: PyTree,
-    make_energy_predictor: Callable,
+    compute_energy: Callable,
     molecules: list[Molecule],
     truth_energies: Float[Array, "energy"],
     elec_num_norm: Scalar = True,
@@ -474,8 +474,8 @@ def mse_energy_loss(
     ----------
     params: PyTree
         functional parameters (weights)
-    molecule_predict: Callable.
-        any non SCF or SCF method in evaluate.py
+    compute_energy: Callable(molecule, params) -> molecule.
+        any non SCF or SCF method in evaluate.py. The output molecule contains the predicted energy.
     molecule: Molecule
         a Grad-DFT Molecule object
     truth_energies: Float[Array, "energy"]
@@ -490,7 +490,7 @@ def mse_energy_loss(
     if isinstance(molecules, Molecule): molecules = [molecules]
     sum = 0
     for i, molecule in enumerate(molecules):
-        molecule_out = make_energy_predictor(params, molecule)
+        molecule_out = compute_energy(params, molecule)
         E_predict = molecule_out.energy
         diff = E_predict - truth_energies[i]
         # Not jittable because of if.
@@ -504,7 +504,7 @@ def mse_energy_loss(
 
 @partial(value_and_grad, has_aux=True)
 def simple_energy_loss(params: PyTree,
-    make_energy_predictor: Callable,
+    compute_energy: Callable,
     molecule: Molecule,
     truth_energy: Float,
     ):
@@ -515,10 +515,10 @@ def simple_energy_loss(params: PyTree,
     ----------
     params: PyTree
         functional parameters (weights)
-    molecule_predict: Callable.
+    compute_energy: Callable.
         any non SCF or SCF method in evaluate.py
     """
-    molecule_out = make_energy_predictor(params, molecule)
+    molecule_out = compute_energy(params, molecule)
     E_predict = molecule_out.energy
     diff = E_predict - truth_energy
     return diff**2, E_predict
@@ -558,7 +558,7 @@ def sq_electron_err_int(
 
 def mse_density_loss(
     params: PyTree,
-    make_energy_predictor: Callable,
+    compute_energy: Callable,
     molecules: list[Molecule],
     truth_rhos: list[Float[Array, "ngrid nspin"]],
     elec_num_norm: Scalar = True,
@@ -573,7 +573,7 @@ def mse_density_loss(
     ----------
     params: PyTree
         functional parameters (weights)
-    molecule_predict: Callable.
+    compute_energy: Callable.
         any non SCF or SCF method in evaluate.py
     molecule: Molecule
         a Grad-DFT Molecule object
@@ -588,7 +588,7 @@ def mse_density_loss(
     """
     sum = 0
     for i, molecule in enumerate(molecules):
-        molecule_out = make_energy_predictor(params, molecule)
+        molecule_out = compute_energy(params, molecule)
         rho_predict = molecule_out.density()
         diff = sq_electron_err_int(rho_predict, truth_rhos[i], molecule)
         # Not jittable because of if.
@@ -603,7 +603,7 @@ def mse_density_loss(
 
 def mse_energy_and_density_loss(
     params: PyTree,
-    make_energy_predictor: Callable,
+    compute_energy: Callable,
     molecules: list[Molecule],
     truth_densities: list[Float[Array, "ngrid nspin"]],
     truth_energies: Float[Array, "energy"],
@@ -621,7 +621,7 @@ def mse_energy_and_density_loss(
     ----------
     params: PyTree
         functional parameters (weights)
-    molecule_predict: Callable.
+    compute_energy: Callable.
         any non SCF or SCF method in evaluate.py
     molecule: Molecule
         a Grad-DFT Molecule object
@@ -643,7 +643,7 @@ def mse_energy_and_density_loss(
     sum_energy = 0
     sum_rho = 0
     for i, molecule in enumerate(molecules):
-        molecule_out = make_energy_predictor(params, molecule)
+        molecule_out = compute_energy(params, molecule)
         rho_predict = molecule_out.density()
         energy_predict = molecule_out.energy
         diff_rho = sq_electron_err_int(rho_predict, truth_densities[i], molecule)
