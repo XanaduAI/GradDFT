@@ -42,7 +42,7 @@ that is, under the locality assumption.
 * A few tested classical functionals such as [B3LYP](https://pubs.acs.org/doi/abs/10.1021/j100096a001) and [DM21](https://www.science.org/doi/full/10.1126/science.abj6511).
 * A simple `DispersionFunctional` implementing DFT-D tails with a neural parametrization.
 
-Future capability should include [sharding](https://jax.readthedocs.io/en/latest/notebooks/Distributed_arrays_and_automatic_parallelization.html) the training between multiple GPUs in parallel.
+Future capability should include [sharding](https://jax.readthedocs.io/en/latest/notebooks/Distributed_arrays_and_automatic_parallelization.html) the training between multiple GPUs in parallel, as well as including periodic conditions.
 
 ## Install
 
