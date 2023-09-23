@@ -28,4 +28,4 @@ from .types import (
 from .tree import tree_size, tree_isfinite, tree_randn_like, tree_func, tree_shape
 from .utils import to_device_arrays, Utils
 from .chunk import vmap_chunked
-from .eigenproblem import safe_fock_solver
+from .eigenproblem import safe_fock_solver, safe_eigh
