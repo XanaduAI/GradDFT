@@ -156,7 +156,7 @@ def simple_scf_loop(
 
     compute_energy = energy_predictor(functional, chunk_size=chunk_size, **kwargs)
 
-    def simple_scf_iterator(params: PyTree, molecule: Molecule, clip_cte = 1e-30, *args) -> Molecule:
+    def simple_scf_iterator(params: PyTree, molecule: Molecule, clip_cte = 1e-25, *args) -> Molecule:
         r"""
         Implements a scf loop for a Molecule and a functional implicitly defined compute_energy with
         parameters params

@@ -33,7 +33,7 @@ from grad_dft import (
 def energy_predictor(
     functional: Functional,
     nlc_functional: Optional[DispersionFunctional] = None,
-    clip_cte: float = 1e-30,
+    clip_cte: float = 1e-25,
     **kwargs,
 ) -> Callable:
     r"""Generate a function that predicts the energy
@@ -528,7 +528,7 @@ def sq_electron_err_int(
     pred_density: Float[Array, "ngrid nspin"],
     truth_density: Float[Array, "ngrid nspin"],
     molecule: Molecule,
-    clip_cte=1e-30
+    clip_cte=1e-25
 ) -> Scalar:
     r"""
     Computes the integral:

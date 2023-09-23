@@ -156,7 +156,7 @@ class Functional(nn.Module):
 
         return self.coefficients(self, coefficient_inputs)
 
-    def compute_densities(self, molecule: Molecule,  clip_cte: float = 1e-30, *args, **kwargs):
+    def compute_densities(self, molecule: Molecule,  clip_cte: float = 1e-25, *args, **kwargs):
         r"""
         Computes the densities for the functional, both with and without autodifferentiation.
 
@@ -221,7 +221,7 @@ class Functional(nn.Module):
         grid: Grid, 
         coefficient_inputs: Float[Array, "grid cinputs"],
         densities: Float[Array, "grid densities"],
-        clip_cte: float = 1e-30,
+        clip_cte: float = 1e-25,
         **kwargs
     ) -> Scalar:
         r"""
@@ -291,7 +291,7 @@ class Functional(nn.Module):
         energy_density: Float[Array, "grid"],
         gridweights: Float[Array, "grid"],
         precision: Optional[Precision] = Precision.HIGHEST,
-        clip_cte: float = 1e-30,
+        clip_cte: float = 1e-25,
     ) -> Scalar:
         r"""
         Helper function that performs grid quadrature (integration)
@@ -474,7 +474,7 @@ class NeuralFunctional(Functional):
 ######################## DM21 ########################
 
 
-def dm21_coefficient_inputs(molecule: Molecule, clip_cte: Optional[float] = 1e-30, *_, **__):
+def dm21_coefficient_inputs(molecule: Molecule, clip_cte: Optional[float] = 1e-25, *_, **__):
     r"""
     Computes the electronic density and derivatives
 
@@ -484,7 +484,7 @@ def dm21_coefficient_inputs(molecule: Molecule, clip_cte: Optional[float] = 1e-3
         class Molecule
     clip_cte: Optional[float]
         Needed to make sure it
-        default 1e-30 (chosen carefully, take care if decrease)
+        default 1e-25 (chosen carefully, take care if decrease)
 
     Returns
     -------
@@ -508,7 +508,7 @@ def dm21_coefficient_inputs(molecule: Molecule, clip_cte: Optional[float] = 1e-3
 def dm21_densities(
     molecule: Molecule,
     functional_type: Optional[Union[str, Dict[str, int]]] = "LDA",
-    clip_cte: float = 1e-30,
+    clip_cte: float = 1e-25,
     *_,
     **__,
 ):
@@ -957,7 +957,7 @@ def exchange_polarization_correction(
 def correlation_polarization_correction(
     e_tilde_PF: Float[Array, "spin grid"], 
     rho: Float[Array, "spin grid"], 
-    clip_cte: float = 1e-30
+    clip_cte: float = 1e-25
 ) -> Float[Array, "grid"]:
     r"""Spin polarization correction to a correlation functional using eq 2.75 from
     Carsten A. Ullrich, "Time-Dependent Density-Functional Theory".
@@ -971,7 +971,7 @@ def correlation_polarization_correction(
         The electronic density of each spin polarization at each grid point.
 
     clip_cte:
-        float, defaults to 1e-30
+        float, defaults to 1e-25
         Small constant to avoid numerical issues when dividing by rho.
 
     Returns
@@ -1023,7 +1023,7 @@ def correlation_polarization_correction(
 def densities(
     molecule: Molecule,
     functional_type: Optional[Union[str, Dict[str, int]]] = "LDA",
-    clip_cte: float = 1e-30,
+    clip_cte: float = 1e-25,
     *_,
     **__,
 ):

@@ -49,7 +49,7 @@ def lsda_x_e(rho: Float[Array, "grid spin"], clip_cte) -> Float[Array, "grid"]:
 
     return lda_e
 
-def b88_x_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin dimension"], clip_cte: float = 1e-30) -> Float[Array, "grid"]:
+def b88_x_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin dimension"], clip_cte: float = 1e-25) -> Float[Array, "grid"]:
     r"""
     B88 exchange functional
     See eq 8 in https://journals.aps.org/pra/abstract/10.1103/PhysRevA.38.3098
@@ -102,7 +102,7 @@ def b88_x_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin di
 
     return b88_e
 
-def pw92_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-30) -> Float[Array, "grid"]:
+def pw92_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-25) -> Float[Array, "grid"]:
     r"""
     Eq 10 in
     https://journals.aps.org/prb/abstract/10.1103/PhysRevB.45.13244
@@ -138,7 +138,7 @@ def pw92_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-30) -> Float[A
 
     return e_tilde * rho.sum(axis = 1)
 
-def vwn_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-30) -> Float[Array, "grid"]:
+def vwn_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-25) -> Float[Array, "grid"]:
     r"""
     VWN correlation functional
     See original paper eq 4.4 in https://cdnsciencepub.com/doi/abs/10.1139/p80-159
@@ -194,7 +194,7 @@ def vwn_c_e(rho: Float[Array, "grid spin"], clip_cte: float = 1e-30) -> Float[Ar
     # We have to integrate e = e_tilde * n as per eq 2.1 in original VWN article
     return e_tilde * rho.sum(axis = 1)
 
-def lyp_c_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin 3"], grad2rho: Float[Array, "grid spin"], clip_cte=1e-30) -> Float[Array, "grid"]:
+def lyp_c_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin 3"], grad2rho: Float[Array, "grid spin"], clip_cte=1e-25) -> Float[Array, "grid"]:
     r"""
     LYP correlation functional
     See eq 22 in
@@ -268,13 +268,13 @@ def lyp_c_e(rho: Float[Array, "grid spin"], grad_rho: Float[Array, "grid spin 3"
         rho.sum(axis=1) > clip_cte, gamma / (1 + d * rhom1_3) * (rho.sum(axis=1) + braket_m_rho), 0.0
     )
 
-def lsda_density(molecule: Molecule, clip_cte: float = 1e-30, *_, **__) -> Float[Array, "grid densities"]:
+def lsda_density(molecule: Molecule, clip_cte: float = 1e-25, *_, **__) -> Float[Array, "grid densities"]:
     r"""Auxiliary function to generate the features of LSDA."""
     rho = molecule.density()
     lda_e = lsda_x_e(rho, clip_cte)
     return jnp.expand_dims(lda_e, axis=1)
 
-def b88_density(molecule: Molecule, clip_cte: float = 1e-30, *_, **__) -> Float[Array, "grid densities"]:
+def b88_density(molecule: Molecule, clip_cte: float = 1e-25, *_, **__) -> Float[Array, "grid densities"]:
     r"""Auxiliary function to generate the features of B88 functional."""
     rho = molecule.density()
     grad_rho = molecule.grad_density()
@@ -283,19 +283,19 @@ def b88_density(molecule: Molecule, clip_cte: float = 1e-30, *_, **__) -> Float[
     # assert not jnp.isnan(b88_e).any() and not jnp.isinf(b88_e).any()
     return jnp.stack((lda_e, b88_e), axis=1)
 
-def vwn_density(molecule: Molecule, clip_cte: float = 1e-30, *_, **__) -> Float[Array, "grid densities"]:
+def vwn_density(molecule: Molecule, clip_cte: float = 1e-25, *_, **__) -> Float[Array, "grid densities"]:
     r"""Auxiliary function to generate the features of VWN functional."""
     rho = molecule.density()
     vwn_e = vwn_c_e(rho, clip_cte)
     return jnp.expand_dims(vwn_e, axis=1)
 
-def pw92_densities(molecule: Molecule, clip_cte: float = 1e-30, *_, **__) -> Float[Array, "grid densities"]:
+def pw92_densities(molecule: Molecule, clip_cte: float = 1e-25, *_, **__) -> Float[Array, "grid densities"]:
     r"""Auxiliary function to generate the features of PW92 functional."""
     rho = molecule.density()
     pw92_e = pw92_c_e(rho, clip_cte)
     return jnp.expand_dims(pw92_e, axis=1)
 
-def lyp_density(molecule: Molecule, clip_cte: float = 1e-30, *_, **__) -> Float[Array, "grid densities"]:
+def lyp_density(molecule: Molecule, clip_cte: float = 1e-25, *_, **__) -> Float[Array, "grid densities"]:
     r"""Auxiliary function to generate the features of LYP functional."""
     rho = molecule.density()
     grad_rho = molecule.grad_density()
@@ -303,7 +303,7 @@ def lyp_density(molecule: Molecule, clip_cte: float = 1e-30, *_, **__) -> Float[
     lyp_e = lyp_c_e(rho, grad_rho, grad2rho, clip_cte)
     return jnp.expand_dims(lyp_e, axis=1)
 
-def b3lyp_exhf_densities(molecule: Molecule, clip_cte: float = 1e-30, *_, **__) -> Float[Array, "grid densities"]:
+def b3lyp_exhf_densities(molecule: Molecule, clip_cte: float = 1e-25, *_, **__) -> Float[Array, "grid densities"]:
     r"""
     Auxiliary function to generate the non Hartree-Fock features of B3LYP functional
     See eq 2 in

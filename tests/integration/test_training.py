@@ -94,11 +94,11 @@ for mol in PYSCF_MOLS:
 
 # Define a simple neural functional and its initial parameters
 
-def coefficient_inputs(molecule: Molecule, clip_cte: float = 1e-30, *_, **__):
+def coefficient_inputs(molecule: Molecule, clip_cte: float = 1e-25, *_, **__):
     rho = jnp.clip(molecule.density(), a_min = clip_cte)
     return jnp.concatenate((rho, ), axis = 1)
 
-def energy_densities(molecule: Molecule, clip_cte: float = 1e-30, *_, **__):
+def energy_densities(molecule: Molecule, clip_cte: float = 1e-25, *_, **__):
     r"""Auxiliary function to generate the features of LSDA."""
     rho = molecule.density()
     # To avoid numerical issues in JAX we limit too small numbers.

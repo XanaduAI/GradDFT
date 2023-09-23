@@ -333,7 +333,7 @@ def x4(
     precision=Precision.HIGHEST,
     lower_bound=1e-15,
     upper_bound=1e-5,
-    clip_cte = 1e-30,
+    clip_cte = 1e-25,
 ) -> Float:
     r"""
     Instantiates a loss function checking the following constraints:
@@ -444,7 +444,7 @@ def x5(
     precision=Precision.HIGHEST,
     multiplier1=1e5,
     multiplier2=1e7,
-    clip_cte = 1e-30,
+    clip_cte = 1e-25,
 ) -> Float:
     r"""
     Instantiates a loss function checking the following constraints:
@@ -519,7 +519,7 @@ def x5(
     density1 = modmolecule.density()
     grad_density1 = modmolecule.grad_density().sum(axis=-1)
 
-    s1 = jnp.where(jnp.greater_equal(density1, 1e-30), grad_density1 / density1 ** (4 / 3), 0)
+    s1 = jnp.where(jnp.greater_equal(density1, 1e-25), grad_density1 / density1 ** (4 / 3), 0)
     a = jnp.isnan(s1).any()
 
     cinputs1 = functional.compute_coefficient_inputs(modmolecule)
@@ -529,7 +529,7 @@ def x5(
     ex1 = jnp.expand_dims(ex1, axis=-1)
 
     fx1 = jnp.where(
-        jnp.greater_equal(jnp.abs(lda_e * jnp.sqrt(s1)), 1e-30), ex1 / (lda_e * jnp.sqrt(s1)), 0
+        jnp.greater_equal(jnp.abs(lda_e * jnp.sqrt(s1)), 1e-25), ex1 / (lda_e * jnp.sqrt(s1)), 0
     )
     a = jnp.isnan(fx1).any()
 
@@ -538,7 +538,7 @@ def x5(
     density2 = modmolecule.density()
     grad_density2 = modmolecule.grad_density().sum(axis=-1)
 
-    s2 = jnp.where(jnp.greater_equal(density2, 1e-30), grad_density2 / density2 ** (4 / 3), 0)
+    s2 = jnp.where(jnp.greater_equal(density2, 1e-25), grad_density2 / density2 ** (4 / 3), 0)
     a = jnp.isnan(s2).any()
 
     cinputs2 = functional.compute_coefficient_inputs(modmolecule)
@@ -548,7 +548,7 @@ def x5(
     ex2 = jnp.expand_dims(ex2, axis=-1)
 
     fx2 = jnp.where(
-        jnp.greater_equal(jnp.abs(lda_e * jnp.sqrt(s2)), 1e-30), ex2 / (lda_e * jnp.sqrt(s2)), 0
+        jnp.greater_equal(jnp.abs(lda_e * jnp.sqrt(s2)), 1e-25), ex2 / (lda_e * jnp.sqrt(s2)), 0
     )
     a = jnp.isnan(fx2).any()
 
@@ -557,7 +557,7 @@ def x5(
     density_1 = modmolecule.density()
     grad_density_1 = modmolecule.grad_density().sum(axis=-1)
 
-    s_1 = jnp.where(jnp.greater_equal(density_1, 1e-30), grad_density_1 / density_1 ** (4 / 3), 0)
+    s_1 = jnp.where(jnp.greater_equal(density_1, 1e-25), grad_density_1 / density_1 ** (4 / 3), 0)
     a = jnp.isnan(s_1).any()
 
     cinputs_1 = functional.compute_coefficient_inputs(modmolecule)
@@ -567,7 +567,7 @@ def x5(
     ex_1 = jnp.expand_dims(ex_1, axis=-1)
 
     fx_1 = jnp.where(
-        jnp.greater_equal(jnp.abs(lda_e * jnp.sqrt(s_1)), 1e-30),
+        jnp.greater_equal(jnp.abs(lda_e * jnp.sqrt(s_1)), 1e-25),
         ex_1 / (lda_e * jnp.sqrt(s_1)),
         0,
     )
@@ -578,7 +578,7 @@ def x5(
     density_2 = modmolecule.density()
     grad_density_2 = modmolecule.grad_density().sum(axis=-1)
 
-    s_2 = jnp.where(jnp.greater_equal(density_2, 1e-30), grad_density_2 / density_2 ** (4 / 3), 0)
+    s_2 = jnp.where(jnp.greater_equal(density_2, 1e-25), grad_density_2 / density_2 ** (4 / 3), 0)
     a = jnp.isnan(s2).any()
 
     cinputs_2 = functional.compute_coefficient_inputs(modmolecule)
@@ -588,7 +588,7 @@ def x5(
     ex_2 = jnp.expand_dims(ex_2, axis=-1)
 
     fx_2 = jnp.where(
-        jnp.greater_equal(jnp.abs(lda_e * jnp.sqrt(s_2)), 1e-30),
+        jnp.greater_equal(jnp.abs(lda_e * jnp.sqrt(s_2)), 1e-25),
         ex_2 / (lda_e * jnp.sqrt(s_2)),
         0,
     )
@@ -606,7 +606,7 @@ def x5(
 
 
 def x6(
-    functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST, clip_cte = 1e-30
+    functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST, clip_cte = 1e-25
 ) -> Float:
     r"""
     Instantiates a loss function checking the following constraints:
@@ -657,7 +657,7 @@ def x6(
 
 
 def x7(
-    functional: Functional, params: PyTree, molecule2e: Molecule, precision=Precision.HIGHEST, clip_cte = 1e-30
+    functional: Functional, params: PyTree, molecule2e: Molecule, precision=Precision.HIGHEST, clip_cte = 1e-25
 ) -> Float:
     r"""
     Instantiates a loss function checking the following constraints:
@@ -684,7 +684,7 @@ def x7(
             r"""Weizsacker kinetic energy"""
             drho = self.grad_density(*args, **kwargs)
             rho = self.density(*args, **kwargs)
-            return jnp.where(jnp.greater_equal(rho, 1e-30), drho**2 / (8 * rho), 0)
+            return jnp.where(jnp.greater_equal(rho, 1e-25), drho**2 / (8 * rho), 0)
 
     modmolecule = modMolecule(
         molecule2e.grid,
@@ -728,9 +728,9 @@ def x7(
     lda_e = jnp.einsum("rf,rf->r", lda_coefficients, lda_densities)
     lda_e = abs_clip(lda_e, clip_cte)
 
-    # return jnp.where(jnp.greater_equal(lsda_e, 1e-30), jnp.less_equal(functional_e / lsda_e, 1.174), True).all()
+    # return jnp.where(jnp.greater_equal(lsda_e, 1e-25), jnp.less_equal(functional_e / lsda_e, 1.174), True).all()
     return functional._integrate(
-        jnp.where(jnp.greater_equal(lda_e, 1e-30), (relu(functional_e / lda_e - 1.174) ** 2), 0),
+        jnp.where(jnp.greater_equal(lda_e, 1e-25), (relu(functional_e / lda_e - 1.174) ** 2), 0),
         molecule2e.grid.weights,
     )
 
