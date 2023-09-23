@@ -25,11 +25,11 @@ from optax import adam
 from tqdm import tqdm
 import os
 from orbax.checkpoint import PyTreeCheckpointer
+import warnings
 
 from grad_dft import (
-    Molecule,
-    make_train_kernel, 
-    molecule_predictor,
+    train_kernel, 
+    energy_predictor,
     DispersionFunctional,
     NeuralFunctional,
     canonicalize_inputs,
@@ -46,8 +46,9 @@ from torch.utils.tensorboard import SummaryWriter
 import jax
 
 from jax.config import config
-
-config.update("jax_disable_jit", True)
+config.update("jax_enable_x64", True)
+config.update('jax_debug_nans', True)
+warnings.warn("This script takes a long time to run.")
 
 # In this example we explain how to replicate the experiments that train
 # the functional in some points of the dissociation curve of H2 or H2^+.
@@ -221,14 +222,14 @@ if loadcheckpoint:
 ########### Definition of the loss function #####################
 
 # Here we use one of the following. We will use the second here.
-molecule_predict = molecule_predictor(functional, nlc_functional=DispersionNN)
+compute_energy = energy_predictor(functional, nlc_functional=DispersionNN)
 
 
 @partial(value_and_grad, has_aux=True)
 def loss(params, molecule, true_energy):
     # In general the loss function should be able to accept [params, system (eg, molecule or reaction), true_energy]
 
-    predicted_energy, fock = molecule_predict(params, molecule)
+    predicted_energy, fock = compute_energy(params, molecule)
     cost_value = (predicted_energy - true_energy) ** 2
 
     # We may want to add a regularization term to the cost, be it one of the
@@ -247,7 +248,7 @@ def loss(params, molecule, true_energy):
     return cost_value, metrics
 
 
-kernel = jax.jit(make_train_kernel(tx, loss))
+kernel = jax.jit(train_kernel(tx, loss))
 
 ######## Training epoch ########
 

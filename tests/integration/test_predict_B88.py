@@ -24,8 +24,8 @@ config.update("jax_enable_x64", True)
 
 from grad_dft import (
     molecule_from_pyscf,
-    make_scf_loop, 
-    make_jitted_scf_loop
+    scf_loop, 
+    diff_scf_loop
 )
 from grad_dft.utils.types import Hartree2kcalmol
 from grad_dft.popular_functionals import B88
@@ -71,7 +71,7 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
     # Start from Non-SCF density
     molecule = molecule_from_pyscf(mf, energy=e_DM, omegas=[], scf_iteration=0)
 
-    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=10)
+    iterator = scf_loop(FUNCTIONAL, verbose=2, cycles=10)
     molecule_out = iterator(PARAMS, molecule)
     e_XND = molecule_out.energy
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol
@@ -97,11 +97,11 @@ def test_jit(mol_and_name: tuple[gto.Mole, str]) -> None:
     # Start from Non-SCF density
     molecule = molecule_from_pyscf(mf, omegas=[], scf_iteration=0)
 
-    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=10)
+    iterator = scf_loop(FUNCTIONAL, verbose=2, cycles=10)
     molecule_out = iterator(PARAMS, molecule)
     e_XND = molecule_out.energy
     
-    iterator = make_jitted_scf_loop(FUNCTIONAL, cycles=10)
+    iterator = diff_scf_loop(FUNCTIONAL, cycles=10)
     molecule_out = iterator(PARAMS, molecule)
     e_XND_jit = molecule_out.energy
 

@@ -41,8 +41,8 @@ from .functional import (
     dm21_hfgrads_densities,
 )
 from .train import (
-    make_train_kernel,
-    molecule_predictor, 
+    train_kernel,
+    energy_predictor,
     Harris_energy_predictor,
     simple_energy_loss,
     mse_energy_loss, 
@@ -50,13 +50,13 @@ from .train import (
     mse_energy_and_density_loss
 )
 from .evaluate import (
-    make_orbital_optimizer,
-    make_jitted_orbital_optimizer,
-    make_non_scf_predictor,
-    make_simple_scf_loop,
-    make_jitted_simple_scf_loop,
-    make_scf_loop,
-    make_jitted_scf_loop
+    mol_orb_optimizer,
+    jitted_mol_orb_optimizer,
+    non_scf_predictor,
+    simple_scf_loop,
+    diff_simple_scf_loop,
+    scf_loop,
+    diff_scf_loop
 )
 from .interface import (
     molecule_from_pyscf, 

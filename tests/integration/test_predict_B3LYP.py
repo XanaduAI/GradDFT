@@ -22,7 +22,7 @@ import pytest
 from jax.config import config
 config.update("jax_enable_x64", True)
 
-from grad_dft import molecule_from_pyscf, make_scf_loop
+from grad_dft import molecule_from_pyscf, scf_loop
 from grad_dft.utils.types import Hartree2kcalmol
 from grad_dft.popular_functionals import B3LYP
 
@@ -70,7 +70,7 @@ def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
 
     molecule = molecule_from_pyscf(mf, energy=e_DM, omegas=[0.0], scf_iteration=0)
 
-    iterator = make_scf_loop(FUNCTIONAL, verbose=2, max_cycles=10)
+    iterator = scf_loop(FUNCTIONAL, verbose=2, cycles=10)
     molecule_out = iterator(PARAMS, molecule)
     e_XND = molecule_out.energy
     kcalmoldiff = (e_XND - e_DM) * Hartree2kcalmol

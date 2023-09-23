@@ -19,7 +19,7 @@ from grad_dft.popular_functionals import B88, LSDA
 
 from grad_dft import (
     molecule_from_pyscf,
-    molecule_predictor, 
+    energy_predictor, 
     Harris_energy_predictor
 )
 
@@ -59,8 +59,8 @@ def test_Harris_LDA(mol):
     ground_truth_energy = mf.kernel()
 
     molecule = molecule_from_pyscf(mf, omegas=[])
-    predict_molecule = molecule_predictor(LSDA)
-    predicted_e, fock = predict_molecule(params, molecule)
+    compute_energy = energy_predictor(LSDA)
+    predicted_e, fock = compute_energy(params, molecule)
 
     Harris_predict = Harris_energy_predictor(LSDA)
     Harries_e = Harris_predict(params, molecule)
@@ -75,8 +75,8 @@ def test_Harris_B88(mol):
     ground_truth_energy = mf.kernel()
 
     molecule = molecule_from_pyscf(mf, omegas=[])
-    predict_molecule = molecule_predictor(B88)
-    predicted_e, fock = predict_molecule(params, molecule)
+    compute_energy = energy_predictor(B88)
+    predicted_e, fock = compute_energy(params, molecule)
 
     Harris_predict = Harris_energy_predictor(B88)
     Harries_e = Harris_predict(params, molecule)

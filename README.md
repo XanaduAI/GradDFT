@@ -2,9 +2,9 @@
 
 # Grad DFT: a software library for machine learning enhanced density functional theory
 
-![Light Theme Image](image/README/light_logo.svg#gh-light-mode-only)
+![Light Theme Image](media/README/light_logo.svg#gh-light-mode-only)
 
-![Dark Theme Image](image/README/dark_logo.svg#gh-dark-mode-only)
+![Dark Theme Image](media/README/dark_logo.svg#gh-dark-mode-only)
 
 [![build](https://img.shields.io/badge/build-passing-graygreen.svg "https://github.com/XanaduAI/GradDFT/actions")](https://github.com/XanaduAI/GradDFT/actions)
 [![arXiv](http://img.shields.io/badge/arXiv-2101.10279-B31B1B.svg "Grad-DFT")](https://arxiv.org/)
@@ -34,7 +34,7 @@ that is, under the locality assumption.
 
 * The capability to implement (non-differentiable) range-separated Hartree Fock components.
 * Fully differentiable and just-in-time (jit) compilable self-consistent interaction procedures. This allows us to perform the training in a fully self-consistent manner, eg, by comparing the output energy of a self-consistent loop against some high-quality data.
-* Fully differentiable and just-in-time compilable [direct optimization of the atomic orbitals](https://openreview.net/forum?id=aBWnqqsuot7).
+* Fully differentiable and just-in-time compilable [direct optimization of the molecular orbitals](https://openreview.net/forum?id=aBWnqqsuot7).
 * Loss functions that minimize the energy or reduced density matrix error.
 * Regularization terms that prevent the divergence of the self-consistent iteration, for non-scf trained functionals. This includes the regularization term suggested in the supplementary material of [DM21](https://www.science.org/doi/full/10.1126/science.abj6511).
 * [15 constraints of the exact functional](https://www.annualreviews.org/doi/abs/10.1146/annurev-physchem-062422-013259) in the form of loss functions.
@@ -78,7 +78,7 @@ The workflow of the library is the following:
 4. Build the `Functional`, which has method `functional.energy(molecule, params)`, computing
 
 ```math
-E_{KS}[\rho] = \sum_{i=0}^{\text{occ}} \int d\mathbf{r}\; |\nabla \varphi_{i}(\mathbf{r})|^2  + \frac{1}{2}\int d\mathbf{r} d\mathbf{r}'\frac{\rho(\mathbf{r})\rho(\mathbf{r}')}{|\mathbf{r}-\mathbf{r}'|} +\int d\mathbf{r} U(\mathbf{r}) \rho(\mathbf{r}) + E_{xc}[\rho],
+E_{KS}[\rho] = \sum_{i=0}^{\text{occ}} \int d\mathbf{r}\; |\nabla \varphi_{i}(\mathbf{r})|^2  + \frac{1}{2}\int d\mathbf{r} d\mathbf{r}'\frac{\rho(\mathbf{r})\rho(\mathbf{r}')}{|\mathbf{r}-\mathbf{r}'|} +\int d\mathbf{r} U(\mathbf{r}) \rho(\mathbf{r}) + E_{II} + E_{xc}[\rho],
 ```
 
 with
@@ -97,7 +97,7 @@ The first step is to create a `Molecule` object.
 
 ```python
 from grad_dft import (
-	molecule_predictor,
+	energy_predictor,
 	simple_energy_loss,
 	NeuralFunctional,
 	molecule_from_pyscf
@@ -130,8 +130,8 @@ def energy_densities(molecule):
     return lda_e
 
 def coefficient_inputs(molecule):
-    rho = jnp.clip(molecule.density(), a_min = 1e-30)
-    kinetic = jnp.clip(molecule.kinetic_density(), a_min = 1e-30)
+    rho = molecule.density()
+    kinetic = molecule.kinetic_density()
     return jnp.concatenate((rho, kinetic))
 
 def coefficients(self, rhoinputs):
@@ -162,10 +162,10 @@ opt_state = tx.init(params)
 
 # and implement the optimization loop
 n_epochs = 20
-molecule_predict = molecule_predictor(neuralfunctional)
+compute_energy = energy_predictor(neuralfunctional)
 for iteration in tqdm(range(n_epochs), desc="Training epoch"):
     (cost_value, predicted_energy), grads = simple_energy_loss(
-        params, molecule_predict, molecule, ground_truth_energy
+        params, compute_energy, molecule, ground_truth_energy
     )
     print("Iteration", iteration, "Predicted energy:", predicted_energy, "Cost value:", cost_value)
     updates, opt_state = tx.update(grads, opt_state, params)
@@ -174,6 +174,18 @@ for iteration in tqdm(range(n_epochs), desc="Training epoch"):
 # Save checkpoint
 neuralfunctional.save_checkpoints(params, tx, step=n_epochs)
 ```
+
+<p align="center">
+
+<img src="/media/README/light_mode_disodium_animation.gif#gh-light-mode-only" width="45%" height="45%"/>
+</p>
+
+<p align="center">
+
+<img src="/media/README/dark_mode_disodium_animation.gif#gh-dark-mode-only#gh-dark-mode-only" width="45%" height="45%"/>
+
+</p>
+<p align="center"> Using a scaled down version of the neural functional used in the main Grad DFT article, we train it using the total energies and densities derived from the experimental equilibrium geometries of Li<sub>2</sub> and K<sub>2</sub> at the Coupled Cluster Singles & Doubles (CCSD) level of accuracy. The animation shows that during this training, the neural functional also generalized to predict the CCSD density of Na<sub>2</sub>. </p>
 
 ## Acknowledgements
 
@@ -186,7 +198,7 @@ GradDFT often follows similar calculations and naming conventions as PySCF, thou
 ```
 @article{graddft,
   title={Grad DFT: a software library for machine learning density functional theory},
-  author={Casares, Pablo Antonio Moreno and Baker, Jack and Medvidovi{\'c}, Matija and Dos Reis, Roberto, and Arrazola, Juan Miguel},
+  author={Casares, Pablo Antonio Moreno and Baker, Jack Stephen and Medvidovi{\'c}, Matija and Dos Reis, Roberto, and Arrazola, Juan Miguel},
   journal={arXiv preprint [number]},
   year={2023}
 }

@@ -227,7 +227,7 @@ class Functional(nn.Module):
         r"""
         Total energy of local functional
 
-        Paramters
+        Parameters
         ---------
         params: PyTree
             params of the neural network if there is one in self.f
@@ -255,7 +255,7 @@ class Functional(nn.Module):
         r"""
         Total energy of local functional
 
-        Paramters
+        Parameters
         ---------
         params: PyTree
             params of the neural network if there is one in self.f
@@ -367,6 +367,7 @@ class NeuralFunctional(Functional):
     param_dtype: DType = default_dtype()
 
     def setup(self):
+        r"""Sets up the neural network layers. """
         self.dense = partial(
             nn.Dense,
             param_dtype=self.param_dtype,
@@ -377,6 +378,9 @@ class NeuralFunctional(Functional):
         self.layer_norm = partial(nn.LayerNorm, param_dtype=self.param_dtype)
 
     def head(self, x: Array, local_features, sigmoid_scale_factor):
+        r"""
+        Final layer of the neural network.
+        """
         # Final layer: dense -> sigmoid -> scale (x2)
         x = self.dense(features=local_features)(x)  # eg local_features = 3 in DM21
         self.sow("intermediates", "head_dense", x)
@@ -733,7 +737,8 @@ def dm21_hfgrads_cinputs(
 class DM21(NeuralFunctional):
     r"""
     Creates the architecture of the DM21 functional.
-    Contains a function to generate the weights, called `generate_DM21_weights`
+    Contains a function to generate the weights, called `generate_DM21_weights`.
+    See the initialization parameters of NeuralFunctional.
     """
 
     coefficients: Callable = lambda self, inputs: self.default_nn(inputs)
@@ -902,6 +907,9 @@ class DM21(NeuralFunctional):
 
 
 def canonicalize_inputs(x):
+    r"""
+    Ensures that the input to the neural network has the correct dimensions.
+    """
     x = jnp.asarray(x)
 
     if x.ndim == 1:
@@ -910,20 +918,6 @@ def canonicalize_inputs(x):
         raise ValueError("`features` has to be at least 1D array!")
     else:
         return x
-
-
-def _canonicalize_fxc(fxc: Functional) -> Callable:
-    if hasattr(fxc, "energy"):
-        return fxc.energy
-    if hasattr(fxc, "apply"):
-        return fxc.apply
-    elif callable(fxc):
-        return fxc
-    else:
-        raise RuntimeError(
-            f"`fxc` should be a flax `Module` with a `predict_exc` method or a callable, got {type(fxc)}"
-        )
-
 
 ################ Spin polarization correction functions ################
 
@@ -1227,6 +1221,9 @@ class DispersionFunctional(nn.Module):
         return self.dispersion(self, *inputs)
 
     def head(self, x: Array, local_features, sigmoid_scale_factor):
+        r"""
+        The head of the neural network, which is the final layer of the neural network.
+        """
         # Final layer: dense -> sigmoid -> scale (x2)
         x = self.dense(features=local_features)(x)
         self.sow("intermediates", "head_dense", x)
@@ -1238,6 +1235,9 @@ class DispersionFunctional(nn.Module):
         return jnp.squeeze(out)  # Eliminating unnecessary dimensions
 
     def energy(self, params: PyTree, molecule: Molecule):
+        r"""
+        Calculates the energy of the functional.
+        """
         R_AB, ai = calculate_distances(molecule.nuclear_pos, molecule.atom_index)
 
         result = 0
@@ -1249,6 +1249,9 @@ class DispersionFunctional(nn.Module):
 
 
 def calculate_distances(positions, atoms):
+    r"""
+    Calculates the distances between all atoms in the molecule.
+    """
     pairwise_distances = jnp.linalg.norm(positions[:, None] - positions, axis=-1)
     atom_pairs = jnp.array(
         [(atoms[i], atoms[j]) for i in range(len(atoms)) for j in range(len(atoms))]

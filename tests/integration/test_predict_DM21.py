@@ -34,7 +34,7 @@ learning_rate = 1e-3
 
 from grad_dft import (
     molecule_from_pyscf, 
-    make_scf_loop, 
+    scf_loop, 
     DM21
 )
 from grad_dft.utils.types import Hartree2kcalmol
@@ -72,10 +72,10 @@ def test_predict(mol):
     molecule = molecule_from_pyscf(mf, energy=energy, omegas=[0.0, 0.4], scf_iteration=0)
 
     # tx = adam(learning_rate = learning_rate)
-    # iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
+    # iterator = mol_orb_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     # e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_scf_loop(functional, verbose=2, max_cycles=10)
+    iterator = scf_loop(functional, verbose=2, cycles=10)
     molecule_out = iterator(params, molecule)
     e_XND = molecule_out.energy
 
@@ -117,10 +117,10 @@ def test_predict(mol):
     molecule = molecule_from_pyscf(mf, energy=energy, omegas=[0, 0.4], scf_iteration=0)
 
     # tx = adam(learning_rate = learning_rate)
-    # iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
+    # iterator = mol_orb_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     # e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_scf_loop(functional, verbose=2, max_cycles=1)
+    iterator = scf_loop(functional, verbose=2, cycles=1)
     molecule_out = iterator(params, molecule)
     e_XND = molecule_out.energy
 
@@ -158,10 +158,10 @@ def test_rks():
     molecule = molecule_from_pyscf(mf, energy=energy, omegas=[0.0, 0.4])
 
     # tx = adam(learning_rate = learning_rate)
-    # iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
+    # iterator = mol_orb_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     # e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_scf_loop(functional, verbose=2, functional_type="DM21")
+    iterator = scf_loop(functional, verbose=2, functional_type="DM21")
     molecule_out = iterator(params, molecule)
     e_XND = molecule_out.energy
 
@@ -187,10 +187,10 @@ def test_uks():
     molecule = molecule_from_pyscf(mf, energy=energy, omegas=[0.0, 0.4])
 
     # tx = adam(learning_rate = learning_rate)
-    # iterator = make_orbital_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
+    # iterator = mol_orb_optimizer(functional, tx, omegas = [0., 0.4], verbose = 2, functional_type = 'DM21')
     # e_XND_DF4T = iterator(params, molecule)
 
-    iterator = make_scf_loop(functional, verbose=2, functional_type="DM21")
+    iterator = scf_loop(functional, verbose=2, functional_type="DM21")
     molecule_out = iterator(params, molecule)
     e_XND = molecule_out.energy
 

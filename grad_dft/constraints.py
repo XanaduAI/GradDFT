@@ -24,7 +24,7 @@ from grad_dft import (
     density,
     grad_density,
     abs_clip,
-    molecule_predictor
+    energy_predictor
 )
 from grad_dft.interface.pyscf import (
     generate_chi_tensor,
@@ -33,7 +33,7 @@ from grad_dft.interface.pyscf import (
 from grad_dft.popular_functionals import (
     LSDA,
 )
-from jaxtyping import Array, PyTree, Scalar
+from jaxtyping import Array, PyTree, Scalar, Float
 
 r"""
 In this document we implement some of the constraints listed in the review paper
@@ -46,11 +46,23 @@ as quadratic loss functions.
 
 def x1_c1(
     functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST
-):
+) -> (Float, Float):
     r"""
+    Instantiates a loss function checking the following constraints:
     .. math::
         \epsilon_x[n] < 0 (x1)
         \epsilon_c[n] < 0 (c1)
+
+    Parameters
+    ----------
+    functional : Functional
+    params: PyTree
+    molecule : Molecule
+    precision: Precision
+
+    Returns
+    -------
+    Float, Float
     """
 
     # Compute the input features
@@ -70,12 +82,26 @@ def x1_c1(
 
 def c2(
     functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST
-):
+) -> Float:
     r"""
-    Assumin there is a single electron in the molecule,
+    Instantiates a loss function checking the following constraint:
+    Assuming there is a single electron in the molecule,
     .. math::
         \epsilon_c[n] = 0.
 
+    Parameters
+    ----------
+    functional : Functional
+    params: PyTree
+    molecule : Molecule (single electron molecule)
+    precision: Precision
+
+    Returns
+    -------
+    Float
+
+    Notes
+    -----
     Assumes molecule has a single electron.
     """
 
@@ -97,10 +123,22 @@ def c2(
 
 def x2(
     functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST
-):
+) -> Float:
     r"""
+    Instantiates a loss function checking the following constraint:
     .. math::
         E_x[n]  = \frac{1}{2}(E_x[2n_\uparrow] + E_x[2n_\downarrow])
+
+    Parameters
+    ----------
+    functional : Functional
+    params: PyTree
+    molecule : Molecule
+    precision: Precision
+
+    Returns
+    -------
+    Float
     """
 
     rdm1 = molecule.rdm1
@@ -154,8 +192,9 @@ def x3_c3_c4(
     molecule: Molecule,
     gamma: Scalar = 2,
     precision=Precision.HIGHEST,
-):
+) -> (Float, Float, Float):
     r"""
+    Instantiates a loss function checking the following constraints:
     .. math::
         E_x[n_\gamma]  = \gamma E_x[n], (x3) \\
         E_c[n_\gamma]  > \gamma E_c[n], (c3)  & \gamma > 1\\
@@ -191,10 +230,7 @@ def x3_c3_c4(
 
     Returns
     -------
-    exchange_constraint : Array[bool]
-        The x3 constraint results for gamma and 1/gamma
-    correlation_constraints : Array[bool]
-        The c3 and c4 constraint results for gamma and 1/gamma respectively
+    Float, Float, Float
     """
 
     densities = functional.compute_densities(molecule)
@@ -298,8 +334,9 @@ def x4(
     lower_bound=1e-15,
     upper_bound=1e-5,
     clip_cte = 1e-30,
-):
+) -> Float:
     r"""
+    Instantiates a loss function checking the following constraints:
     .. math::
         E_x[n] \approx \frac{-3}{2}(\frac{3}{4\pi})^{1/3}\int dr [1 + \frac{10}{81}s^2 + \frac{146}{2025}q^2 - \frac{146}{2025}\frac{2}{5}qs^2 + 0 s^4 + O(|\nabla^6 \rho|)] \rho(r)^{4/3}\\
         
@@ -307,6 +344,24 @@ def x4(
     .. math::
         s = |\nabla \rho| / (2k_f \rho^{4/3})
         q = \nabla^2 \rho / (2k_f^2 \rho^{5/3})
+    
+    Parameters
+    ----------
+    functional : Functional
+    params: PyTree
+    molecule : Molecule
+    s2_mask : Array
+    q2_mask : Array
+    qs2_mask : Array
+    s4_mask : Array
+    precision: Precision
+    lower_bound: Float
+    upper_bound: Float
+    clip_cte: Float
+
+    Returns
+    -------
+    Float
     """
 
     density = molecule.density()
@@ -390,10 +445,25 @@ def x5(
     multiplier1=1e5,
     multiplier2=1e7,
     clip_cte = 1e-30,
-):
+) -> Float:
     r"""
+    Instantiates a loss function checking the following constraints:
     .. math::
         lim_{s\rightarrow \infty}F_x(s, ...) \propto s^{-1/2}
+
+    Parameters
+    ----------
+    functional : Functional
+    params: PyTree
+    molecule : Molecule
+    precision: Precision
+    multiplier1: Float
+    multiplier2: Float
+    clip_cte: Float
+
+    Returns
+    -------
+    Float
     """
 
     # Compute the lda energy
@@ -537,10 +607,23 @@ def x5(
 
 def x6(
     functional: Functional, params: PyTree, molecule: Molecule, precision=Precision.HIGHEST, clip_cte = 1e-30
-):
+) -> Float:
     r"""
+    Instantiates a loss function checking the following constraints:
     .. math::
         E_x[\rho/2, \rho/2] \geq E_{xc}[\rho/2, \rho/2] \geq 1.804 E_x^{LSDA}[\rho]
+
+    Parameters
+    ----------
+    functional : Functional
+    params: PyTree
+    molecule : Molecule
+    precision: Precision
+    clip_cte: Float
+
+    Returns
+    -------
+    Float
     """
 
     # Compute the lda energy
@@ -575,11 +658,24 @@ def x6(
 
 def x7(
     functional: Functional, params: PyTree, molecule2e: Molecule, precision=Precision.HIGHEST, clip_cte = 1e-30
-):
+) -> Float:
     r"""
+    Instantiates a loss function checking the following constraints:
     For a two electron system:
     .. math::
         F_x[s, \alpha = 0] \geq 1.174
+
+    Parameters
+    ----------
+    functional : Functional
+    params: PyTree
+    molecule : Molecule with two electrons
+    precision: Precision
+    clip_cte: Float
+
+    Returns
+    -------
+    Float
     """
 
     @struct.dataclass
@@ -641,11 +737,24 @@ def x7(
 
 def c6(
     functional: Functional, params: PyTree, molecule: Molecule, multiplier: Scalar = 1e-7, precision=Precision.HIGHEST
-):
+) -> Float:
     r"""
+    Instantiates a loss function checking the following constraints:
     For a two electron system:
     .. math::
         E_c[s \rightarrow 0] = 0
+
+        Parameters
+    ----------
+    functional : Functional
+    params: PyTree
+    molecule : Molecule
+    multiplier: Float; multiplicative scaling factor for the electronic density
+    precision: Precision
+
+    Returns
+    -------
+    Float
     """
 
     @struct.dataclass
@@ -701,10 +810,23 @@ def c6(
 
 def xc2(
     functional: Functional, params: PyTree, molecule: Molecule, gamma: Scalar = 1e-7, precision=Precision.HIGHEST
-):
+) -> Float:
     r"""
+    Instantiates a loss function checking the following constraints:
     .. math::
         \lim_{\gamma \rightarrow 0} E_{xc}[n_\gamma^\uparrow, n_\gamma^\downarrow] = E_{xc}[n_\gamma]
+
+    Parameters
+    ----------
+    functional : Functional
+    params: PyTree
+    molecule : Molecule
+    gamma: Float; multiplicative scaling factor for the atomic orbitals and their gradients
+    precision: Precision
+
+    Returns
+    -------
+    Float
     """
 
     ao1 = molecule.ao
@@ -760,9 +882,21 @@ def xc4(
     functional: Functional, params: PyTree, molecule2e: Molecule, precision=Precision.HIGHEST
 ):
     r"""
+    Instantiates a loss function checking the following constraints:
     For a two electron system:
     .. math::
         E_{xc}[n2] \geq 1.671 E_{xc}^{LDA}[n2]
+    
+    Parameters
+    ----------
+    functional : Functional
+    params: PyTree
+    molecule2e : Molecule with two electrons
+    precision: Precision
+
+    Returns
+    -------
+    Float
     """
     cinputs = functional.compute_coefficient_inputs(molecule2e)
     densities = functional.compute_densities(molecule2e)
@@ -786,9 +920,25 @@ def xc1(
     mol=None,
 ):
     r"""
+    Instantiates a loss function checking the following constraints:
     .. math::
         E_U[\gamma \rho_1 + (1-\gamma) \rho_2]  = \gamma E_U[\rho_1] + (1-\gamma) E_U[\rho_2]
 
+    Parameters
+    ----------
+    functional : Functional
+    params: PyTree
+    molecule1 : Molecule
+    molecule2 : Molecule
+    gamma: Float, mixing factor
+    precision: Precision
+
+    Returns
+    -------
+    Float
+
+    Notes
+    -----
     Assumes gamma is between 0 and 1.
     Assumes molecule1 and molecule2 have the same nuclear positions and grid, and differ in that
     molecule2 has one (or 0) more electrons than molecule1.
@@ -796,7 +946,7 @@ def xc1(
     Also named as the fractional charge and spin constraint.
     """
 
-    predict = molecule_predictor(functional)
+    predict = energy_predictor(functional)
     E1, _ = predict(params, molecule1)
     E2, _ = predict(params, molecule2)
 
