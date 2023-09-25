@@ -12,19 +12,13 @@
 
 </div>
 
-Grad DFT is a JAX-based library enabling the differentiable design and experimentation of exchange-correlation functionals using machine learning techniques. This library supports a parametrization of exchange-correlation functionals based on energy densities and associated coefficient functions; the latter typically constructed using neural networks:
-
-```math
-E_{xc,\theta} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}).
-```
-
-Grad DFT provides significant functionality, including a fully differentiable and just-in-time compilable self-consistent loop, direct optimization of the orbitals, and implementation of many of the known constraints of the exact functional in the form of loss functionals.
+Grad DFT is a JAX-based library enabling the differentiable design and experimentation of exchange-correlation functionals using machine learning techniques. The library provides significant functionality, including (but not limited to) training neural functionals with fully differentiable and just-in-time compilable self-consistent-field loops, direct optimization of the Kohn-Sham orbitals, and implementation of many of the known constraints of the exact functional.
 
 ## Functionality
 
-The current version of the library includes the capability to implement:
+The current version of the library has the following capabilities:
 
-* The capability to implement any `NeuralFunctional` that follows the expression
+* Create any `NeuralFunctional` that follows the expression
 
 ```math
 E_{xc,\theta} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf{e}[\rho](\mathbf{r}),
@@ -32,17 +26,17 @@ E_{xc,\theta} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf
 
 that is, under the locality assumption.
 
-* The capability to implement (non-differentiable) range-separated Hartree Fock components.
-* Fully differentiable and just-in-time (jit) compilable self-consistent interaction procedures. This allows us to perform the training in a fully self-consistent manner, eg, by comparing the output energy of a self-consistent loop against some high-quality data.
-* Fully differentiable and just-in-time compilable [direct optimization of the molecular orbitals](https://openreview.net/forum?id=aBWnqqsuot7).
-* Loss functions that minimize the energy or reduced density matrix error.
-* Regularization terms that prevent the divergence of the self-consistent iteration, for non-scf trained functionals. This includes the regularization term suggested in the supplementary material of [DM21](https://www.science.org/doi/full/10.1126/science.abj6511).
-* [15 constraints of the exact functional](https://www.annualreviews.org/doi/abs/10.1146/annurev-physchem-062422-013259) in the form of loss functions.
-* The [Harris functional](https://en.wikipedia.org/wiki/Harris_functional), which allows controlling the error of a non-scf converged solution as a function of the electronic error, $|E_{\text{true}} - E_{\text{Harris}}| = O((\rho_{\text{true}} - \rho_{\text{Harris}})^2).$
-* A few tested classical functionals such as [B3LYP](https://pubs.acs.org/doi/abs/10.1021/j100096a001) and [DM21](https://www.science.org/doi/full/10.1126/science.abj6511).
-* A simple `DispersionFunctional` implementing DFT-D tails with a neural parametrization.
+* Include (non-differentiable) range-separated Hartree Fock components.
+* Train neural functionals using fully differentiable and just-in-time (jit) compilable self-consistent interative procedures.
+* Perform DFT simulations with neural functionals using differentiable and just-in-time compilable [direct optimization of the Kohn-Sham orbitals](https://openreview.net/forum?id=aBWnqqsuot7).
+* Train neural functionals using loss functions that include contributions from the total energy, density or both.
+* Include regularization terms that prevent the divergence of the self-consistent iterative procedure for non self-consistently trained functionals. This includes the regularization term suggested in the supplementary material of [DM21](https://www.science.org/doi/full/10.1126/science.abj6511).
+* Use [15 constraints of the exact functional](https://www.annualreviews.org/doi/abs/10.1146/annurev-physchem-062422-013259) which can be added to existing loss functions.
+* Train with the [Harris functional](https://en.wikipedia.org/wiki/Harris_functional) for higher accuracy non-self consistent training.
+* Design neural functionals with a library of energy densities used in well-known functionals such as [B3LYP](https://pubs.acs.org/doi/abs/10.1021/j100096a001) and [DM21](https://www.science.org/doi/full/10.1126/science.abj6511).
+* Inlcude simple DFT-D dispersion tails with a neural parametrization.
 
-Future capability should include [sharding](https://jax.readthedocs.io/en/latest/notebooks/Distributed_arrays_and_automatic_parallelization.html) the training between multiple GPUs in parallel, as well as including periodic conditions.
+Future capabilities will include [sharding](https://jax.readthedocs.io/en/latest/notebooks/Distributed_arrays_and_automatic_parallelization.html) the training on HPC systems and the implementation of periodic boundary conditions for training neural functionals designed for condensed matter systems.
 
 ## Install
 
@@ -70,12 +64,12 @@ to install the additional dependencies.
 
 ## Use example
 
-The workflow of the library is the following:
+Using Grad DFT typically involves the following steps:
 
-1. Specify `Molecule`, which has methods to compute the electronic density $\rho$ and derived quantities.
+1. Specify an instance of `Molecule`, which has methods to compute the electronic density $\rho$ and derived quantities.
 2. Define the function `energy_densities`, that computes $\mathbf{e}\[\rho\](\mathbf{r})$.
 3. Implement the function `coefficients`, which may include a neural network, and computes $\mathbf{c}_{\theta}\[\rho\](\mathbf{r})$. If the function `coefficients` requires inputs, specify function `coefficient_inputs` too.
-4. Build the `Functional`, which has method `functional.energy(molecule, params)`, computing
+4. Build the `Functional`, which has method `functional.energy(molecule, params)`, which computes the Kohn-Sham total energy according to
 
 ```math
 E_{KS}[\rho] = \sum_{i=0}^{\text{occ}} \int d\mathbf{r}\; |\nabla \varphi_{i}(\mathbf{r})|^2  + \frac{1}{2}\int d\mathbf{r} d\mathbf{r}'\frac{\rho(\mathbf{r})\rho(\mathbf{r}')}{|\mathbf{r}-\mathbf{r}'|} +\int d\mathbf{r} U(\mathbf{r}) \rho(\mathbf{r}) + E_{II} + E_{xc}[\rho],
@@ -90,6 +84,8 @@ E_{xc,\theta}[\rho] = \int d\mathbf{r} \mathbf{c}_{\theta}[\rho](\mathbf{r})\cdo
 and where `params` indicates neural network parameters $\theta$.
 
 5. Train the neural functional using JAX autodifferentiation capabilities, in particular `jax.grad`.
+
+Now let's see how we can complete the above steps with code in Grad DFT.
 
 ### Creating a molecule
 
@@ -174,6 +170,8 @@ for iteration in tqdm(range(n_epochs), desc="Training epoch"):
 # Save checkpoint
 neuralfunctional.save_checkpoints(params, tx, step=n_epochs)
 ```
+
+For more detailed examples, check out the `~/examples` folder.
 
 <p align="center">
 
