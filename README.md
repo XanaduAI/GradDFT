@@ -193,8 +193,8 @@ GradDFT often follows similar calculations and naming conventions as PySCF, thou
 
 ## Bibtex
 
-```
-@misc{casares2023graddft,
+```latex
+@article{casares2023graddft,
       title={Grad DFT: a software library for machine learning enhanced density functional theory}, 
       author={Pablo A. M. Casares and Jack S. Baker and Matija Medvidovic and Roberto dos Reis and Juan Miguel Arrazola},
       year={2023},
