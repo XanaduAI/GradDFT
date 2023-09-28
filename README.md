@@ -7,7 +7,7 @@
 ![Dark Theme Image](media/README/dark_logo.svg#gh-dark-mode-only)
 
 [![build](https://img.shields.io/badge/build-passing-graygreen.svg "https://github.com/XanaduAI/GradDFT/actions")](https://github.com/XanaduAI/GradDFT/actions)
-[![arXiv](http://img.shields.io/badge/arXiv-2101.10279-B31B1B.svg "Grad-DFT")](https://arxiv.org/)
+[![arXiv](http://img.shields.io/badge/arXiv-2309.15127-B31B1B.svg "Grad-DFT")](https://arxiv.org/abs/2309.15127)
 [![License](https://img.shields.io/badge/License-Apache%202.0-9F9F9F "https://github.com/XanaduAI/GradDFT/blob/main/LICENSE")](https://github.com/XanaduAI/GradDFT/blob/main/LICENSE)
 
 </div>
