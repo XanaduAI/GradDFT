@@ -27,14 +27,14 @@ E_{xc,\theta} = \int d\mathbf{r} \mathbf{c}_\theta[\rho](\mathbf{r})\cdot\mathbf
 that is, under the locality assumption.
 
 * Include (non-differentiable) range-separated Hartree Fock components.
-* Train neural functionals using fully differentiable and just-in-time (jit) compilable self-consistent interative procedures.
+* Train neural functionals using fully differentiable and just-in-time (jit) compilable self-consistent iterative procedures.
 * Perform DFT simulations with neural functionals using differentiable and just-in-time compilable [direct optimization of the Kohn-Sham orbitals](https://openreview.net/forum?id=aBWnqqsuot7).
-* Train neural functionals using loss functions that include contributions from the total energy, density or both.
-* Include regularization terms that prevent the divergence of the self-consistent iterative procedure for non self-consistently trained functionals. This includes the regularization term suggested in the supplementary material of [DM21](https://www.science.org/doi/full/10.1126/science.abj6511).
+* Train neural functionals using loss functions that include contributions from the total energy, density, or both.
+* Include regularization terms that prevent the divergence of the self-consistent iterative procedure for non-self-consistently trained functionals. This includes the regularization term suggested in the supplementary material of [DM21](https://www.science.org/doi/full/10.1126/science.abj6511).
 * Use [15 constraints of the exact functional](https://www.annualreviews.org/doi/abs/10.1146/annurev-physchem-062422-013259) which can be added to existing loss functions.
 * Train with the [Harris functional](https://en.wikipedia.org/wiki/Harris_functional) for higher accuracy non-self consistent training.
 * Design neural functionals with a library of energy densities used in well-known functionals such as [B3LYP](https://pubs.acs.org/doi/abs/10.1021/j100096a001) and [DM21](https://www.science.org/doi/full/10.1126/science.abj6511).
-* Inlcude simple DFT-D dispersion tails with a neural parametrization.
+* Include simple DFT-D dispersion tails with a neural parametrization.
 
 Future capabilities will include [sharding](https://jax.readthedocs.io/en/latest/notebooks/Distributed_arrays_and_automatic_parallelization.html) the training on HPC systems and the implementation of periodic boundary conditions for training neural functionals designed for condensed matter systems.
 
@@ -68,8 +68,8 @@ Using Grad DFT typically involves the following steps:
 
 1. Specify an instance of `Molecule`, which has methods to compute the electronic density $\rho$ and derived quantities.
 2. Define the function `energy_densities`, that computes $\mathbf{e}\[\rho\](\mathbf{r})$.
-3. Implement the function `coefficients`, which may include a neural network, and computes $\mathbf{c}_{\theta}\[\rho\](\mathbf{r})$. If the function `coefficients` requires inputs, specify function `coefficient_inputs` too.
-4. Build the `Functional`, which has method `functional.energy(molecule, params)`, which computes the Kohn-Sham total energy according to
+3. Implement the function `coefficients`, which may include a neural network, and compute $\mathbf{c}_{\theta}\[\rho\](\mathbf{r})$. If the function `coefficients` requires inputs, specify function `coefficient_inputs` too.
+4. Build the `Functional`, which has the method `functional.energy(molecule, params)`, which computes the Kohn-Sham total energy according to
 
 ```math
 E_{KS}[\rho] = \sum_{i=0}^{\text{occ}} \int d\mathbf{r}\; |\nabla \varphi_{i}(\mathbf{r})|^2  + \frac{1}{2}\int d\mathbf{r} d\mathbf{r}'\frac{\rho(\mathbf{r})\rho(\mathbf{r}')}{|\mathbf{r}-\mathbf{r}'|} +\int d\mathbf{r} U(\mathbf{r}) \rho(\mathbf{r}) + E_{II} + E_{xc}[\rho],
@@ -183,21 +183,23 @@ For more detailed examples, check out the `~/examples` folder.
 <img src="/media/README/dark_mode_disodium_animation.gif#gh-dark-mode-only#gh-dark-mode-only" width="45%" height="45%"/>
 
 </p>
-<p align="center"> Using a scaled down version of the neural functional used in the main Grad DFT article, we train it using the total energies and densities derived from the experimental equilibrium geometries of Li<sub>2</sub> and K<sub>2</sub> at the Coupled Cluster Singles & Doubles (CCSD) level of accuracy. The animation shows that during this training, the neural functional also generalized to predict the CCSD density of Na<sub>2</sub>. </p>
+<p align="center"> Using a scaled-down version of the neural functional used in the main Grad DFT article, we train it using the total energies and densities derived from the experimental equilibrium geometries of Li<sub>2</sub> and K<sub>2</sub> at the Coupled Cluster Singles & Doubles (CCSD) level of accuracy. The animation shows that during this training, the neural functional also generalized to predict the CCSD density of Na<sub>2</sub>. </p>
 
 ## Acknowledgements
 
 We thank helpful comments and insights from Alain Delgado, Modjtaba Shokrian Zini, Stepan Fomichev, Soran Jahangiri, Diego Guala, Jay Soni, Utkarsh Azad, Kasra Hejazi, Vincent Michaud-Rioux, Maria Schuld and Nathan Wiebe.
 
-GradDFT often follows similar calculations and naming conventions as PySCF, though adapted for our purposes. Only a few non-jittable DIIS procedures were directly taken from it. Where this happens, it has been conveniently referenced in the documentation. The test were also implemented against PySCF results. PySCF Notice file is included for these reasons.
+GradDFT often follows similar calculations and naming conventions as PySCF, though adapted for our purposes. Only a few non-jittable DIIS procedures were directly taken from it. Where this happens, it has been conveniently referenced in the documentation. The tests were also implemented against PySCF results. PySCF Notice file is included for these reasons.
 
 ## Bibtex
 
 ```
-@article{graddft,
-  title={Grad DFT: a software library for machine learning density functional theory},
-  author={Casares, Pablo Antonio Moreno and Baker, Jack Stephen and Medvidovi{\'c}, Matija and Dos Reis, Roberto, and Arrazola, Juan Miguel},
-  journal={arXiv preprint [number]},
-  year={2023}
+@misc{casares2023graddft,
+      title={Grad DFT: a software library for machine learning enhanced density functional theory}, 
+      author={Pablo A. M. Casares and Jack S. Baker and Matija Medvidovic and Roberto dos Reis and Juan Miguel Arrazola},
+      year={2023},
+      eprint={2309.15127},
+      archivePrefix={arXiv},
+      primaryClass={physics.chem-ph}
 }
 ```
