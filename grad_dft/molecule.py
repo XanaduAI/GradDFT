@@ -26,7 +26,7 @@ from jax import vmap, grad
 from jax.lax import fori_loop, cond
 from flax import struct
 from flax import linen as nn
-import jax
+import jax 
 
 from jaxtyping import Array, PyTree, Scalar, Float, Int, jaxtyped
 
@@ -708,7 +708,10 @@ def nonXC(
     Scalar
     """
     h1e_energy = one_body_energy(rdm1, h1e, precision)
+    jax.debug.print("h1e_energy is {x}", x=h1e_energy)
     coulomb2e_energy = coulomb_energy(rdm1, rep_tensor, precision)
+    jax.debug.print("coulomb2e_energy is {x}", x=coulomb2e_energy)
+    jax.debug.print("nuclear_repulsion is {x}", x=nuclear_repulsion)
 
     return nuclear_repulsion + h1e_energy + coulomb2e_energy
 
