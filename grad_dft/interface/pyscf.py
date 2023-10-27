@@ -26,6 +26,7 @@ from pyscf import scf  # type: ignore
 from pyscf.dft import Grids, numint  # type: ignore
 from pyscf.gto import Mole
 import pyscf.data.elements as elements
+from pyscf.pbc.gto.cell import Cell
 
 # from qdft.reaction import Reaction, make_reaction, get_grad
 from grad_dft.molecule import Grid, Molecule, Reaction, make_reaction
@@ -33,6 +34,8 @@ from grad_dft.utils import DType, default_dtype, DensityFunctional, HartreeFock
 from jax.tree_util import tree_map
 from grad_dft.external import NeuralNumInt
 from grad_dft.external import Functional as ExternalFunctional
+
+from pyscf.pbc import df
 
 import h5py
 from pyscf import cc, dft, scf
@@ -109,7 +112,10 @@ def molecule_from_pyscf(
 
     spin = jnp.int32(mf.mol.spin)
     charge = jnp.int32(mf.mol.charge)
-    grid_level = jnp.int32(mf.grids.level)
+    if isinstance(mf.grids, Grids): # check if it's the open boundary grid. Otherwise we have a uniform grid with no level
+        grid_level = jnp.int32(mf.grids.level)
+    else:
+        grid_level = None
 
     return Molecule(
         grid,
@@ -555,15 +561,21 @@ def _package_outputs(
     grad_order: Scalar = jnp.int32(2),
 ):
     ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=1)  # , non0tab=grids.non0tab)
+    ao = ao_[0]
+    nao = ao.shape[1]
+    
     if scf_iteration != 0:
         rdm1 = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
     else:
-        rdm1 = mf.get_init_guess(mf.mol, mf.init_guess)
-
-    s1e = mf.get_ovlp(mf.mol)
-    h1e = mf.get_hcore(mf.mol)
-
-    if rdm1.ndim == 2:  # Restricted HF
+        rdm1 = mf.get_init_guess(mf.mol, mf.init_guess) 
+    
+    # Depending on the shapes of arrays and the type of PySCF mean field object passed, 
+    # the correct way to process data is now inferred.
+    
+    # Restricted (non-spin polarized), open boundary conditions
+    if rdm1.ndim == 2 and not hasattr(mf, "cell"):
+        s1e = mf.get_ovlp(mf.mol)
+        h1e = mf.get_hcore(mf.mol)
         half_dm = rdm1 / 2
         half_mo_coeff = mf.mo_coeff
         half_mo_energy = mf.mo_energy
@@ -573,41 +585,132 @@ def _package_outputs(
         mo_coeff = np.stack([half_mo_coeff, half_mo_coeff], axis=0)
         mo_energy = np.stack([half_mo_energy, half_mo_energy], axis=0)
         mo_occ = np.stack([half_mo_occ, half_mo_occ], axis=0)
-
-        # Warning: this is for closed shell systems only.
-
-    elif rdm1.ndim == 3:  # Unrestricted HF
+        vj = 2 * mf.get_j(
+        mf.mol, rdm1, hermi=1
+        )  # The 2 is to compensate for the /2 in the definition of the density matrix
+        dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
+        fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
+        rep_tensor = mf.mol.intor("int2e")
+        
+    # Unrestricted (spin polarized), open boundary conditions
+    elif rdm1.ndim == 3 and not hasattr(mf, "cell"):
+        s1e = mf.get_ovlp(mf.mol)
+        h1e = mf.get_hcore(mf.mol)
         mo_coeff = np.stack(mf.mo_coeff, axis=0)
         mo_energy = np.stack(mf.mo_energy, axis=0)
         mo_occ = np.stack(mf.mo_occ, axis=0)
+        vj = 2 * mf.get_j(
+            mf.mol, rdm1, hermi=1
+        )  # The 2 is to compensate for the /2 in the definition of the density matrix
+        dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
+        fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
+        rep_tensor = mf.mol.intor("int2e")
+     
+    # Restricted (non-spin polarized), periodic boundary conditions, full BZ sampling  
+    elif rdm1.ndim == 3 and hasattr(mf, "cell") and rdm1.shape[0] != 1:
+        print(rdm1.shape)
+        s1e = mf.get_ovlp(mf.mol)
+        h1e = mf.get_hcore(mf.mol)
+        
+        half_dm = rdm1 / 2
+        half_mo_coeff = mf.mo_coeff
+        half_mo_energy = mf.mo_energy
+        half_mo_occ = np.asarray(mf.mo_occ) / 2
+
+        rdm1 = np.stack([half_dm, half_dm], axis=0)
+        mo_coeff = np.stack([half_mo_coeff, half_mo_coeff], axis=0)
+        mo_energy = np.stack([half_mo_energy, half_mo_energy], axis=0)
+        mo_occ = np.stack([half_mo_occ, half_mo_occ], axis=0)
+        
+        vj = 2 * mf.get_j(
+        mf.mol, rdm1, hermi=1
+        )  # The 2 is to compensate for the /2 in the definition of the density matrix
+        dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
+        fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
+        rep_tensor = df.DF(mf.cell).get_eri(compact=False).reshape(nao, nao, nao, nao)
+        
+    # Unrestricted (spin polarized), periodic boundary conditions, full BZ sampling     
+    elif rdm1.ndim == 4 and hasattr(mf, "cell") and rdm1.shape[1] != 1:
+        
+        s1e = mf.get_ovlp(mf.mol)
+        h1e = mf.get_hcore(mf.mol)
+        mo_coeff = np.stack(mf.mo_coeff, axis=0)
+        mo_energy = np.stack(mf.mo_energy, axis=0)
+        mo_occ = np.stack(mf.mo_occ, axis=0)
+        
+        vj = 2 * mf.get_j(
+        mf.mol, rdm1, hermi=1
+        )
+        
+        dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
+        print("right")
+        fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
+        rep_tensor = df.DF(mf.cell).get_eri(compact=False).reshape(nao, nao, nao, nao)
+    
+    # Restricted (non-spin polarized), periodic boundary conditions, gamma point only
+    elif rdm1.ndim == 3 and hasattr(mf, "cell") and rdm1.shape[0] == 1:
+        # Collapse the redundant extra dimension from k-points: gamma only
+        s1e = mf.get_ovlp(mf.mol)
+        h1e = mf.get_hcore(mf.mol)
+        # h1e = np.squeeze(h1e, axis=0)
+        # rdm1 = np.squeeze(rdm1, axis=1)
+        mo_coeff = np.squeeze(mf.mo_coeff, axis=0)
+        mo_occ = np.squeeze(mf.mo_occ, axis=0)
+        
+        half_dm = rdm1 / 2
+        half_mo_coeff = mo_coeff
+        half_mo_energy = mf.mo_energy
+        half_mo_occ = mo_occ / 2
+
+        rdm1 = np.stack([half_dm, half_dm], axis=0)
+        vj = 2 * mf.get_j(
+        mf.mol, rdm1, hermi=1
+        )  # The 2 is to compensate for the /2 in the definition of the density matrix
+        rdm1 = np.squeeze(rdm1, axis=1)
+        mo_coeff = np.stack([half_mo_coeff, half_mo_coeff], axis=0)
+        mo_energy = np.stack([half_mo_energy, half_mo_energy], axis=0)
+        mo_occ = np.stack([half_mo_occ, half_mo_occ], axis=0)
+        
+        dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
+        fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
+        fock = np.squeeze(fock, axis=1)
+        vj = np.squeeze(vj, axis=1)
+        h1e = np.squeeze(h1e, axis=0)
+        rep_tensor = df.DF(mf.cell).get_eri(compact=False).reshape(nao, nao, nao, nao)
+        
+    # Unrestricted (spin polarized), periodic boundary conditions, full BZ sampling    
+    elif rdm1.ndim == 4 and hasattr(mf, "cell") and rdm1.shape[1] == 1:
+        s1e = mf.get_ovlp(mf.mol)
+        h1e = mf.get_hcore(mf.mol)
+        # h1e = np.squeeze(h1e, axis=0)
+        vj = 2 * mf.get_j(
+        mf.mol, rdm1, hermi=1
+        )  # The 2 is to compensate for the /2 in the definition of the density matrix
+        # Collapse the redundant extra dimension from k-points: gamma only
+        
+        rdm1 = np.squeeze(rdm1, axis=1)
+        mo_coeff = np.squeeze(mf.mo_coeff, axis=1)
+        mo_occ = np.squeeze(mf.mo_occ, axis=1)
+        
+        mo_coeff = np.stack(mo_coeff, axis=0)
+        mo_energy = np.stack(mf.mo_energy, axis=0)
+        mo_occ = np.stack(mo_occ, axis=0)
+        
+        dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
+        fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
+        fock = np.squeeze(fock, axis=1)
+        vj = np.squeeze(vj, axis=1)
+        h1e = np.squeeze(h1e, axis=0)
+        rep_tensor = df.DF(mf.cell).get_ao_eri(compact=False).reshape(nao, nao, nao, nao)
+        
     else:
         raise RuntimeError(
             f"Invalid density matrix shape. Got {rdm1.shape} for AO shape {ao.shape}"
         )
 
-    ao = ao_[0]
     grad_ao = ao_[1:4].transpose(1, 2, 0)
-
-    # grad_grad_ao = compute_grad2_ao(ao_)
-    # grad_grad_ao = reshape_grad2ao(ao_.transpose(1,2,0))
-
     grad_n_ao = ao_grads(mf.mol, jnp.array(mf.grids.coords), order=grad_order)
-
-    # h1e_energy = np.einsum("sij,ji->", dm, h1e)
-    vj = 2 * mf.get_j(
-        mf.mol, rdm1, hermi=1
-    )  # The 2 is to compensate for the /2 in the definition of the density matrix
-
-    rep_tensor = mf.mol.intor("int2e")
-    # v_j = jnp.einsum("pqrt,srt->spq", rep_tensor, dm)
-    # v_k = jnp.einsum("ptqr,srt->spq", rep_tensor, dm)
-
-    # coulomb2e_energy = np.einsum("sij,sji->", dm, vj)/2
-
     mf_e_tot = mf.e_tot
-    dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
-    fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mol=mf.mol, dm=dm)
-
     energy_nuc = mf.energy_nuc()
 
     return (
