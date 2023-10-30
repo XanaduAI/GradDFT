@@ -651,6 +651,7 @@ def _package_outputs(
     elif rdm1.ndim == 3 and hasattr(mf, "cell") and rdm1.shape[0] == 1:
         # Collapse the redundant extra dimension from k-points: gamma only
         s1e = mf.get_ovlp(mf.mol)
+        s1e = np.squeeze(s1e, axis=0)
         h1e = mf.get_hcore(mf.mol)
         # h1e = np.squeeze(h1e, axis=0)
         # rdm1 = np.squeeze(rdm1, axis=1)
@@ -669,7 +670,9 @@ def _package_outputs(
         rdm1 = np.squeeze(rdm1, axis=1)
         mo_coeff = np.stack([half_mo_coeff, half_mo_coeff], axis=0)
         mo_energy = np.stack([half_mo_energy, half_mo_energy], axis=0)
+        mo_energy = np.squeeze(mo_energy, axis=1)
         mo_occ = np.stack([half_mo_occ, half_mo_occ], axis=0)
+        
         
         dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
         fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
@@ -678,9 +681,10 @@ def _package_outputs(
         h1e = np.squeeze(h1e, axis=0)
         rep_tensor = df.DF(mf.cell).get_eri(compact=False).reshape(nao, nao, nao, nao)
         
-    # Unrestricted (spin polarized), periodic boundary conditions, full BZ sampling    
+    # Unrestricted (spin polarized), periodic boundary conditions, gamma point only    
     elif rdm1.ndim == 4 and hasattr(mf, "cell") and rdm1.shape[1] == 1:
         s1e = mf.get_ovlp(mf.mol)
+        s1e = np.squeeze(s1e, axis=0)
         h1e = mf.get_hcore(mf.mol)
         # h1e = np.squeeze(h1e, axis=0)
         vj = 2 * mf.get_j(
@@ -694,7 +698,8 @@ def _package_outputs(
         
         mo_coeff = np.stack(mo_coeff, axis=0)
         mo_energy = np.stack(mf.mo_energy, axis=0)
-        mo_occ = np.stack(mo_occ, axis=0)
+        mo_energy = np.squeeze(mo_energy, axis=1)
+        mo_occ = np.stack(mo_occ, axis=1).T
         
         dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
         fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
