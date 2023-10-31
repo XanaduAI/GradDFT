@@ -10,7 +10,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License.
+# limitations under the License. 
 
 from typing import List, Optional, Union, Sequence, Tuple, NamedTuple
 from dataclasses import fields
@@ -36,9 +36,6 @@ class Grid:
     r""" Base class for the grid coordinates and integration grids."""
     coords: Array
     weights: Array
-
-    # def __repr__(self):
-    #    return f"{self.__class__.__name__}(size={len(self)})"
 
     def __len__(self):
         return self.weights.shape[0]

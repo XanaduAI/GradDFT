@@ -27,9 +27,11 @@ from pyscf.dft import Grids, numint  # type: ignore
 from pyscf.gto import Mole
 import pyscf.data.elements as elements
 from pyscf.pbc.gto.cell import Cell
+from pyscf.pbc.lib.kpts import KPoints
 
 # from qdft.reaction import Reaction, make_reaction, get_grad
 from grad_dft.molecule import Grid, Molecule, Reaction, make_reaction
+from grad_dft.solid import Solid, KPointInfo
 from grad_dft.utils import DType, default_dtype, DensityFunctional, HartreeFock
 from jax.tree_util import tree_map
 from grad_dft.external import NeuralNumInt
@@ -51,6 +53,36 @@ def grid_from_pyscf(grids: Grids, dtype: Optional[DType] = None) -> Grid:
     coords, weights = to_device_arrays(grids.coords, grids.weights, dtype=dtype)
 
     return Grid(coords, weights)
+
+def kpt_info_from_pyscf(kmf: DensityFunctional):
+    kpts = kmf.kpts
+    if isinstance(kpts, KPoints):
+        kpts_abs = kpts.kpts
+        kpts_scaled = kpts.kpts_scaled
+        weights = kpts.weights_ibz
+        bz2ibz_map = kpts.bz2ibz
+        ibz2bz_map = kpts.ibz2bz
+        kpts_ir_abs = kpts.kpts_ibz
+        kpts_ir_scaled = kpts.kpts_scaled_ibz
+    else:
+        kpts_abs = kpts
+        kpts_scaled = kmf.cell.get_scaled_kpts(kpts_abs)
+        # Equal weights
+        weights = jnp.ones(shape=(kpts_abs.shape[0],))/kpts_abs.shape[0]
+        bz2ibz_map = None
+        ibz2bz_map = None
+        kpts_ir_abs = None
+        kpts_ir_scaled = None
+    return KPointInfo(
+        kpts_abs,
+        kpts_scaled, 
+        weights,
+        bz2ibz_map,
+        ibz2bz_map,
+        kpts_ir_abs,
+        kpts_ir_scaled
+    )
+        
 
 
 def molecule_from_pyscf(
@@ -85,7 +117,7 @@ def molecule_from_pyscf(
 
     atom_index, nuclear_pos = to_device_arrays(
         [elements.ELEMENTS.index(e) for e in mf.mol.elements],
-        mf.mol.atom_coords(unit="angstrom"),
+        mf.mol.atom_coords(unit="bohr"),
         dtype=dtype,
     )
 
@@ -131,6 +163,103 @@ def molecule_from_pyscf(
         mo_coeff,
         mo_occ,
         mo_energy,
+        mf_e_tot,
+        s1e,
+        omegas,
+        chi,
+        rep_tensor,
+        energy,
+        basis,
+        name,
+        spin,
+        charge,
+        unit_Angstrom,
+        grid_level,
+        scf_iteration,
+        fock,
+    )
+    
+def solid_from_pyscf(
+    kmf: DensityFunctional,
+    dtype: Optional[DType] = None,
+    omegas: Optional[Array] = None,
+    energy: Optional[Scalar] = None,
+    name: Optional[Array] = None,
+    scf_iteration: Scalar = jnp.int32(50),
+    chunk_size: Optional[Scalar] = jnp.int32(1024),
+    grad_order: Optional[Scalar] = jnp.int32(2),
+) -> Molecule:
+    # mf, grids = _maybe_run_kernel(mf, grids)
+    grid = grid_from_pyscf(kmf.grids, dtype=dtype)
+
+    (
+        ao,
+        grad_ao,
+        grad_n_ao,
+        rdm1,
+        energy_nuc,
+        h1e,
+        vj,
+        mo_coeff,
+        mo_energy,
+        mo_occ,
+        mf_e_tot,
+        s1e,
+        fock,
+        rep_tensor,
+    ) = to_device_arrays(*_package_outputs(kmf, kmf.grids, scf_iteration, grad_order), dtype=dtype)
+
+    atom_index, nuclear_pos = to_device_arrays(
+        [elements.ELEMENTS.index(e) for e in kmf.mol.elements],
+        kmf.mol.atom_coords(unit="bohr"),
+        dtype=dtype,
+    )
+
+    basis = jnp.array(
+        [ord(char) for char in kmf.mol.basis]
+    )  # jax doesn't support strings, so we convert it to integers
+    unit_Angstrom = True
+    if name:
+        name = jnp.array([ord(char) for char in name])
+
+    if omegas is not None:
+        chi = generate_chi_tensor(
+            rdm1=rdm1,
+            ao=ao,
+            grid_coords=grid.coords,
+            mol=kmf.mol,
+            omegas=omegas,
+            chunk_size=chunk_size,
+        )
+        # chi = to_device_arrays(chi, dtype=dtype)
+        # omegas = to_device_arrays(omegas, dtype=dtype)
+    else:
+        chi = None
+
+    spin = jnp.int32(kmf.mol.spin)
+    charge = jnp.int32(kmf.mol.charge)
+    if isinstance(kmf.grids, Grids): # check if it's the open boundary grid. Otherwise we have a uniform grid with no level
+        grid_level = jnp.int32(kmf.grids.level)
+    else:
+        grid_level = None
+    lattice_vectors = kmf.cell.lattice_vectors()
+    kpt_info = kpt_info_from_pyscf(kmf)
+    return Solid(
+        grid,
+        atom_index,
+        lattice_vectors,
+        nuclear_pos,
+        ao,
+        grad_ao,
+        grad_n_ao,
+        rdm1,
+        energy_nuc,
+        h1e,
+        vj,
+        mo_coeff,
+        mo_occ,
+        mo_energy,
+        kpt_info,
         mf_e_tot,
         s1e,
         omegas,
@@ -608,7 +737,6 @@ def _package_outputs(
      
     # Restricted (non-spin polarized), periodic boundary conditions, full BZ sampling  
     elif rdm1.ndim == 3 and hasattr(mf, "cell") and rdm1.shape[0] != 1:
-        print(rdm1.shape)
         s1e = mf.get_ovlp(mf.mol)
         h1e = mf.get_hcore(mf.mol)
         
@@ -643,7 +771,6 @@ def _package_outputs(
         )
         
         dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
-        print("right")
         fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
         rep_tensor = df.DF(mf.cell).get_eri(compact=False).reshape(nao, nao, nao, nao)
     
