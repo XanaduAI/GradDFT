@@ -6,5 +6,6 @@ flax>=0.7.2
 tensorflow>=2.13.0
 tensorflow-hub>=0.14.0
 typeguard==2.13.3
+typing_extensions>=4.8.0
 jaxtyping
 pytest
