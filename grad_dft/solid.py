@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import jax.numpy as jnp
+from jax.lax import Precision
 from typing import List, Optional
 
 from flax import struct
@@ -117,3 +118,36 @@ class Solid:
     grid_level: Optional[Scalar] = 2
     scf_iteration: Optional[Scalar] = 50
     fock: Optional[Float[Array, "n_spin n_kpt n_orbitals n_orbitals"]] = None
+    
+
+
+def one_body_energy(
+    rdm1: Float[Array, "n_kpt n_orbitals n_orbitals"],
+    h1e: Float[Array, "n_kpt n_orbitals n_orbitals"],
+    weights: Float[Array, "n_kpts_or_n_ir_kpts"],
+    precision=Precision.HIGHEST,
+) -> Scalar:
+    r"""A function that computes the one-body energy of a DFT functional.
+
+    Parameters
+    ----------
+    rdm1 : Float[Array, "n_kpt n_orbitals n_orbitals"]
+        The 1-body reduced density matrix for each k-point.
+    h1e : Float[Array, "orbitals orbitals"]
+        The 1-electron Hamiltonian for each k-point.
+    weights : Float[Array, "n_kpts_or_n_ir_kpts"]
+        The weights for each k-point which sum to 1. If we are working
+        in the full 1BZ, weights are equal. If we are working in the
+        irreducible 1BZ, weights may not be equal if symmetry can be 
+        exploited.
+
+    Returns
+    -------
+    Scalar
+    """
+    # Compute one-body energy for each k-point
+    h1e_energy_per_k = jnp.einsum("kij,kij->k", rdm1, h1e, precision=precision)
+    
+    # Weighted sum over k-points
+    total_h1e_energy = jnp.sum(weights * h1e_energy_per_k)
+    return total_h1e_energy
