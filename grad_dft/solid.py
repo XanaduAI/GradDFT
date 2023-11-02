@@ -64,6 +64,9 @@ class KPointInfo:
     To properly take advantage of space-group and time-reversal symmetry, informations about mappings
     between the BZ -> IBZ and vice versa is needed as well as weights which are not neccesarily equal.
     
+    variables containing *k4* pertain to the momentum conserving quarters of k-points which are needed to
+    compute electron repulsion integrals (ERI's).
+    
     n_kpts_or_n_ikpts in weights could be the total number of points in the full BZ or the number of
     points in the IBZ, context dependent. I.e, if the next variables are set to None,
     the first case applies. If they are not None, the second does.
@@ -72,10 +75,13 @@ class KPointInfo:
     kpts_abs: Float[Array, "n_kpts 3"]
     kpts_scaled: Float[Array, "n_kpts 3"] 
     weights: Float[Array, "n_kpts_or_n_ir_kpts"]
+    k4_idx: Int[Array, "n_k4pts 4"]
+    k4_weights: Float[Array, "n_k4pts_or_n_ir_k4pts"]
     bz2ibz_map: Optional[Float[Array, "n_kpts"]]
     ibz2bz_map: Optional[Float[Array, "n_kpts_ir"]]
     kpts_ir_abs: Optional[Float[Array, "n_kpts_ir 3"]]
     kpts_ir_scaled: Optional[Float[Array, "n_kpts_ir 3"]]
+    k4_bz2ibz: Optional[Int[Array, "n_kpt**3"]] # This ends up being None is s4 symmetry is used in k4 identification
       
 
 @struct.dataclass
@@ -133,7 +139,7 @@ def one_body_energy(
     ----------
     rdm1 : Float[Array, "n_kpt n_orbitals n_orbitals"]
         The 1-body reduced density matrix for each k-point.
-    h1e : Float[Array, "orbitals orbitals"]
+    h1e : Float[Array, "n_kpt orbitals orbitals"]
         The 1-electron Hamiltonian for each k-point.
     weights : Float[Array, "n_kpts_or_n_ir_kpts"]
         The weights for each k-point which sum to 1. If we are working
@@ -145,9 +151,90 @@ def one_body_energy(
     -------
     Scalar
     """
-    # Compute one-body energy for each k-point
-    h1e_energy_per_k = jnp.einsum("kij,kij->k", rdm1, h1e, precision=precision)
+    h1e_energy = jnp.einsum("k,kij,kij->", weights, rdm1, h1e, precision=precision)
+    return h1e_energy
+
+def coulomb_potential(
+    rdm1: Float[Array, "n_kpt n_orbitals n_orbitals"],
+    rep_tensor: Float[Array, "n_orbitals n_orbitals n_orbitals n_orbitals"],
+    precision=Precision.HIGHEST,
+) -> Float[Array, "n_knpt n_orbitals n_orbitals"]:
+    r"""
+    Compute the Coulomb potential matrix.
+
+    Parameters
+    ----------
+    rdm1 : Float[Array, "n_kpt orbitals orbitals"]
+        The 1-body reduced density matrix.
+        Equivalent to mf.make_rdm1() in pyscf.
+    rep_tensor : Float[Array, "n_orbitals n_orbitals n_orbitals n_orbitals"]
+        The repulsion tensor.
+        Equivalent to df.DF(mf.cell).get_eri(compact=False).reshape(nao, nao, nao, nao) in pyscf.
+    precision : Precision, optional
+        The precision to use for the computation, by default Precision.HIGHEST
+
+    Returns
+    -------
+    Float[Array, "spin orbitals orbitals"]
+    """
+    v_coul_k = jnp.einsum("pqrt,krt->kpq", rep_tensor, rdm1, precision=precision)
+    return v_coul_k
+
+# def coulomb_energy(
+#     rdm1: Float[Array, "n_kpt n_orbitals n_orbitals"],
+#     rep_tensor: Float[Array, "n_orbitals n_orbitals n_orbitals orbitals"],
+#     weights: Float[Array, "n_kpts_or_n_ir_kpts"],
+#     precision=Precision.HIGHEST,
+# ) -> Scalar:
+#     r"""A function that computes the Coulomb two-body energy of a DFT functional.
     
-    # Weighted sum over k-points
-    total_h1e_energy = jnp.sum(weights * h1e_energy_per_k)
-    return total_h1e_energy
+#     Parameters
+#     ----------
+#     rdm1 : Float[Array, "n_kpt orbitals orbitals"]
+#         The 1-body reduced density matrix.
+#     rep_tensor : Float[Array, "orbitals orbitals orbitals orbitals"]
+#         The repulsion tensor. 
+#     weights : Float[Array, "n_kpts_or_n_ir_kpts"]
+#         The weights for each k-point which sum to 1. If we are working
+#         in the full 1BZ, weights are equal. If we are working in the
+#         irreducible 1BZ, weights may not be equal if symmetry can be 
+#         exploited.
+
+#     Returns
+#     -------
+#     Scalar
+#     """
+#     v_coul_k = coulomb_potential(rdm1, rep_tensor, precision)
+#     coulomb_energy = jnp.einsum("k,kpq,kpq->", weights, rdm1, v_coul_k, precision=precision) / 2.0
+#     return coulomb_energy
+
+def coulomb_energy(
+    rdm1: Float[Array, "n_kpt n_orbitals n_orbitals"],
+    rep_tensor: Float[Array, "n_orbitals n_orbitals n_orbitals n_orbitals"],
+    weights: Float[Array, "n_kpts_or_n_ir_kpts"],
+    precision=Precision.HIGHEST,
+) -> Scalar:
+    r"""A function that computes the Coulomb two-body energy of a DFT functional.
+    
+    Parameters
+    ----------
+    rdm1 : Float[Array, "n_kpt n_orbitals n_orbitals"]
+        The 1-body reduced density matrix.
+    rep_tensor : Float[Array, "n_orbitals n_orbitals n_orbitals n_orbitals"]
+        The repulsion tensor. 
+    weights : Float[Array, "n_kpts_or_n_ir_kpts"]
+        The weights for each k-point which sum to 1. If we are working
+        in the full 1BZ, weights are equal. If we are working in the
+        irreducible 1BZ, weights may not be equal if symmetry can be 
+        exploited.
+
+    Returns
+    -------
+    Scalar
+    """
+    v_coul_k = coulomb_potential(rdm1, rep_tensor, precision)
+    
+    # Summing over k-points with weights
+    coulomb_energy = sum(weights[k] * jnp.einsum("pq,pq->", rdm1[k], v_coul_k[k], precision=precision) for k in range(len(weights))) / 2.0
+    
+    return coulomb_energy
