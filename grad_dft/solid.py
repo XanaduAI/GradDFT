@@ -16,8 +16,13 @@ import jax.numpy as jnp
 from jax.lax import Precision
 from typing import List, Optional
 
+from typeguard import typechecked
+from grad_dft.utils import vmap_chunked
+from functools import partial
+from jax import jit
+
 from flax import struct
-from jaxtyping import Array, PyTree, Scalar, Float, Int, jaxtyped
+from jaxtyping import Array, PyTree, Scalar, Float, Int, Complex, jaxtyped
 
 
 @struct.dataclass
@@ -63,10 +68,7 @@ class KPointInfo:
     Most simply, we need the array of k-points in absolute and fractional forms with equal weights.
     To properly take advantage of space-group and time-reversal symmetry, informations about mappings
     between the BZ -> IBZ and vice versa is needed as well as weights which are not neccesarily equal.
-    
-    variables containing *k4* pertain to the momentum conserving quarters of k-points which are needed to
-    compute electron repulsion integrals (ERI's).
-    
+        
     n_kpts_or_n_ikpts in weights could be the total number of points in the full BZ or the number of
     points in the IBZ, context dependent. I.e, if the next variables are set to None,
     the first case applies. If they are not None, the second does.
@@ -75,14 +77,11 @@ class KPointInfo:
     kpts_abs: Float[Array, "n_kpts 3"]
     kpts_scaled: Float[Array, "n_kpts 3"] 
     weights: Float[Array, "n_kpts_or_n_ir_kpts"]
-    k4_idx: Int[Array, "n_k4pts 4"]
-    k4_weights: Float[Array, "n_k4pts_or_n_ir_k4pts"]
-    bz2ibz_map: Optional[Float[Array, "n_kpts"]]
-    ibz2bz_map: Optional[Float[Array, "n_kpts_ir"]]
-    kpts_ir_abs: Optional[Float[Array, "n_kpts_ir 3"]]
-    kpts_ir_scaled: Optional[Float[Array, "n_kpts_ir 3"]]
-    k4_bz2ibz: Optional[Int[Array, "n_kpt**3"]] # This ends up being None is s4 symmetry is used in k4 identification
-      
+    # Coming Soon: take advantage of Space Group symmetry for efficient simulation
+    # bz2ibz_map: Optional[Float[Array, "n_kpts"]]
+    # ibz2bz_map: Optional[Float[Array, "n_kpts_ir"]]
+    # kpts_ir_abs: Optional[Float[Array, "n_kpts_ir 3"]]
+    # kpts_ir_scaled: Optional[Float[Array, "n_kpts_ir 3"]]
 
 @struct.dataclass
 class Solid:
@@ -102,19 +101,19 @@ class Solid:
     ao: Float[Array, "n_flat_grid n_orbitals"]
     grad_ao: Float[Array, "n_flat_grid n_orbitals 3"]
     grad_n_ao: PyTree
-    rdm1: Float[Array, "n_spin n_kpt n_orbitals n_orbitals"]
+    rdm1: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
     nuclear_repulsion: Scalar
-    h1e: Float[Array, "n_kpt n_orbitals n_orbitals"]
-    vj: Float[Array, "n_spin n_kpt n_orbitals n_orbitals"]
+    h1e: Complex[Array, "n_kpt n_orbitals n_orbitals"]
+    vj: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
     mo_coeff: Float[Array, "n_spin n_kpt n_orbitals n_orbitals"]
     mo_occ: Float[Array, "n_spin n_kpt n_orbitals"]
     mo_energy: Float[Array, "n_spin n_kpt n_orbitals"]
     kpt_info: KPointInfo
     mf_energy: Optional[Scalar] = None
-    s1e: Optional[Float[Array, "n_kpt n_orbitals n_orbitals"]] = None
+    s1e: Optional[Complex[Array, "n_kpt n_orbitals n_orbitals"]] = None
     omegas: Optional[Float[Array, "omega"]] = None
     chi: Optional[Float[Array, "grid omega spin orbitals"]] = None # Come back to this to figure out correct dims for k-points
-    rep_tensor: Optional[Float[Array, "n_orbitals n_orbitals n_orbitals n_orbitals"]] = None
+    rep_tensor: Optional[Complex[Array, "n_k4pt n_orbitals n_orbitals n_orbitals n_orbitals"]] = None
     energy: Optional[Scalar] = None
     basis: Optional[Int[Array, '...']] = None # The name is saved as a list of integers, JAX does not accept str
     name: Optional[Int[Array, '...']] = None # The name is saved as a list of integers, JAX does not accept str
@@ -123,13 +122,14 @@ class Solid:
     unit_Angstrom: Optional[bool] = True
     grid_level: Optional[Scalar] = 2
     scf_iteration: Optional[Scalar] = 50
-    fock: Optional[Float[Array, "n_spin n_kpt n_orbitals n_orbitals"]] = None
+    fock: Optional[Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]] = None
     
-
-
+@jaxtyped
+@typechecked
+@partial(jit, static_argnames=["precision"])
 def one_body_energy(
-    rdm1: Float[Array, "n_kpt n_orbitals n_orbitals"],
-    h1e: Float[Array, "n_kpt n_orbitals n_orbitals"],
+    rdm1: Complex[Array, "n_kpt n_orbitals n_orbitals"],
+    h1e: Complex[Array, "n_kpt n_orbitals n_orbitals"],
     weights: Float[Array, "n_kpts_or_n_ir_kpts"],
     precision=Precision.HIGHEST,
 ) -> Scalar:
@@ -142,7 +142,7 @@ def one_body_energy(
     h1e : Float[Array, "n_kpt orbitals orbitals"]
         The 1-electron Hamiltonian for each k-point.
     weights : Float[Array, "n_kpts_or_n_ir_kpts"]
-        The weights for each k-point which sum to 1. If we are working
+        The weights for each k-point which together sum to 1. If we are working
         in the full 1BZ, weights are equal. If we are working in the
         irreducible 1BZ, weights may not be equal if symmetry can be 
         exploited.
@@ -152,89 +152,76 @@ def one_body_energy(
     Scalar
     """
     h1e_energy = jnp.einsum("k,kij,kij->", weights, rdm1, h1e, precision=precision)
-    return h1e_energy
+    return h1e_energy.real
 
-def coulomb_potential(
-    rdm1: Float[Array, "n_kpt n_orbitals n_orbitals"],
-    rep_tensor: Float[Array, "n_orbitals n_orbitals n_orbitals n_orbitals"],
-    precision=Precision.HIGHEST,
-) -> Float[Array, "n_knpt n_orbitals n_orbitals"]:
-    r"""
-    Compute the Coulomb potential matrix.
 
-    Parameters
-    ----------
-    rdm1 : Float[Array, "n_kpt orbitals orbitals"]
-        The 1-body reduced density matrix.
-        Equivalent to mf.make_rdm1() in pyscf.
-    rep_tensor : Float[Array, "n_orbitals n_orbitals n_orbitals n_orbitals"]
-        The repulsion tensor.
-        Equivalent to df.DF(mf.cell).get_eri(compact=False).reshape(nao, nao, nao, nao) in pyscf.
-    precision : Precision, optional
-        The precision to use for the computation, by default Precision.HIGHEST
-
-    Returns
-    -------
-    Float[Array, "spin orbitals orbitals"]
-    """
-    v_coul_k = jnp.einsum("pqrt,krt->kpq", rep_tensor, rdm1, precision=precision)
-    return v_coul_k
-
-# def coulomb_energy(
-#     rdm1: Float[Array, "n_kpt n_orbitals n_orbitals"],
-#     rep_tensor: Float[Array, "n_orbitals n_orbitals n_orbitals orbitals"],
-#     weights: Float[Array, "n_kpts_or_n_ir_kpts"],
-#     precision=Precision.HIGHEST,
-# ) -> Scalar:
-#     r"""A function that computes the Coulomb two-body energy of a DFT functional.
-    
-#     Parameters
-#     ----------
-#     rdm1 : Float[Array, "n_kpt orbitals orbitals"]
-#         The 1-body reduced density matrix.
-#     rep_tensor : Float[Array, "orbitals orbitals orbitals orbitals"]
-#         The repulsion tensor. 
-#     weights : Float[Array, "n_kpts_or_n_ir_kpts"]
-#         The weights for each k-point which sum to 1. If we are working
-#         in the full 1BZ, weights are equal. If we are working in the
-#         irreducible 1BZ, weights may not be equal if symmetry can be 
-#         exploited.
-
-#     Returns
-#     -------
-#     Scalar
-#     """
-#     v_coul_k = coulomb_potential(rdm1, rep_tensor, precision)
-#     coulomb_energy = jnp.einsum("k,kpq,kpq->", weights, rdm1, v_coul_k, precision=precision) / 2.0
-#     return coulomb_energy
 
 def coulomb_energy(
     rdm1: Float[Array, "n_kpt n_orbitals n_orbitals"],
-    rep_tensor: Float[Array, "n_orbitals n_orbitals n_orbitals n_orbitals"],
-    weights: Float[Array, "n_kpts_or_n_ir_kpts"],
+    rep_tensor: Float[Array, "n_kpt_quartets n_orbitals n_orbitals n_orbitals n_orbitals"],
+    weights_k4: Float[Array, "n_kpt_quartets"],
+    k4_idxs: Int[Array, "n_k4pts 4"],
+    bz2ibz_map: Float[Array, "n_kpts"],
     precision=Precision.HIGHEST,
 ) -> Scalar:
-    r"""A function that computes the Coulomb two-body energy of a DFT functional.
-    
+    """
+    Compute the Coulomb energy considering crystal momentum conserving k-point quartets.
+
     Parameters
     ----------
-    rdm1 : Float[Array, "n_kpt n_orbitals n_orbitals"]
-        The 1-body reduced density matrix.
-    rep_tensor : Float[Array, "n_orbitals n_orbitals n_orbitals n_orbitals"]
-        The repulsion tensor. 
-    weights : Float[Array, "n_kpts_or_n_ir_kpts"]
-        The weights for each k-point which sum to 1. If we are working
-        in the full 1BZ, weights are equal. If we are working in the
-        irreducible 1BZ, weights may not be equal if symmetry can be 
-        exploited.
+    rdm1 : Float[Array, "n_ir_kpt n_orbitals n_orbitals"]
+        The 1-body reduced density matrix at each irreducible k-point.
+    rep_tensor : Float[Array, "n_ir_kpt_quartets n_orbitals n_orbitals n_orbitals n_orbitals"]
+        The repulsion tensor indexed by k-point quartets and orbitals.
+    weights_k4 : Float[Array, "n_ir_kpt_quartets"]
+        The weights associated with each k-point quartet.
+    k4_idxs : Int[Array, "n_ir_kpt_quartets 4"].
+        Each element in the first dimension gives the indices in the full 1BZ for 
+        four crystal momentum conserving k-points. I.e, the k-point quartet indices.
+    bz2ibz_map : Float[Array, "n_kpts"].
+        Given an index in the 1BZ, return the corresponding index in the irreducible 1BZ.
+    precision : Precision, optional
+        The precision to use for the computation.
 
     Returns
     -------
     Scalar
+        The Coulomb energy as:
+        .. math::
+            E_C = \frac{1}{2} \sum_{\mathbf{k}_1, \mathbf{k}_2, \mathbf{k}_3, \mathbf{k}_4} \delta_{\mathbf{k}_1 - \mathbf{k}_2 + \mathbf{k}_3 - \mathbf{k}_4, \mathbf{G}} w(\mathbf{k}_1, \mathbf{k}_2, \mathbf{k}_3, \mathbf{k}_4) \sum_{pqrs} D_{pq}(\mathbf{k}_1) (pq|rs)_{\mathbf{k}_1\mathbf{k}_2\mathbf{k}_3\mathbf{k}_4} D_{rs}(\mathbf{k}_3)
     """
-    v_coul_k = coulomb_potential(rdm1, rep_tensor, precision)
+
+    # Initialize Coulomb energy to zero
+    coulomb_energy = 0.0
+
+    # Loop over all k-point quartets
+    for i, k_quartet_idxs in enumerate(k4_idxs):
+        # Extract the ERIs for this k-point quartet
+        eri_kpt_quartet = rep_tensor[i]
+        
+        # Determine the indices for the k-points involved in this quartet
+        k1_idx = k_quartet_idxs[0]
+        k2_idx = k_quartet_idxs[1]
+        k3_idx = k_quartet_idxs[2]
+        k4_idx = k_quartet_idxs[3]
+        
+        # k1_idx_ibz = bz2ibz_map[k1_idx]
+        # k3_idx_ibz = bz2ibz_map[k3_idx]
+        
+        
+        # Compute the contribution to the Coulomb energy from this k-point quartet
+        # energy_contribution = jnp.einsum(
+        #     "qp,pqrs,sr->", rdm1[k1_idx], eri_kpt_quartet, rdm1[k3_idx], precision=precision
+        # )
+        energy_contribution = jnp.trace(
+            rdm1[k1_idx] @ eri_kpt_quartet @ rdm1[k3_idx]
+        )
+        # Accumulate the weighted energy contribution
+        coulomb_energy += weights_k4[i] * energy_contribution
     
-    # Summing over k-points with weights
-    coulomb_energy = sum(weights[k] * jnp.einsum("pq,pq->", rdm1[k], v_coul_k[k], precision=precision) for k in range(len(weights))) / 2.0
-    
+    # Account for double-counting in the ERI
+    coulomb_energy /= 2.0
+
     return coulomb_energy
+
+

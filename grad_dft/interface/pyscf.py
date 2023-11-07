@@ -42,7 +42,7 @@ from pyscf.pbc import df
 import h5py
 from pyscf import cc, dft, scf
 
-from jaxtyping import Array, Scalar, Int
+from jaxtyping import Array, Scalar, Int, Bool
 from grad_dft.external import _nu_chunk
 
 
@@ -54,9 +54,13 @@ def grid_from_pyscf(grids: Grids, dtype: Optional[DType] = None) -> Grid:
 
     return Grid(coords, weights)
 
-def kpt_info_from_pyscf(kmf: DensityFunctional, sym="s1"):
+def kpt_info_from_pyscf(kmf: DensityFunctional):
     kpts = kmf.kpts
     if isinstance(kpts, KPoints):
+        msg = """PySCF KPoint object detected. Symmetry adapted calculations are not yet possible. Please ensure
+        that the supplied k-points to the PySCF Molecule object have space_group_symmetry=False and time_reversal_symmetry=False.
+        """
+        raise NotImplementedError(msg)
         # 1BZ single k-points: kinetic + external terms
         kpts_abs = kpts.kpts
         kpts_scaled = kpts.kpts_scaled
@@ -65,40 +69,30 @@ def kpt_info_from_pyscf(kmf: DensityFunctional, sym="s1"):
         ibz2bz_map = kpts.ibz2bz
         kpts_ir_abs = kpts.kpts_ibz
         kpts_ir_scaled = kpts.kpts_scaled_ibz
-        
-        # 1BZ k-point quartets: used for ERI to compute coulomb energy
-        k4_idx, k4_weights, k4_bz2ibz = kpts.make_k4_ibz(sym=sym, return_ops=False)
     else:
         # No symmetries used
-        kpts_abs = kpts
-        kpts_scaled = kmf.cell.get_scaled_kpts(kpts_abs)
+    
         # Equal weights
-        weights = np.ones(shape=(kpts_abs.shape[0],))/kpts_abs.shape[0]
-        
-        from pyscf.pbc.lib.kpts_helper import get_kconserv
-        
-        # manually retrieve the crystal momentum conserving kpts indices from
-        # the whole 1BZ
-        k_indices = get_kconserv(kmf.cell, kpts=kpts_abs)
-        all_3tuple_idx = product(range(kpts_abs.shape[0]), repeat=3)
-        k4_idx = np.asarray([[k, l, m, k_indices[k, l, m]] for k, l, m in all_3tuple_idx])
-        k4_weights = np.ones(shape=(k4_idx.shape[0],))/k4_idx.shape[0]
-        bz2ibz_map = None
-        ibz2bz_map = None
-        kpts_ir_abs = None
-        kpts_ir_scaled = None
-        k4_bz2ibz = None
+
+        # bz2ibz_map = None
+        # ibz2bz_map = None
+        # kpts_ir_abs = None
+        # kpts_ir_scaled = None
+        kpts_abs, kpts_scaled, weights = \
+            to_device_arrays(
+                kpts, 
+                kmf.cell.get_scaled_kpts(kpts),
+                np.ones(shape=(kpts.shape[0],))/kpts.shape[0],
+                dtype=None
+            )
     return KPointInfo(
         kpts_abs,
         kpts_scaled, 
         weights,
-        k4_idx,
-        k4_weights,
-        bz2ibz_map,
-        ibz2bz_map,
-        kpts_ir_abs,
-        kpts_ir_scaled,
-        k4_bz2ibz
+        # bz2ibz_map,
+        # ibz2bz_map,
+        # kpts_ir_abs,
+        # kpts_ir_scaled,
     )
         
 
@@ -706,7 +700,6 @@ def _package_outputs(
     grids: Optional[Grids] = None,
     scf_iteration: Scalar = jnp.int32(50),
     grad_order: Scalar = jnp.int32(2),
-    sym: Optional[str] = "s1"
 ):
     ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=1)  # , non0tab=grids.non0tab)
     ao = ao_[0]
@@ -774,16 +767,19 @@ def _package_outputs(
         )  # The 2 is to compensate for the /2 in the definition of the density matrix
         dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
         fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
-        kpt_info = kpt_info_from_pyscf(mf, sym=sym)
-        # Compute ERIs
-        density_fitter = df.DF(mf.cell, kpts=kpt_info.kpts_abs)
-        rep_tensor = np.empty(shape=(kpt_info.k4_idx.shape[0], nao, nao, nao, nao), dtype=np.complex128)
-        all_kpts = kpt_info.kpts_abs
-        for four_idx in kpt_info.k4_idx:
-            kpt_4 = np.array([all_kpts[i] for i in four_idx])
-            rep_tensor_k4 =\
-                density_fitter.get_eri(compact=False, kpts=kpt_4).reshape(nao, nao, nao, nao)
-            rep_tensor[0, :, :, :, :] = rep_tensor_k4
+        
+        # Compute ERIs for all pairs of k-points. Needed for Coulomb energy calculation
+        all_kpts = mf.kpts
+        nkpt = all_kpts.shape[0]
+        density_fitter = df.DF(mf.cell, kpts=all_kpts)
+        rep_tensor = np.empty(shape=(nkpt, nkpt, nao, nao, nao, nao), dtype=np.complex128)
+        for ikpt in range(nkpt):
+            for jkpt in range(nkpt):
+                k_quartet = np.array([all_kpts[ikpt], all_kpts[ikpt], all_kpts[jkpt], all_kpts[jkpt]])
+                rep_tensor_kquartet =\
+                    density_fitter.get_eri(compact=False, kpts=k_quartet).reshape(nao, nao, nao, nao)
+                rep_tensor[ikpt, jkpt, :, :, :, :] = rep_tensor_kquartet
+        kpt_info = kpt_info_from_pyscf(mf)
         
     # Unrestricted (spin polarized), periodic boundary conditions, full BZ sampling     
     elif rdm1.ndim == 4 and hasattr(mf, "cell") and rdm1.shape[1] != 1:
@@ -800,16 +796,19 @@ def _package_outputs(
         
         dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
         fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
+        
+        # Compute ERIs for all pairs of k-points. Needed for Coulomb energy calculation
+        all_kpts = mf.kpts
+        nkpt = all_kpts.shape[0]
+        density_fitter = df.DF(mf.cell, kpts=all_kpts)
+        rep_tensor = np.empty(shape=(nkpt, nkpt, nao, nao, nao, nao), dtype=np.complex128)
+        for ikpt in range(nkpt):
+            for jkpt in range(nkpt):
+                k_quartet = np.array([all_kpts[ikpt], all_kpts[ikpt], all_kpts[jkpt], all_kpts[jkpt]])
+                rep_tensor_kquartet =\
+                    density_fitter.get_eri(compact=False, kpts=k_quartet).reshape(nao, nao, nao, nao)
+                rep_tensor[ikpt, jkpt, :, :, :, :] = rep_tensor_kquartet
         kpt_info = kpt_info_from_pyscf(mf)
-        # Compute ERIs
-        density_fitter = df.DF(mf.cell, kpts=kpt_info.kpts_abs)
-        rep_tensor = np.empty(shape=(kpt_info.k4_idx.shape[0], nao, nao, nao, nao), dtype=np.complex128)
-        all_kpts = kpt_info.kpts_abs
-        for four_idx in kpt_info.k4_idx:
-            kpt_4 = np.array([all_kpts[i] for i in four_idx])
-            rep_tensor_k4 =\
-                density_fitter.get_eri(compact=False, kpts=kpt_4).reshape(nao, nao, nao, nao)
-            rep_tensor[0, :, :, :, :] = rep_tensor_k4
     
     # Restricted (non-spin polarized), periodic boundary conditions, gamma point only
     elif rdm1.ndim == 3 and hasattr(mf, "cell") and rdm1.shape[0] == 1:
@@ -844,6 +843,7 @@ def _package_outputs(
         vj = np.squeeze(vj, axis=1)
         h1e = np.squeeze(h1e, axis=0)
         rep_tensor = df.DF(mf.cell).get_eri(compact=False).reshape(nao, nao, nao, nao)
+        kpt_info = kpt_info_from_pyscf(mf)
         
     # Unrestricted (spin polarized), periodic boundary conditions, gamma point only    
     elif rdm1.ndim == 4 and hasattr(mf, "cell") and rdm1.shape[1] == 1:
@@ -871,6 +871,7 @@ def _package_outputs(
         vj = np.squeeze(vj, axis=1)
         h1e = np.squeeze(h1e, axis=0)
         rep_tensor = df.DF(mf.cell).get_ao_eri(compact=False).reshape(nao, nao, nao, nao)
+        kpt_info = kpt_info_from_pyscf(mf)
         
     else:
         raise RuntimeError(
