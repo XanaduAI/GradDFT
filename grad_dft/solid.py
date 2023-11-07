@@ -124,6 +124,12 @@ class Solid:
     scf_iteration: Optional[Scalar] = 50
     fock: Optional[Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]] = None
     
+    def nonXC(self, *args, **kwargs) -> Scalar:
+        r"""Compute all terms in the KS total energy with the exception of the XC component
+        """
+        return nonXC(self.rdm1.sum(axis=0), self.h1e, self.rep_tensor, self.nuclear_repulsion, self.kpt_info.weights, *args, **kwargs)
+ 
+   
 @jaxtyped
 @typechecked
 @partial(jit, static_argnames=["precision"])
@@ -133,13 +139,13 @@ def one_body_energy(
     weights: Float[Array, "n_kpts_or_n_ir_kpts"],
     precision=Precision.HIGHEST,
 ) -> Scalar:
-    r"""A function that computes the one-body energy of a DFT functional.
+    r"""Compute the one-body (kinetic + external) component of the KS total energy.
 
     Parameters
     ----------
-    rdm1 : Float[Array, "n_kpt n_orbitals n_orbitals"]
+    rdm1 : Complex[Array, "n_kpt n_orbitals n_orbitals"]
         The 1-body reduced density matrix for each k-point.
-    h1e : Float[Array, "n_kpt orbitals orbitals"]
+    h1e : Complex[Array, "n_kpt orbitals orbitals"]
         The 1-electron Hamiltonian for each k-point.
     weights : Float[Array, "n_kpts_or_n_ir_kpts"]
         The weights for each k-point which together sum to 1. If we are working
@@ -151,77 +157,117 @@ def one_body_energy(
     -------
     Scalar
     """
-    h1e_energy = jnp.einsum("k,kij,kij->", weights, rdm1, h1e, precision=precision)
+    h1e_energy = jnp.einsum("k,kij,kji->", weights, rdm1, h1e, precision=precision)
     return h1e_energy.real
 
-
-
-def coulomb_energy(
-    rdm1: Float[Array, "n_kpt n_orbitals n_orbitals"],
-    rep_tensor: Float[Array, "n_kpt_quartets n_orbitals n_orbitals n_orbitals n_orbitals"],
-    weights_k4: Float[Array, "n_kpt_quartets"],
-    k4_idxs: Int[Array, "n_k4pts 4"],
-    bz2ibz_map: Float[Array, "n_kpts"],
-    precision=Precision.HIGHEST,
-) -> Scalar:
-    """
-    Compute the Coulomb energy considering crystal momentum conserving k-point quartets.
+@jaxtyped
+@typechecked
+@partial(jit, static_argnames=["precision"])
+def coulomb_potential(
+    rdm1: Complex[Array, "n_kpt n_orbitals n_orbitals"],
+    rep_tensor: Complex[Array, "n_kpt n_kpt n_orbitals n_orbitals n_orbitals n_orbitals"],
+    weights: Float[Array, "n_kpts_or_n_ir_kpts"],
+    precision=Precision.HIGHEST
+) -> Complex[Array, "n_kpts_or_n_ir_kpts n_orbitals n_orbitals"]:
+    r"""
+    Computes the Coulomb potential matrix for all k-points.
 
     Parameters
     ----------
-    rdm1 : Float[Array, "n_ir_kpt n_orbitals n_orbitals"]
-        The 1-body reduced density matrix at each irreducible k-point.
-    rep_tensor : Float[Array, "n_ir_kpt_quartets n_orbitals n_orbitals n_orbitals n_orbitals"]
-        The repulsion tensor indexed by k-point quartets and orbitals.
-    weights_k4 : Float[Array, "n_ir_kpt_quartets"]
-        The weights associated with each k-point quartet.
-    k4_idxs : Int[Array, "n_ir_kpt_quartets 4"].
-        Each element in the first dimension gives the indices in the full 1BZ for 
-        four crystal momentum conserving k-points. I.e, the k-point quartet indices.
-    bz2ibz_map : Float[Array, "n_kpts"].
-        Given an index in the 1BZ, return the corresponding index in the irreducible 1BZ.
+    rdm1 : Complex[Array, "n_kpt n_orbitals n_orbitals"]
+        The 1-body reduced density matrix.
+    rep_tensor : Complex[Array, "n_kpt n_kpt n_orbitals n_orbitals n_orbitals n_orbitals"]
+        The repulsion tensor computed on a grid of nkpt x nkpt
     precision : Precision, optional
-        The precision to use for the computation.
+        The precision to use for the computation, by default Precision.HIGHEST
+
+    Returns
+    -------
+    Complex[Array, "n_kpts_or_n_ir_kpts n_orbitals n_orbitals"]
+    """
+    
+    # k and q are k-point indices while i, j, l and m are orbital indices
+    v_k = jnp.einsum("k,kqijlm,qml->kij", weights, rep_tensor, rdm1, precision=precision)
+    return v_k
+    
+
+@jaxtyped
+@typechecked
+@partial(jit, static_argnames=["precision"])
+def coulomb_energy(
+    rdm1: Complex[Array, "n_kpt n_orbitals n_orbitals"],
+    rep_tensor: Complex[Array, "n_kpt n_kpt n_orbitals n_orbitals n_orbitals n_orbitals"],
+    weights: Float[Array, "n_kpts_or_n_ir_kpts"],
+    precision=Precision.HIGHEST
+) -> Scalar:
+    """
+    Compute the Coulomb energy
+    
+    Parameters
+    ----------
+    rdm1 : Complex[Array, "n_kpt n_orbitals n_orbitals"]
+        The 1-body reduced density matrix.
+    rep_tensor : Complex[Array, "n_kpt n_kpt n_orbitals n_orbitals n_orbitals n_orbitals"]
+        The repulsion tensor computed on a grid of nkpt x nkpt
+    weights : Float[Array, "n_kpts_or_n_ir_kpts"]
+        The weights for each k-point which together sum to 1. If we are working
+        in the full 1BZ, weights are equal. If we are working in the
+        irreducible 1BZ, weights may not be equal if symmetry can be 
+        exploited.
+    precision : Precision, optional
+        The precision to use for the computation, by default Precision.HIGHEST
 
     Returns
     -------
     Scalar
-        The Coulomb energy as:
-        .. math::
-            E_C = \frac{1}{2} \sum_{\mathbf{k}_1, \mathbf{k}_2, \mathbf{k}_3, \mathbf{k}_4} \delta_{\mathbf{k}_1 - \mathbf{k}_2 + \mathbf{k}_3 - \mathbf{k}_4, \mathbf{G}} w(\mathbf{k}_1, \mathbf{k}_2, \mathbf{k}_3, \mathbf{k}_4) \sum_{pqrs} D_{pq}(\mathbf{k}_1) (pq|rs)_{\mathbf{k}_1\mathbf{k}_2\mathbf{k}_3\mathbf{k}_4} D_{rs}(\mathbf{k}_3)
     """
+    v_k = coulomb_potential(rdm1, rep_tensor, weights, precision)
+    coulomb_energy = jnp.einsum("k,kij,kji->", weights, rdm1, v_k)/2.0
+    return coulomb_energy.real
 
-    # Initialize Coulomb energy to zero
-    coulomb_energy = 0.0
+@jaxtyped
+@typechecked
+@partial(jit, static_argnames=["precision"])
+def nonXC(
+    rdm1: Complex[Array, "n_kpt n_orbitals n_orbitals"],
+    h1e: Complex[Array, "n_kpt n_orbitals n_orbitals"],
+    rep_tensor: Complex[Array, "n_kpt n_kpt n_orbitals n_orbitals n_orbitals n_orbitals"],
+    nuclear_repulsion: Scalar,
+    weights: Float[Array, "n_kpts_or_n_ir_kpts"],
+    precision=Precision.HIGHEST,
+) -> Scalar:
+    r"""Compute all terms in the KS total energy with the exception of the XC component
 
-    # Loop over all k-point quartets
-    for i, k_quartet_idxs in enumerate(k4_idxs):
-        # Extract the ERIs for this k-point quartet
-        eri_kpt_quartet = rep_tensor[i]
-        
-        # Determine the indices for the k-points involved in this quartet
-        k1_idx = k_quartet_idxs[0]
-        k2_idx = k_quartet_idxs[1]
-        k3_idx = k_quartet_idxs[2]
-        k4_idx = k_quartet_idxs[3]
-        
-        # k1_idx_ibz = bz2ibz_map[k1_idx]
-        # k3_idx_ibz = bz2ibz_map[k3_idx]
-        
-        
-        # Compute the contribution to the Coulomb energy from this k-point quartet
-        # energy_contribution = jnp.einsum(
-        #     "qp,pqrs,sr->", rdm1[k1_idx], eri_kpt_quartet, rdm1[k3_idx], precision=precision
-        # )
-        energy_contribution = jnp.trace(
-            rdm1[k1_idx] @ eri_kpt_quartet @ rdm1[k3_idx]
-        )
-        # Accumulate the weighted energy contribution
-        coulomb_energy += weights_k4[i] * energy_contribution
-    
-    # Account for double-counting in the ERI
-    coulomb_energy /= 2.0
+    Parameters
+    ----------
+    rdm1 : Complex[Array, "n_kpt n_orbitals n_orbitals"]
+        The 1-body reduced density matrix.
+    h1e : Complex[Array, "n_kpt orbitals orbitals"]
+        The 1-electron Hamiltonian for each k-point.
+        Equivalent to mf.get_hcore(mf.mol) in pyscf.
+    rep_tensor : Complex[Array, "n_kpt n_kpt n_orbitals n_orbitals n_orbitals n_orbitals"]
+        The repulsion tensor computed on a grid of nkpt x nkpt
+    nuclear_repulsion : Scalar
+        The nuclear repulsion energy.
+        Equivalent to mf.mol.energy_nuc() in pyscf.
+    weights : Float[Array, "n_kpts_or_n_ir_kpts"]
+        The weights for each k-point which together sum to 1. If we are working
+        in the full 1BZ, weights are equal. If we are working in the
+        irreducible 1BZ, weights may not be equal if symmetry can be 
+        exploited.
+    precision : Precision, optional
+        The precision to use for the computation, by default Precision.HIGHEST
 
-    return coulomb_energy
+    Returns
+    -------
+    Scalar
+    """
+    kinetic_and_external = one_body_energy(rdm1, h1e, weights, precision)
+    # jax.debug.print("h1e_energy is {x}", x=h1e_energy)
+    coulomb = coulomb_energy(rdm1, rep_tensor, weights, precision)
+    # jax.debug.print("coulomb2e_energy is {x}", x=coulomb2e_energy)
+    # jax.debug.print("nuclear_repulsion is {x}", x=nuclear_repulsion)
+
+    return nuclear_repulsion + kinetic_and_external + coulomb
 
 
