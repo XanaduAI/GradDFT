@@ -694,7 +694,7 @@ def mse_energy_and_density_loss(
             diff_energy = diff_energy / num_elec
         sum_rho += diff_rho
         sum_energy += diff_energy**2
-    energy_contrib = energy_factor * sum_energy / len(atoms)
+    energy_contrib = energy_factor * sum_energy / len(atoms_list)
     rho_contrib = rho_factor * sum_rho / len(atoms_list)
 
     return energy_contrib + rho_contrib
