@@ -51,23 +51,23 @@ LOSS_FUNCTIONS = [mse_energy_loss, mse_density_loss, mse_energy_and_density_loss
 
 
 @struct.dataclass
-class dummy_grid:
+class Grid:
     r"""A dummy Grid object used only to access the weights attribute used in
     the density loss functions
     """
     weights: Array
 
 
-GRID = dummy_grid(GRID_WEIGHTS)
+GRID = Grid(GRID_WEIGHTS)
 
 
 @struct.dataclass
-class dummy_molecule:
+class Molecule:
     r"""A dummy Molecule object used only to access the atom_index and charge attributes used in
     loss functions
     """
     atom_index: Int[Array, "atoms"]
-    grid: dummy_grid
+    grid: Grid
     charge: Scalar = 0
     energy: Optional[Scalar] = 0
     rdm1: Optional[Float[Array, "spin orbitals orbitals"]] = 0
@@ -77,11 +77,11 @@ class dummy_molecule:
         return self.rho
 
 
-MOLECULES = [dummy_molecule(jnp.array([1, 1]), GRID), 
-            dummy_molecule(jnp.array([1, 8, 1]), GRID)]
+MOLECULES = [Molecule(jnp.array([1, 1]), GRID), 
+            Molecule(jnp.array([1, 8, 1]), GRID)]
 
 
-def dummy_predictor(params: PyTree, molecule: dummy_molecule) -> dummy_molecule:
+def dummy_predictor(params: PyTree, molecule: Molecule) -> Molecule:
     r"""A dummy function matching the signature of the predictor functions in Grad-DFT
 
     Args:
