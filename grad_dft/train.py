@@ -513,7 +513,7 @@ def mse_energy_loss(
         if elec_num_norm:
             diff = diff / num_elec
         sum += (diff) ** 2
-    cost_value = sum / len(atoms)
+    cost_value = sum / len(atoms_list)
 
     return cost_value
 
@@ -695,6 +695,6 @@ def mse_energy_and_density_loss(
         sum_rho += diff_rho
         sum_energy += diff_energy**2
     energy_contrib = energy_factor * sum_energy / len(atoms)
-    rho_contrib = rho_factor * sum_rho / len(atoms)
+    rho_contrib = rho_factor * sum_rho / len(atoms_list)
 
     return energy_contrib + rho_contrib
