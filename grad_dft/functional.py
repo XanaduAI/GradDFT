@@ -39,7 +39,8 @@ from typeguard import typechecked
 from grad_dft import (
     abs_clip,
     Grid,
-    Molecule
+    Molecule,
+    Solid
 )
 from grad_dft.utils.types import DType, default_dtype
 
@@ -68,13 +69,13 @@ class Functional(nn.Module):
         A function that computes and returns the energy densities e_\theta that can be autodifferentiated
         with respect to the reduced density matrix.
 
-        densities(molecule: Molecule, *args, **kwargs) -> Array
+        densities(atoms: Union[Molecule, Solid], *args, **kwargs) -> Array
 
     nograd_densities : Callable, optional
-        A function that calculates the molecule energy densities e_\theta where gradient with respect to the
+        A function that calculates the energy densities e_\theta where gradient with respect to the
         reduced density matrix is computed via in densitygrads.
 
-        nograd_densities(molecule: Molecule, *args, **kwargs) -> Array
+        nograd_densities(atoms: Union[Molecule, Solid], *args, **kwargs) -> Array
 
     featuregrads: Callable, optional
         A function to compute contributions to the Fock matrix for energy densities
@@ -82,7 +83,7 @@ class Functional(nn.Module):
 
         If given has signature
 
-        featuregrads(functional: nn.Module, params: PyTree, molecule: Molecule,
+        featuregrads(functional: nn.Module, params: PyTree, atoms: Union[Molecule, Solid],
             nograd_densities: Array, coefficient_inputs: Array, grad_densities, *args) - > Fock matrix: Array of shape (2, nao, nao)
 
     combine_densities : Callable, optional
@@ -93,13 +94,13 @@ class Functional(nn.Module):
         A function that computes the inputs to the coefficients function, that can be autodifferentiated
         with respect to the reduced density matrix.
 
-        coefficient_inputs(molecule: Molecule, *args, **kwargs) -> Array
+        coefficient_inputs(atoms: Union[Molecule, Solid], *args, **kwargs) -> Array
 
     nograd_coefficient_inputs : Callable, optional
         A function that computes the inputs to the coefficients function, where gradient with respect to the
         reduced density matrix is computed via in coefficient_input_grads.
 
-        nograd_coefficient_inputs(molecule: Molecule, *args, **kwargs) -> Array
+        nograd_coefficient_inputs(atoms: Union[Molecule, Solid], *args, **kwargs) -> Array
 
     coefficient_inputs_grads: Callable, optional
         A function to compute contributions to the Fock matrix for coefficient inputs
@@ -107,7 +108,7 @@ class Functional(nn.Module):
 
         If given has signature
 
-        coefficient_inputs_grads(functional: nn.Module, params: PyTree, molecule: Molecule,
+        coefficient_inputs_grads(functional: nn.Module, params: PyTree, atoms: Union[Molecule, Solid],
             nograd_coefficient_inputs: Array, grad_coefficient_inputs: Array, densities, *args) - > Fock matrix: Array of shape (2, nao, nao)
 
     combine_coefficient_inputs : Callable, optional
@@ -156,14 +157,14 @@ class Functional(nn.Module):
 
         return self.coefficients(self, coefficient_inputs)
 
-    def compute_densities(self, molecule: Molecule,  clip_cte: float = 1e-30, *args, **kwargs):
+    def compute_densities(self, atoms: Union[Molecule, Solid],  clip_cte: float = 1e-30, *args, **kwargs):
         r"""
         Computes the densities for the functional, both with and without autodifferentiation.
 
         Parameters
         ----------
-        molecule: Molecule
-            The molecule to compute the densities for
+        atoms: Union[Molecule, Solid]
+            The atoms to compute the densities for
 
         Returns
         -------
@@ -171,26 +172,26 @@ class Functional(nn.Module):
         """
 
         if self.nograd_densities and self.energy_densities:
-            densities = self.energy_densities(molecule, *args, **kwargs)
-            nograd_densities = stop_gradient(self.nograd_densities(molecule, *args, **kwargs))
+            densities = self.energy_densities(atoms, *args, **kwargs)
+            nograd_densities = stop_gradient(self.nograd_densities(atoms, *args, **kwargs))
             densities = self.combine_densities(densities, nograd_densities)
 
         elif self.energy_densities:
-            densities = self.energy_densities(molecule, *args, **kwargs)
+            densities = self.energy_densities(atoms, *args, **kwargs)
 
         elif self.nograd_densities:
-            densities = stop_gradient(self.nograd_densities(molecule, *args, **kwargs))
+            densities = stop_gradient(self.nograd_densities(atoms, *args, **kwargs))
         densities = abs_clip(densities, clip_cte) #todo: investigate if we can lower this
         return densities
 
-    def compute_coefficient_inputs(self, molecule: Molecule, *args, **kwargs):
+    def compute_coefficient_inputs(self, atoms: Union[Molecule, Solid], *args, **kwargs):
         r"""
         Computes the inputs to the coefficients method in the functional
 
         Parameters
         ----------
-        molecule: Molecule
-            The molecule to compute the inputs for the coefficients
+        atoms: Union[Molecule, Solid]
+            The atoms to compute the inputs for the coefficients
 
         Returns
         -------
@@ -198,17 +199,17 @@ class Functional(nn.Module):
         """
 
         if self.nograd_coefficient_inputs and self.coefficient_inputs:
-            cinputs = self.coefficient_inputs(molecule, *args, **kwargs)
+            cinputs = self.coefficient_inputs(atoms, *args, **kwargs)
             nograd_cinputs = stop_gradient(
-                self.nograd_coefficient_inputs(molecule, *args, **kwargs)
+                self.nograd_coefficient_inputs(atoms, *args, **kwargs)
             )
             cinputs = self.combine_inputs(cinputs, nograd_cinputs)
 
         elif self.coefficient_inputs:
-            cinputs = self.coefficient_inputs(molecule, *args, **kwargs)
+            cinputs = self.coefficient_inputs(atoms, *args, **kwargs)
 
         elif self.nograd_coefficient_inputs:
-            cinputs = stop_gradient(self.nograd_coefficient_inputs(molecule, *args, **kwargs))
+            cinputs = stop_gradient(self.nograd_coefficient_inputs(atoms, *args, **kwargs))
 
         else:
             cinputs = None
@@ -251,7 +252,7 @@ class Functional(nn.Module):
         xc_energy_density = abs_clip(xc_energy_density, clip_cte)
         return self._integrate(xc_energy_density, grid.weights)
 
-    def energy(self, params: PyTree, molecule: Molecule, *args, **kwargs) -> Scalar:
+    def energy(self, params: PyTree, atoms: Union[Molecule, Solid], *args, **kwargs) -> Scalar:
         r"""
         Total energy of local functional
 
@@ -259,7 +260,7 @@ class Functional(nn.Module):
         ---------
         params: PyTree
             params of the neural network if there is one in self.f
-        molecule: Molecule
+        atoms: Union[Molecule, Solid]
 
         *args: other arguments to compute_densities or compute_coefficient_inputs
         **kwargs: other key word arguments to densities and self.xc_energy
@@ -272,17 +273,17 @@ class Functional(nn.Module):
         -------
         Integrates the energy over the grid.
         If the function is_xc, it will add the rest of the energy components
-        computed with function molecule.nonXC()
+        computed with function atoms.nonXC()
         """
 
-        densities = self.compute_densities(molecule, *args, **kwargs)
-        # sys.exit()
-        cinputs = self.compute_coefficient_inputs(molecule, *args)
+        densities = self.compute_densities(atoms, *args, **kwargs)
+        
+        cinputs = self.compute_coefficient_inputs(atoms, *args)
 
-        energy = self.xc_energy(params, molecule.grid, cinputs, densities, **kwargs)
+        energy = self.xc_energy(params, atoms.grid, cinputs, densities, **kwargs)
 
         if self.is_xc:
-            energy += molecule.nonXC()
+            energy += atoms.nonXC()
 
         return energy
 
@@ -474,14 +475,13 @@ class NeuralFunctional(Functional):
 ######################## DM21 ########################
 
 
-def dm21_coefficient_inputs(molecule: Molecule, clip_cte: Optional[float] = 1e-30, *_, **__):
+def dm21_coefficient_inputs(atoms: Union[Molecule, Solid], clip_cte: Optional[float] = 1e-30, *_, **__):
     r"""
     Computes the electronic density and derivatives
 
     Parameters
     ----------
-    molecule:
-        class Molecule
+    atoms: Union[Molecule, Solid]
     clip_cte: Optional[float]
         Needed to make sure it
         default 1e-30 (chosen carefully, take care if decrease)
@@ -491,11 +491,11 @@ def dm21_coefficient_inputs(molecule: Molecule, clip_cte: Optional[float] = 1e-3
         Array: shape (n_grid, 7) where 7 is the number of features
     """
 
-    rho = molecule.density()
+    rho = atoms.density()
     # We need to clip rho away from 0 to obtain good gradients.
     rho = jnp.maximum(abs(rho), clip_cte) * jnp.sign(rho)
-    grad_rho = molecule.grad_density()
-    tau = molecule.kinetic_density()
+    grad_rho = atoms.grad_density()
+    tau = atoms.kinetic_density()
 
     grad_rho_norm = jnp.sum(grad_rho**2, axis=-1)
     grad_rho_norm_sumspin = jnp.sum(grad_rho.sum(axis=1, keepdims=True) ** 2, axis=-1)
@@ -506,7 +506,7 @@ def dm21_coefficient_inputs(molecule: Molecule, clip_cte: Optional[float] = 1e-3
 
 
 def dm21_densities(
-    molecule: Molecule,
+    atoms: Union[Molecule, Solid],
     functional_type: Optional[Union[str, Dict[str, int]]] = "LDA",
     clip_cte: float = 1e-30,
     *_,
@@ -517,8 +517,7 @@ def dm21_densities(
 
     Parameters:
     ----------
-    molecule:
-        class Molecule
+    atoms: Union[Molecule, Solid]
 
     functional_type:
         Either one of 'LDA', 'GGA', 'MGGA' or Dictionary
@@ -559,10 +558,10 @@ def dm21_densities(
                 f"Functional type {functional_type} not recognized, must be one of LDA, GGA, MGGA."
             )
 
-    # Molecule preprocessing data
-    rho = molecule.density()
-    grad_rho = molecule.grad_density()
-    tau = molecule.kinetic_density()
+    # Atoms preprocessing data
+    rho = atoms.density()
+    grad_rho = atoms.grad_density()
+    tau = atoms.kinetic_density()
     grad_rho_norm_sq = jnp.sum(grad_rho**2, axis=-1)
 
     # LDA preprocessing data
@@ -654,7 +653,7 @@ def dm21_combine_densities(
 def dm21_hfgrads_densities(
     functional: nn.Module,
     params: PyTree,
-    molecule: Molecule,
+    atoms: Union[Molecule, Solid],
     ehf: Float[Array, "omega spin grid"],
     coefficient_inputs: Float[Array, "grid cinputs"],
     densities_wout_hf: Float[Array, "grid densities_whf"],
@@ -670,8 +669,8 @@ def dm21_hfgrads_densities(
         The functional to calculate the Hartree-Fock matrix contribution for.
     params: PyTree
         The parameters of the functional.
-    molecule: Molecule
-        The molecule to calculate the Hartree-Fock matrix contribution for.
+    atoms: Union[Molecule, Solid]
+        The atoms to calculate the Hartree-Fock matrix contribution for.
     ehf: Float[Array, "omega spin grid"]
         The Hartree-Fock energy density.
     coefficient_inputs: Float[Array, "grid cinputs"]
@@ -686,7 +685,7 @@ def dm21_hfgrads_densities(
     ----------
     Float[Array, "spin orbitals orbitals"]
     """
-    vxc_hf = molecule.HF_density_grad_2_Fock(
+    vxc_hf = atoms.HF_density_grad_2_Fock(
         functional, params, omegas, ehf, coefficient_inputs, densities_wout_hf
     )
     return vxc_hf.sum(axis=0)  # Sum over omega
@@ -696,7 +695,7 @@ def dm21_hfgrads_densities(
 def dm21_hfgrads_cinputs(
     functional: nn.Module,
     params: PyTree,
-    molecule: Molecule,
+    atoms: Union[Molecule, Solid],
     ehf: Float[Array, "omega spin grid"],
     cinputs_wout_hf: Float[Array, "grid cinputs_whf"],
     densities: Float[Array, "grid densities"],
@@ -712,8 +711,8 @@ def dm21_hfgrads_cinputs(
         The functional to calculate the Hartree-Fock matrix contribution for.
     params: PyTree
         The parameters of the functional.
-    molecule: Molecule
-        The molecule to calculate the Hartree-Fock matrix contribution for.
+    atoms: Union[Molecule, Solid]
+        The atoms to calculate the Hartree-Fock matrix contribution for.
     ehf: Float[Array, "omega spin grid"]
         The Hartree-Fock energy density.
     cinputs_wout_hf: Float[Array, "grid cinputs_whf"]
@@ -727,7 +726,7 @@ def dm21_hfgrads_cinputs(
     ----------
     Float[Array, "spin orbitals orbitals"]
     """
-    vxc_hf = molecule.HF_coefficient_input_grad_2_Fock(
+    vxc_hf = atoms.HF_coefficient_input_grad_2_Fock(
         functional, params, omegas, ehf, cinputs_wout_hf, densities
     )
     return vxc_hf.sum(axis=0)  # Sum over omega
@@ -743,20 +742,20 @@ class DM21(NeuralFunctional):
 
     coefficients: Callable = lambda self, inputs: self.default_nn(inputs)
     energy_densities: Callable = dm21_densities
-    nograd_densities: staticmethod = lambda molecule, *_, **__: molecule.HF_energy_density(
+    nograd_densities: staticmethod = lambda atoms, *_, **__: atoms.HF_energy_density(
         jnp.array([0.0, 0.4])
     )
-    densitygrads: staticmethod = lambda self, params, molecule, nograd_densities, cinputs, grad_densities, *_, **__: dm21_hfgrads_densities(
-        self, params, molecule, nograd_densities, cinputs, grad_densities, jnp.array([0.0, 0.4])
+    densitygrads: staticmethod = lambda self, params, atoms, nograd_densities, cinputs, grad_densities, *_, **__: dm21_hfgrads_densities(
+        self, params, atoms, nograd_densities, cinputs, grad_densities, jnp.array([0.0, 0.4])
     )
     combine_densities: staticmethod = dm21_combine_densities
 
     coefficient_inputs: staticmethod = dm21_coefficient_inputs
-    nograd_coefficient_inputs: staticmethod = lambda molecule, *_, **__: molecule.HF_energy_density(
+    nograd_coefficient_inputs: staticmethod = lambda atoms, *_, **__: atoms.HF_energy_density(
         jnp.array([0.0, 0.4])
     )
-    coefficient_input_grads: staticmethod = lambda self, params, molecule, nograd_cinputs, grad_cinputs, densities, *_, **__: dm21_hfgrads_cinputs(
-        self, params, molecule, nograd_cinputs, grad_cinputs, densities, jnp.array([0.0, 0.4])
+    coefficient_input_grads: staticmethod = lambda self, params, atoms, nograd_cinputs, grad_cinputs, densities, *_, **__: dm21_hfgrads_cinputs(
+        self, params, atoms, nograd_cinputs, grad_cinputs, densities, jnp.array([0.0, 0.4])
     )
     combine_inputs: staticmethod = dm21_combine_cinputs
 
@@ -1021,7 +1020,7 @@ def correlation_polarization_correction(
 
 
 def densities(
-    molecule: Molecule,
+    atoms: Union[Molecule, Solid],
     functional_type: Optional[Union[str, Dict[str, int]]] = "LDA",
     clip_cte: float = 1e-30,
     *_,
@@ -1032,8 +1031,7 @@ def densities(
 
     Parameters:
     ----------
-    molecule:
-        class Molecule
+    atoms: Union[Molecule, Solid]
 
     functional_type:
         Either one of 'LDA', 'GGA', 'MGGA' or Dictionary
@@ -1074,10 +1072,10 @@ def densities(
                 f"Functional type {functional_type} not recognized, must be one of LDA, GGA, MGGA."
             )
 
-    # Molecule preprocessing data
-    rho = molecule.density()
-    grad_rho = molecule.grad_density()
-    tau = molecule.kinetic_density()
+    # Atoms preprocessing data
+    rho = atoms.density()
+    grad_rho = atoms.grad_density()
+    tau = atoms.kinetic_density()
     grad_rho_norm_sq = jnp.sum(grad_rho**2, axis=-1)
 
     # LDA preprocessing data
@@ -1234,11 +1232,14 @@ class DispersionFunctional(nn.Module):
 
         return jnp.squeeze(out)  # Eliminating unnecessary dimensions
 
-    def energy(self, params: PyTree, molecule: Molecule):
+    def energy(self, params: PyTree, atoms: Union[Molecule, Solid]):
         r"""
         Calculates the energy of the functional.
         """
-        R_AB, ai = calculate_distances(molecule.nuclear_pos, molecule.atom_index)
+        if isinstance(atoms, Solid):
+            raise NotImplementedError("Dispersion functionals are not presently implemented for solids")
+        
+        R_AB, ai = calculate_distances(atoms.nuclear_pos, atoms.atom_index)
 
         result = 0
         for n in range(3, 6):
@@ -1250,7 +1251,7 @@ class DispersionFunctional(nn.Module):
 
 def calculate_distances(positions, atoms):
     r"""
-    Calculates the distances between all atoms in the molecule.
+    Calculates the distances between all atoms.
     """
     pairwise_distances = jnp.linalg.norm(positions[:, None] - positions, axis=-1)
     atom_pairs = jnp.array(

@@ -213,6 +213,10 @@ class Solid:
         rest = {field.name: getattr(self, field.name) for field in fields(self)[2:]}
         return dict(**grid_dict, **kpt_dict, **rest)
     
+    """
+    Hartree-Fock methods (for computation of Hybrid functionals) will come in a later release.
+    """
+    
     
  
    
