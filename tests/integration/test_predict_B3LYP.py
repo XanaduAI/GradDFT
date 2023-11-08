@@ -48,9 +48,14 @@ MOL_LI.build()
 
 # This test will only pass if you set B3LYP_WITH_VWN5 = True in pyscf_conf.py.
 # See pyscf_conf.py in .github/workflows
+
 # This test differs slightly due to the use of the original LYP functional definition
 # in C. Lee, W. Yang, and R. G. Parr., Phys. Rev. B 37, 785 (1988) (doi: 10.1103/PhysRevB.37.785)
 # instead of the one in libxc: B. Miehlich, A. Savin, H. Stoll, and H. Preuss., Chem. Phys. Lett. 157, 200 (1989) (doi: 10.1016/0009-2614(89)87234-3)
+
+# This test is now NOT included in the CI because of implementation differences between B3LYP in Grad DFT
+# versus PySCF. See above.
+
 @pytest.mark.parametrize("mol_and_name", [(MOL_WATER, "water"), (MOL_LI, "Li")])
 def test_predict(mol_and_name: tuple[gto.Mole, str]) -> None:
     r"""Compare the total energy predicted by Grad-DFT for the B3LYP functional versus PySCF.
