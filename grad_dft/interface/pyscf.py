@@ -125,6 +125,7 @@ def molecule_from_pyscf(
         s1e,
         fock,
         rep_tensor,
+        kpt_info,
     ) = to_device_arrays(*_package_outputs(mf, mf.grids, scf_iteration, grad_order), dtype=dtype)
 
     atom_index, nuclear_pos = to_device_arrays(
@@ -258,6 +259,7 @@ def solid_from_pyscf(
     lattice_vectors = kmf.cell.lattice_vectors()
     return Solid(
         grid,
+        kpt_info,
         atom_index,
         lattice_vectors,
         nuclear_pos,
@@ -271,7 +273,6 @@ def solid_from_pyscf(
         mo_coeff,
         mo_occ,
         mo_energy,
-        kpt_info,
         mf_e_tot,
         s1e,
         omegas,
@@ -732,6 +733,7 @@ def _package_outputs(
         dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
         fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
         rep_tensor = mf.mol.intor("int2e")
+        kpt_info = None
         
     # Unrestricted (spin polarized), open boundary conditions
     elif rdm1.ndim == 3 and not hasattr(mf, "cell"):
@@ -746,6 +748,7 @@ def _package_outputs(
         dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
         fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
         rep_tensor = mf.mol.intor("int2e")
+        kpt_info = None
      
     # Restricted (non-spin polarized), periodic boundary conditions, full BZ sampling  
     elif rdm1.ndim == 3 and hasattr(mf, "cell") and rdm1.shape[0] != 1:
