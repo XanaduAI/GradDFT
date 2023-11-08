@@ -25,6 +25,7 @@ from jax.lax import fori_loop, cond
 from dataclasses import fields
 
 from flax import struct
+from flax import linen as nn
 from jaxtyping import Array, PyTree, Scalar, Float, Int, Complex, jaxtyped
 
 
@@ -213,13 +214,39 @@ class Solid:
         rest = {field.name: getattr(self, field.name) for field in fields(self)[2:]}
         return dict(**grid_dict, **kpt_dict, **rest)
     
-    """
-    Hartree-Fock methods (for computation of Hybrid functionals) will come in a later release.
-    """
     
+    def select_HF_omegas(self, omegas: Float[Array, "omega"]) -> Array:
+        raise NotImplementedError("Hartree-Fock methods (for computation of Hybrid functionals) will come in a later release.")
+
+    def HF_energy_density(self, omegas: Float[Array, "omega"], *args, **kwargs) -> Array:
+        raise NotImplementedError("Hartree-Fock methods (for computation of Hybrid functionals) will come in a later release.")
+
+    def HF_density_grad_2_Fock(
+        self,
+        functional: nn.Module,
+        params: PyTree,
+        omegas: Float[Array, "omega"],
+        ehf: Float[Array, "omega spin grid"],
+        coefficient_inputs: Float[Array, "grid cinputs"],
+        densities_wout_hf: Float[Array, "grid densities_w"],
+        **kwargs,
+    ) -> Float[Array, "omega spin orbitals orbitals"]:
+        raise NotImplementedError("Hartree-Fock methods (for computation of Hybrid functionals) will come in a later release.")
+
+    def HF_coefficient_input_grad_2_Fock(
+        self,
+        functional: nn.Module,
+        params: PyTree,
+        omegas: Float[Array, "omega"],
+        ehf: Float[Array, "omega spin grid"],
+        cinputs_wout_hf: Float[Array, "grid cinputs_w"],
+        densities: Float[Array, "grid densities"],
+        **kwargs,
+    ) -> Float[Array, "omega spin orbitals orbitals"]:
+        raise NotImplementedError("Hartree-Fock methods (for computation of Hybrid functionals) will come in a later release.")
+
     
- 
-   
+
 @jaxtyped
 @typechecked
 @partial(jit, static_argnames=["precision"])
