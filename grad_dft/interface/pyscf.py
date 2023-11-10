@@ -846,7 +846,7 @@ def _package_outputs(
         vj = np.squeeze(vj, axis=1)
         h1e = np.squeeze(h1e, axis=0)
         rep_tensor = df.DF(mf.cell).get_eri(compact=False).reshape(nao, nao, nao, nao)
-        kpt_info = kpt_info_from_pyscf(mf)
+        kpt_info = None
         
     # Unrestricted (spin polarized), periodic boundary conditions, gamma point only    
     elif rdm1.ndim == 4 and hasattr(mf, "cell") and rdm1.shape[1] == 1:
@@ -874,7 +874,7 @@ def _package_outputs(
         vj = np.squeeze(vj, axis=1)
         h1e = np.squeeze(h1e, axis=0)
         rep_tensor = df.DF(mf.cell).get_ao_eri(compact=False).reshape(nao, nao, nao, nao)
-        kpt_info = kpt_info_from_pyscf(mf)
+        kpt_info = None
         
     else:
         raise RuntimeError(

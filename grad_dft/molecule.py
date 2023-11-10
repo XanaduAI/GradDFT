@@ -104,6 +104,15 @@ class Molecule:
     @property
     def grid_size(self):
         return len(self.grid)
+    
+    def get_coulomb_potential(self, *args, **kwargs) -> Float[Array, "orbitals orbitals"]:
+        r"""Compute the Coulomb potential matrix.
+
+        Returns
+        -------
+        Float[Array, "spin orbitals orbitals"]
+        """
+        return coulomb_potential(self.rdm1.sum(axis=0), self.rep_tensor, *args, **kwargs)
 
     def density(self, *args, **kwargs) -> Array:
         r""" Computes the electronic density of a molecule at each grid point.

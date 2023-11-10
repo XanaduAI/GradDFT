@@ -286,6 +286,32 @@ class Functional(nn.Module):
             energy += atoms.nonXC()
 
         return energy
+    
+    def energy_xc_only(self, params: PyTree, atoms: Union[Molecule, Solid], *args, **kwargs) -> Scalar:
+        r"""
+        Compute the XC only using the same function signature as functional.energy
+
+        Parameters
+        ---------
+        params: PyTree
+            params of the neural network if there is one in self.f
+        atoms: Union[Molecule, Solid]
+
+        *args: other arguments to compute_densities or compute_coefficient_inputs
+        **kwargs: other key word arguments to densities and self.xc_energy
+
+        Returns
+        -------
+        Scalar
+        """
+
+        densities = self.compute_densities(atoms, *args, **kwargs)
+        
+        cinputs = self.compute_coefficient_inputs(atoms, *args)
+
+        Exc = self.xc_energy(params, atoms.grid, cinputs, densities, **kwargs)
+
+        return Exc
 
     def _integrate(
         self,

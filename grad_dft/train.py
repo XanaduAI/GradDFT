@@ -17,7 +17,7 @@ from functools import partial
 from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar, Float, Complex
 
 from jax import numpy as jnp, vmap
-from jax import value_and_grad
+from jax import value_and_grad, grad
 from jax.profiler import annotate_function
 from jax.lax import stop_gradient
 from optax import OptState, GradientTransformation, apply_updates
@@ -82,43 +82,43 @@ def energy_predictor(
     >>> fock.shape == molecule.density_matrix.shape
     True
     """
-
+    
     @partial(value_and_grad, argnums=1)
-    def energy_and_grads(
-        params: PyTree,
+    def xc_energy_and_grads(
+        params: PyTree, 
         rdm1: Union[Float[Array, "spin orbitals orbitals"],
                     Complex[Array, "spin kpt orbitals orbitals"]
-                ],
-        atoms: Union[Molecule, Solid],
-        *args,
-        **functional_kwargs,
+                ], 
+        atoms: Union[Molecule, Solid], 
+        *args, 
+        **functional_kwargs
     ) -> Scalar:
         r"""
-        Computes the energy and gradients with respect to the density matrix
+        Computes the xc energy and gradients with respect to the density matrix.
 
         Parameters
         ----------
         params: Pytree
             Functional parameters
         rdm1: Float[Array, "spin orbitals orbitals"]
-            The 1-body reduced density matrix.
+            The reduced density matrix.
         atoms: Union[Molecule, Solid]
             The collection of atoms.
+        *args
+        **kwargs
 
         Returns
         -----------
-        Scalar
-            The energy of the atoms when the state of the system is given by rdm1.
+        Tuple[Scalar, Float[Array, "spin orbitals orbitals"]]
         """
-
         atoms = atoms.replace(rdm1=rdm1)
-
-        e = functional.energy(params, atoms, *args, **functional_kwargs)
+        densities = functional.compute_densities(atoms, *args, **kwargs)
+        cinputs = functional.compute_coefficient_inputs(atoms, *args)
         if nlc_functional:
             e = e + nlc_functional.energy(
                 {"params": params["dispersion"]}, atoms, **functional_kwargs
             )
-        return e
+        return functional.xc_energy(params, atoms.grid, cinputs, densities, **kwargs)
 
     @partial(annotate_function, name="predict")
     def predict(params: PyTree, atoms: Union[Molecule, Solid], *args) -> Tuple[Scalar, Array]:
@@ -144,13 +144,26 @@ def energy_predictor(
             (*batch_size, n_spin, n_kpt, n_orbitals, n_orbitals) for a `Solid`.
         """
         
-        energy, fock = energy_and_grads(params, atoms.rdm1, atoms, *args)
+        Exc, fock_xc = xc_energy_and_grads(params, atoms.rdm1, atoms, *args)
+        fock_noxc = atoms.h1e + atoms.get_coulomb_potential()
         
-        # Improve stability by clipping and symmetrizing
+        energy = Exc + atoms.nonXC()
+        
         if isinstance(atoms, Molecule):
             transpose_dims = (0, 2, 1)
+            fock = fock_noxc + fock_xc
         elif isinstance(atoms, Solid):
             transpose_dims = (0, 1, 3, 2)
+            # auto-diffed xc gradient is divided by n_k=number of k-points. Undo this.
+            fock = fock_noxc + (fock_xc*atoms.rdm1.shape[1])
+            
+        """Note: the summed difference between the fock matrix elements computed here and the fock
+        matrix computed directly by PySCF is correct to ~1e-16 for the Molecule
+        case but only matches PySCF to ~1e-9 for a Solid. This may not be cause for concern,
+        but I will leave this note here in the event that somebody is chasing a bug.
+        """
+            
+        # Improve stability by clipping and symmetrizing
         fock = abs_clip(fock, clip_cte)
         fock = 1 / 2 * (fock + fock.transpose(transpose_dims).conj())
         fock = abs_clip(fock, clip_cte)
@@ -207,7 +220,6 @@ def energy_predictor(
             fock = abs_clip(fock, clip_cte)
 
         fock = abs_clip(fock, clip_cte)
-
         return energy, fock
 
     return predict

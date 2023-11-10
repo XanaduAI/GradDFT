@@ -214,6 +214,15 @@ class Solid:
         rest = {field.name: getattr(self, field.name) for field in fields(self)[2:]}
         return dict(**grid_dict, **kpt_dict, **rest)
     
+    def get_coulomb_potential(self, *args, **kwargs) -> Complex[Array, "n_kpts_or_n_ir_kpts n_orbitals n_orbitals"]:
+        r"""
+        Computes the Coulomb potential matrix for all k-points.
+
+        Returns
+        -------
+        Complex[Array, "n_kpts_or_n_ir_kpts n_orbitals n_orbitals"]
+        """
+        return coulomb_potential(self.rdm1.sum(axis=0), self.rep_tensor, self.kpt_info.weights, *args, **kwargs)
     
     def select_HF_omegas(self, omegas: Float[Array, "omega"]) -> Array:
         raise NotImplementedError("Hartree-Fock methods (for computation of Hybrid functionals) will come in a later release.")
