@@ -19,7 +19,7 @@ from typing import List, Optional
 from typeguard import typechecked
 from grad_dft.utils import vmap_chunked
 from functools import partial
-from jax import jit
+from jax import jit, vmap
 from jax.lax import fori_loop, cond
 
 from dataclasses import fields
@@ -253,7 +253,16 @@ class Solid:
         **kwargs,
     ) -> Float[Array, "omega spin orbitals orbitals"]:
         raise NotImplementedError("Hartree-Fock methods (for computation of Hybrid functionals) will come in a later release.")
+    
+    def get_mo_grads(self, *args, **kwargs):
+        r"""Compute the gradient of the electronic energy with respect 
+        to the molecular orbital coefficients.
 
+        Returns:
+        -------
+        Float[Array, "orbitals orbitals"]
+        """
+        return orbital_grad(self.mo_coeff, self.mo_occ, self.fock, *args, **kwargs)
     
 
 @jaxtyped
@@ -617,6 +626,48 @@ def kinetic_density(
     """
 
     return 0.5 * jnp.einsum("k,...kab,raj,rbj->r...", weights, rdm1, grad_ao, grad_ao, precision=precision).real
+
+@jaxtyped
+@typechecked
+@partial(jit, static_argnames="precision")
+def orbital_grad(
+        mo_coeff: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"],
+        mo_occ: Float[Array, "n_spin n_kpt n_orbitals"],
+        F: Complex[Array, "n_spin n_orbitals n_orbitals"],
+        precision: Precision = Precision.HIGHEST
+    ) -> Float[Array, "n_kpt n_orbitals n_orbitals"]:
+    r"""Compute the gradient of the electronic energy with respect 
+    to the molecular orbital coefficients.
+
+    Parameters:
+    ----------
+        mo_coeff: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
+            Orbital coefficients
+        mo_occ: Float[Array, "n_spin n_kpt n_orbitals"]
+            Orbital occupancy
+        F: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
+            Fock matrix in AO representation
+        precision: jax.lax.Precision, optional
+
+    Returns:
+    -------
+    Float[Array, "n_kpt n_orbitals n_orbitals"]
+
+
+    Notes:
+    -----
+    # Performs same task as pyscf/scf/hf.py but we have k-point sampling:
+    occidx = mo_occ > 0
+    viridx = ~occidx
+    g = reduce(jnp.dot, (mo_coeff[:,viridx].conj().T, fock_ao,
+                           mo_coeff[:,occidx])) * 2
+    return g.ravel()
+    """
+
+    C_occ = vmap(jnp.where, in_axes=(None, 2, None), out_axes=2)(mo_occ > 0, mo_coeff, 0)
+    C_vir = vmap(jnp.where, in_axes=(None, 2, None), out_axes=2)(mo_occ == 0, mo_coeff, 0)
+
+    return jnp.einsum("skab,skac,skcd->kbd", C_vir.conj(), F, C_occ, precision = precision)
 
 
 

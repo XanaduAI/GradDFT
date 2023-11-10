@@ -23,16 +23,16 @@ from jax.lax import cond, fori_loop
 
 import sys
 
-from typing import Callable, Tuple, Optional
+from typing import Callable, Tuple, Optional, Union
 from functools import partial, reduce
 import time
 from scipy.optimize import bisect
 
 from grad_dft import (
-    Molecule, 
+    Molecule,
+    Solid, 
     abs_clip, 
     make_rdm1, 
-    orbital_grad,
     Functional,
     energy_predictor,
 )
@@ -91,7 +91,7 @@ def non_scf_predictor(
     **kwargs,
 ) -> Callable:
     r"""
-    Creates an non_scf_predictor function which when called non-self consistently
+    Creates an non_scf_predictor function, which when called, non-self consistently
     calculates the total energy at a fixed density.
 
     Main parameters
@@ -103,25 +103,25 @@ def non_scf_predictor(
     Callable
     """
     compute_energy = energy_predictor(functional, chunk_size=chunk_size, **kwargs)
-    def non_scf_predictor(params: PyTree, molecule: Molecule, *args) -> Molecule:
+    def non_scf_predictor(params: PyTree, atoms: Union[Molecule, Solid], *args) -> Union[Molecule, Solid]:
         r"""Calculates the total energy at a fixed density non-self consistently.
 
         Main parameters
         ---------------
         params: Pytree
             Parameters of the neural functional
-        molecule: Molecule
-            A Grad-DFT molecule object
+        atoms: Union[Molecule, Solid]
+            A Grad-DFT Molecule or Solid object
 
         Returns
         ---------
         Molecule
-            A Grad-DFT Molecule object with updated attributes 
+            A Grad-DFT Molecule or Solid object with updated attributes 
         """
-        predicted_e, fock = compute_energy(params, molecule, *args)
-        molecule = molecule.replace(fock=fock)
-        molecule = molecule.replace(energy=predicted_e)
-        return molecule
+        predicted_e, fock = compute_energy(params, atoms, *args)
+        atoms = atoms.replace(fock=fock)
+        atoms = atoms.replace(energy=predicted_e)
+        return atoms
     
     return non_scf_predictor
 
@@ -231,7 +231,7 @@ def simple_scf_loop(
                 )
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads(mo_coeff, mo_occ, fock))
 
             if verbose > 1:
                 print(
@@ -338,7 +338,7 @@ def diff_simple_scf_loop(functional: Functional, cycles: int = 25, mixing_factor
             molecule = molecule.replace(fock=fock)
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads(mo_coeff, mo_occ, fock))
 
             state = (molecule, predicted_e, old_e, norm_gorb)
 
@@ -535,7 +535,7 @@ def scf_loop(
                 )
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads(mo_coeff, mo_occ, fock))
 
             if verbose > 1:
                 print(
@@ -578,7 +578,7 @@ def scf_loop(
             predicted_e, fock = compute_energy(params, molecule, *args)
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads(mo_coeff, mo_occ, fock))
 
         if verbose > 1:
             print(
@@ -1006,7 +1006,7 @@ def diff_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> Callabl
             molecule = molecule.replace(fock=fock)
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads(mo_coeff, mo_occ, fock))
 
             state = (molecule, predicted_e, old_e, norm_gorb, diis_data)
 
