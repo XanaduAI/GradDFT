@@ -118,7 +118,7 @@ def energy_predictor(
             e = e + nlc_functional.energy(
                 {"params": params["dispersion"]}, atoms, **functional_kwargs
             )
-        return functional.xc_energy(params, atoms.grid, cinputs, densities, **kwargs)
+        return functional.xc_energy(params, atoms.grid, cinputs, densities, **functional_kwargs)
 
     @partial(annotate_function, name="predict")
     def predict(params: PyTree, atoms: Union[Molecule, Solid], *args) -> Tuple[Scalar, Array]:
