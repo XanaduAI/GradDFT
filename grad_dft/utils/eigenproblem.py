@@ -122,9 +122,9 @@ def safe_general_eigh(A: Array, B: Array) -> tuple[Array, Array]:
     """
     L = jnp.linalg.cholesky(B)
     L_inv = jnp.linalg.inv(L)
-    C = L_inv @ A @ L_inv.T
+    C = L_inv @ A @ jnp.moveaxis(L_inv, -1, -2)
     eigenvalues, eigenvectors_transformed = safe_eigh(C)
-    eigenvectors_original = L_inv.T @ eigenvectors_transformed
+    eigenvectors_original = jnp.moveaxis(L_inv, -1, -2) @ eigenvectors_transformed
     return eigenvalues, eigenvectors_original
 
 
