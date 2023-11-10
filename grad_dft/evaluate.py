@@ -231,7 +231,7 @@ def simple_scf_loop(
                 )
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads())
 
             if verbose > 1:
                 print(
@@ -338,7 +338,7 @@ def diff_simple_scf_loop(functional: Functional, cycles: int = 25, mixing_factor
             molecule = molecule.replace(fock=fock)
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads())
 
             state = (molecule, predicted_e, old_e, norm_gorb)
 
@@ -535,7 +535,7 @@ def scf_loop(
                 )
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads())
 
             if verbose > 1:
                 print(
@@ -578,7 +578,7 @@ def scf_loop(
             predicted_e, fock = compute_energy(params, molecule, *args)
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads())
 
         if verbose > 1:
             print(
@@ -1006,7 +1006,7 @@ def diff_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> Callabl
             molecule = molecule.replace(fock=fock)
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads())
 
             state = (molecule, predicted_e, old_e, norm_gorb, diis_data)
 
