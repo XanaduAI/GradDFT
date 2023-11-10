@@ -318,6 +318,16 @@ class Molecule:
         nelecs = jnp.array([self.mo_occ[i].sum() for i in range(2)], dtype=jnp.int64)
         naos = self.mo_occ.shape[1]
         return get_occ(self.mo_energy, nelecs, naos)
+    
+    def get_mo_grads(self, *args, **kwargs):
+        r"""Compute the gradient of the electronic energy with respect 
+        to the molecular orbital coefficients.
+
+        Returns:
+        -------
+        Float[Array, "orbitals orbitals"]
+        """
+        return orbital_grad(self.mo_coeff, self.mo_occ, self.fock, *args, **kwargs)
 
     def to_dict(self) -> dict:
         r""" Returns a dictionary with the attributes of the molecule."""
@@ -337,7 +347,8 @@ def orbital_grad(
         F: Float[Array, "spin orbitals orbitals"],
         precision: Precision = Precision.HIGHEST
     ) -> Float[Array, "orbitals orbitals"]:
-    r""" Computes the restricted Hartree Fock orbital gradients
+    r"""Compute the gradient of the electronic energy with respect 
+    to the molecular orbital coefficients.
 
     Parameters:
     ----------
@@ -356,7 +367,7 @@ def orbital_grad(
 
     Notes:
     -----
-    # Similar to pyscf/scf/hf.py:
+    # Performs same task as pyscf/scf/hf.py:
     occidx = mo_occ > 0
     viridx = ~occidx
     g = reduce(jnp.dot, (mo_coeff[:,viridx].conj().T, fock_ao,
