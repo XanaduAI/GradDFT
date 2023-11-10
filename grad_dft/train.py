@@ -112,7 +112,7 @@ def energy_predictor(
         Tuple[Scalar, Float[Array, "spin orbitals orbitals"]]
         """
         atoms = atoms.replace(rdm1=rdm1)
-        densities = functional.compute_densities(atoms, *args, **kwargs)
+        densities = functional.compute_densities(atoms, *args, **functional_kwargs)
         cinputs = functional.compute_coefficient_inputs(atoms, *args)
         if nlc_functional:
             e = e + nlc_functional.energy(
