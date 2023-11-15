@@ -34,8 +34,8 @@ def safe_eigh(A: Array) -> tuple[Array, Array]:
     Returns:
         tuple[Array, Array]: the eigenvalues and eigenvectors of the input real symmetric matrix.
     """
-    evecs, evals = jnp.linalg.eigh(A)
-    return evecs, evals
+    evals, evecs = jnp.linalg.eigh(A)
+    return evals, evecs
 
 
 def safe_eigh_fwd(A: Array) -> tuple[tuple[Array, Array], tuple[tuple[Array, Array], Array]]:
@@ -104,6 +104,7 @@ def safe_eigh_rev(res: tuple[tuple[Array, Array], Array], g: Array) -> tuple[Arr
 
 
 safe_eigh.defvjp(safe_eigh_fwd, safe_eigh_rev)
+safe_eigh_vec = jnp.vectorize(safe_eigh, signature="(m,m)->(n),(n,n)")
 
 
 def safe_general_eigh(A: Array, B: Array) -> tuple[Array, Array]:
@@ -123,7 +124,7 @@ def safe_general_eigh(A: Array, B: Array) -> tuple[Array, Array]:
     L = jnp.linalg.cholesky(B)
     L_inv = jnp.linalg.inv(L)
     C = L_inv @ A @ jnp.moveaxis(L_inv, -1, -2)
-    eigenvalues, eigenvectors_transformed = safe_eigh(C)
+    eigenvalues, eigenvectors_transformed = safe_eigh_vec(C)
     eigenvectors_original = jnp.moveaxis(L_inv, -1, -2) @ eigenvectors_transformed
     return eigenvalues, eigenvectors_original
 

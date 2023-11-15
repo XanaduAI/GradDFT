@@ -633,7 +633,7 @@ def kinetic_density(
 def orbital_grad(
         mo_coeff: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"],
         mo_occ: Float[Array, "n_spin n_kpt n_orbitals"],
-        F: Complex[Array, "n_spin n_orbitals n_orbitals"],
+        fock: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"],
         precision: Precision = Precision.HIGHEST
     ) -> Float[Array, "n_kpt n_orbitals n_orbitals"]:
     r"""Compute the gradient of the electronic energy with respect 
@@ -645,7 +645,7 @@ def orbital_grad(
             Orbital coefficients
         mo_occ: Float[Array, "n_spin n_kpt n_orbitals"]
             Orbital occupancy
-        F: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
+        fock: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
             Fock matrix in AO representation
         precision: jax.lax.Precision, optional
 
@@ -667,7 +667,7 @@ def orbital_grad(
     C_occ = vmap(jnp.where, in_axes=(None, 2, None), out_axes=2)(mo_occ > 0, mo_coeff, 0)
     C_vir = vmap(jnp.where, in_axes=(None, 2, None), out_axes=2)(mo_occ == 0, mo_coeff, 0)
 
-    return jnp.einsum("skab,skac,skcd->kbd", C_vir.conj(), F, C_occ, precision = precision)
+    return jnp.einsum("skab,skac,skcd->kbd", C_vir.conj(), fock, C_occ, precision = precision).real
 
 
 
