@@ -211,12 +211,13 @@ def simple_scf_loop(
                 old_rdm1 = rdm1
             
 
-            computed_charge = jnp.einsum(
-                "r,ra,rb,sab->", molecule.grid.weights, molecule.ao, molecule.ao, molecule.rdm1
-            )
+            # computed_charge = jnp.einsum(
+            #     "r,ra,rb,ksab->", molecule.grid.weights, molecule.ao, molecule.ao, molecule.rdm1
+            # )
+            computed_charge = jnp.einsum("r,rs->", molecule.grid.weights, molecule.density())
             assert jnp.isclose(
                 nelectron, computed_charge, atol=1e-3
-            ), "Total charge is not conserved"
+            ), "Total charge is not conserved. given electrons: %.3f, computed electrons: %.3f" % (nelectron, computed_charge)
 
             exc_start_time = time.time()
 

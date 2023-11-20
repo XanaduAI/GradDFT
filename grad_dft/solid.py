@@ -15,6 +15,7 @@
 import jax.numpy as jnp
 from jax.lax import Precision
 from typing import List, Optional
+import jax
 
 from typeguard import typechecked
 from grad_dft.utils import vmap_chunked
@@ -111,8 +112,8 @@ class Solid:
     atom_index: Int[Array, "n_atom"]
     lattice_vectors: Float[Array, "3 3"] 
     nuclear_pos: Float[Array, "n_atom 3"]
-    ao: Float[Array, "n_flat_grid n_orbitals"]
-    grad_ao: Float[Array, "n_flat_grid n_orbitals 3"]
+    ao: Float[Array, "n_kpt n_flat_grid n_orbitals"] # ao = Crystal Atomic Orbitals in PBC case
+    grad_ao: Float[Array, "nkpt n_flat_grid n_orbitals 3"]
     grad_n_ao: PyTree
     rdm1: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
     nuclear_repulsion: Scalar
@@ -513,9 +514,11 @@ def density(rdm1: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"],
     -------
     Float[Array, "n_flat_grid n_spin"]
     """
-
-    return jnp.einsum("k,...kab,ra,rb->r...", weights, rdm1, ao, ao, precision=precision).real
-
+    den = jnp.einsum("skab,ra,rb->rs", rdm1, ao, ao, precision=precision).real/weights.shape[0]
+    # den = jnp.einsum("...kab,ra,rb->r...", rdm1, ao, ao, precision=precision)
+    print(jnp.sum(den.imag))
+    jax.debug.print("imag remainder is {x}", x=jnp.sum(den.imag))
+    return den
 @jaxtyped
 @typechecked
 @partial(jit, static_argnames="precision")

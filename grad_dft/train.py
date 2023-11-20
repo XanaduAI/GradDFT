@@ -208,7 +208,6 @@ def energy_predictor(
             vxc_expl = functional.densitygrads(
                 functional, params, atoms, nograd_densities, cinputs, grad_densities
             )
-            print(vxc_expl.shape)
             fock += vxc_expl + vxc_expl.transpose(transpose_dims)  # Sum over omega
             fock = abs_clip(fock, clip_cte)
 

@@ -24,6 +24,7 @@ from jax import vmap
 
 from pyscf import scf  # type: ignore
 from pyscf.dft import Grids, numint  # type: ignore
+from pyscf.pbc.dft import numint as pbc_numint
 from pyscf.gto import Mole
 import pyscf.data.elements as elements
 from pyscf.pbc.gto.cell import Cell
@@ -667,10 +668,6 @@ def ao_grads(mol: Mole, coords: Array, order=2) -> Dict:
     .. math::
             \nabla^n \psi
 
-    Parameters
-    ----------
-    mf: PySCF Density Functional object.
-
     Outputs
     ----------
     Dict
@@ -695,17 +692,44 @@ def ao_grads(mol: Mole, coords: Array, order=2) -> Dict:
             i += 1
     return result
 
+def pbc_ao_grads(cell: Cell, coords: Array, order=2, kpts=[np.zeros(3)]) -> Dict:
+    r"""Function to compute nth order crystal atomic orbital grads, for n > 1.
+
+    .. math::
+            \nabla^n \psi
+
+    Outputs
+    ----------
+    Dict
+    For each order n > 1, result[n] is an array of shape
+    (n_kpt, n_grid, n_ao, 3) where the fourth coordinate indicates
+    .. math::
+        \frac{\partial^n \psi}{\partial x_i^n}
+
+    for :math:`x_i` is one of the usual cartesian coordinates x, y or z.
+    """
+    ao_ = pbc_numint.eval_ao_kpts(cell, coords, kpts=kpts[0], deriv=order)
+    ao_ = np.asarray(ao_)
+    aos = ao_[:, 0, :, :]
+    if order == 0:
+        return ao_
+    result = {}
+    i = 4
+    for n in range(2, order + 1):
+        result[n] = jnp.empty((len(kpts), aos.shape[1], aos.shape[2], 0))
+        for c in combinations_with_replacement("xyz", r=n):
+            if len(set(c)) == 1:
+                result[n] = jnp.concatenate((result[n], jnp.expand_dims(ao_[:, i, :, :], axis=3)), axis=3)
+            i += 1
+    return result
+
 
 def _package_outputs(
     mf: DensityFunctional,
     grids: Optional[Grids] = None,
     scf_iteration: Scalar = jnp.int32(50),
     grad_order: Scalar = jnp.int32(2),
-):
-    ao_ = numint.eval_ao(mf.mol, grids.coords, deriv=1)  # , non0tab=grids.non0tab)
-    ao = ao_[0]
-    nao = ao.shape[1]
-    
+):    
     if scf_iteration != 0:
         rdm1 = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
     else:
@@ -716,6 +740,11 @@ def _package_outputs(
     
     # Restricted (non-spin polarized), open boundary conditions
     if rdm1.ndim == 2 and not hasattr(mf, "cell"):
+        ao_and_1deriv = numint.eval_ao(mf.mol, grids.coords, deriv=1)  # , non0tab=grids.non0tab)
+        ao = ao_and_1deriv[0]
+        nao = ao.shape[1]
+        grad_ao = ao_and_1deriv[1:4].transpose(1, 2, 0)
+        grad_n_ao = ao_grads(mf.mol, jnp.array(mf.grids.coords), order=grad_order)
         s1e = mf.get_ovlp(mf.mol)
         h1e = mf.get_hcore(mf.mol)
         half_dm = rdm1 / 2
@@ -737,6 +766,11 @@ def _package_outputs(
         
     # Unrestricted (spin polarized), open boundary conditions
     elif rdm1.ndim == 3 and not hasattr(mf, "cell"):
+        ao_and_1deriv = numint.eval_ao(mf.mol, grids.coords, deriv=1)  # , non0tab=grids.non0tab)
+        ao = ao_and_1deriv[0]
+        nao = ao.shape[1]
+        grad_ao = ao_and_1deriv[1:4].transpose(1, 2, 0)
+        grad_n_ao = ao_grads(mf.mol, jnp.array(mf.grids.coords), order=grad_order)
         s1e = mf.get_ovlp(mf.mol)
         h1e = mf.get_hcore(mf.mol)
         mo_coeff = np.stack(mf.mo_coeff, axis=0)
@@ -752,6 +786,13 @@ def _package_outputs(
      
     # Restricted (non-spin polarized), periodic boundary conditions, full BZ sampling  
     elif rdm1.ndim == 3 and hasattr(mf, "cell") and rdm1.shape[0] != 1:
+        ao_and_1deriv = pbc_numint.eval_ao_kpts(mf.cell, grids.coords, kpts=mf.kpts, deriv=1)
+        ao_and_1deriv = np.asarray(ao_and_1deriv)
+        ao = ao_and_1deriv[:, 0, :, :]
+        nao = ao.shape[2]
+        grad_ao = ao_and_1deriv[:, 1:4, :, :].transpose(0, 2, 3, 1)
+        grad_n_ao = pbc_ao_grads(mf.cell, jnp.array(mf.grids.coords), order=grad_order, kpts=mf.kpts)
+        # grad_n_ao = ao_grads(mf.mol, jnp.array(mf.grids.coords), order=grad_order)
         s1e = mf.get_ovlp(mf.mol)
         h1e = mf.get_hcore(mf.mol)
         
@@ -787,6 +828,13 @@ def _package_outputs(
     # Unrestricted (spin polarized), periodic boundary conditions, full BZ sampling     
     elif rdm1.ndim == 4 and hasattr(mf, "cell") and rdm1.shape[1] != 1:
         
+        ao_and_1deriv = pbc_numint.eval_ao_kpts(mf.cell, grids.coords, kpts=mf.kpts, deriv=1)
+        ao_and_1deriv = np.asarray(ao_and_1deriv)
+        ao = ao_and_1deriv[:, 0, :, :]
+        nao = ao.shape[2]
+        grad_ao = ao_and_1deriv[:, 1:4, :, :].transpose(0, 2, 3, 1)
+        grad_n_ao = pbc_ao_grads(mf.cell, jnp.array(mf.grids.coords), order=grad_order, kpts=mf.kpts)
+        
         s1e = mf.get_ovlp(mf.mol)
         h1e = mf.get_hcore(mf.mol)
         mo_coeff = np.stack(mf.mo_coeff, axis=0)
@@ -815,7 +863,18 @@ def _package_outputs(
     
     # Restricted (non-spin polarized), periodic boundary conditions, gamma point only
     elif rdm1.ndim == 3 and hasattr(mf, "cell") and rdm1.shape[0] == 1:
+        ao_and_1deriv = pbc_numint.eval_ao_kpts(mf.cell, grids.coords, kpts=mf.kpts, deriv=1)
+        ao_and_1deriv = np.asarray(ao_and_1deriv)
+        ao = ao_and_1deriv[:, 0, :, :]
+        nao = ao.shape[2]
+        grad_ao = ao_and_1deriv[:, 1:4, :, :].transpose(0, 2, 3, 1)
+        grad_n_ao = pbc_ao_grads(mf.cell, jnp.array(mf.grids.coords), order=grad_order)
         # Collapse the redundant extra dimension from k-points: gamma only
+        ao = np.squeeze(ao, axis=0)
+        grad_ao = np.squeeze(grad_ao, axis=0)
+        for key in grad_n_ao.keys():
+            grad_n_ao[key] = np.squeeze(grad_n_ao[key], axis=0)
+        
         s1e = mf.get_ovlp(mf.mol)
         s1e = np.squeeze(s1e, axis=0)
         h1e = mf.get_hcore(mf.mol)
@@ -850,6 +909,18 @@ def _package_outputs(
         
     # Unrestricted (spin polarized), periodic boundary conditions, gamma point only    
     elif rdm1.ndim == 4 and hasattr(mf, "cell") and rdm1.shape[1] == 1:
+        ao_and_1deriv = pbc_numint.eval_ao_kpts(mf.cell, grids.coords, kpts=mf.kpts, deriv=1)
+        ao_and_1deriv = np.asarray(ao_and_1deriv)
+        ao = ao_and_1deriv[:, 0, :, :]
+        nao = ao.shape[2]
+        grad_ao = ao_and_1deriv[:, 1:4, :, :].transpose(0, 2, 3, 1)
+        grad_n_ao = pbc_ao_grads(mf.cell, jnp.array(mf.grids.coords), order=grad_order)
+
+        # Collapse the redundant extra dimension from k-points: gamma only
+        for key in grad_n_ao.keys():
+            grad_n_ao[key] = np.squeeze(grad_n_ao[key], axis=0)
+        ao = np.squeeze(ao, axis=0)
+        grad_ao = np.squeeze(grad_ao, axis=0)
         s1e = mf.get_ovlp(mf.mol)
         s1e = np.squeeze(s1e, axis=0)
         h1e = mf.get_hcore(mf.mol)
@@ -880,9 +951,6 @@ def _package_outputs(
         raise RuntimeError(
             f"Invalid density matrix shape. Got {rdm1.shape} for AO shape {ao.shape}"
         )
-
-    grad_ao = ao_[1:4].transpose(1, 2, 0)
-    grad_n_ao = ao_grads(mf.mol, jnp.array(mf.grids.coords), order=grad_order)
     mf_e_tot = mf.e_tot
     energy_nuc = mf.energy_nuc()
 
