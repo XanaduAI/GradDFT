@@ -157,12 +157,6 @@ def energy_predictor(
             # auto-diffed xc gradient is divided by n_k=number of k-points. Undo this.
             fock = fock_noxc + (fock_xc*atoms.rdm1.shape[1])
             
-        """Note: the summed difference between the fock matrix elements computed here and the fock
-        matrix computed directly by PySCF is correct to ~1e-16 for the Molecule
-        case but only matches PySCF to ~1e-9 for a Solid. This may not be cause for concern,
-        but I will leave this note here in the event that somebody is chasing a bug.
-        """
-            
         # Improve stability by clipping and symmetrizing
         fock = abs_clip(fock, clip_cte)
         fock = 1 / 2 * (fock + fock.transpose(transpose_dims).conj())

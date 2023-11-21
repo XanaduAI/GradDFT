@@ -29,6 +29,10 @@ from pyscf.gto import Mole
 import pyscf.data.elements as elements
 from pyscf.pbc.gto.cell import Cell
 from pyscf.pbc.lib.kpts import KPoints
+from pyscf.pbc.df.fft import FFTDF
+from pyscf.pbc.df.mdf import MDF
+from pyscf.pbc.df.df import GDF
+from pyscf.ao2mo import restore
 
 # from qdft.reaction import Reaction, make_reaction, get_grad
 from grad_dft.molecule import Grid, Molecule, Reaction, make_reaction
@@ -202,8 +206,9 @@ def solid_from_pyscf(
     scf_iteration: Scalar = jnp.int32(50),
     chunk_size: Optional[Scalar] = jnp.int32(1024),
     grad_order: Optional[Scalar] = jnp.int32(2),
-) -> Molecule:
-    # mf, grids = _maybe_run_kernel(mf, grids)
+) -> Solid:
+    if np.array_equal(kmf.kpts, np.array([[0.0, 0.0, 0.0]])):
+        raise RuntimeError("Use molecule_from_pyscf for Gamma point only calculations")
     grid = grid_from_pyscf(kmf.grids, dtype=dtype)
     pyscf_dat = _package_outputs(kmf, kmf.grids, scf_iteration, grad_order)
     kpt_info = pyscf_dat[-1]
@@ -692,7 +697,7 @@ def ao_grads(mol: Mole, coords: Array, order=2) -> Dict:
             i += 1
     return result
 
-def pbc_ao_grads(cell: Cell, coords: Array, order=2, kpts=[np.zeros(3)]) -> Dict:
+def pbc_ao_grads(cell: Cell, coords: Array, order=2, kpts=None) -> Dict:
     r"""Function to compute nth order crystal atomic orbital grads, for n > 1.
 
     .. math::
@@ -708,20 +713,89 @@ def pbc_ao_grads(cell: Cell, coords: Array, order=2, kpts=[np.zeros(3)]) -> Dict
 
     for :math:`x_i` is one of the usual cartesian coordinates x, y or z.
     """
-    ao_ = pbc_numint.eval_ao_kpts(cell, coords, kpts=kpts[0], deriv=order)
-    ao_ = np.asarray(ao_)
-    aos = ao_[:, 0, :, :]
+    if kpts is None:
+        # Default is Gamma only
+        ao_ = pbc_numint.eval_ao_kpts(cell, coords, kpts=np.zeros(3), deriv=order)
+        ao_ = np.asarray(ao_)
+        aos = ao_[:, 0, :, :]
+        res_shape = (1, aos.shape[1], aos.shape[2], 0)
+    else:
+        ao_ = pbc_numint.eval_ao_kpts(cell, coords, kpts=kpts, deriv=order)
+        ao_ = np.asarray(ao_)
+        aos = ao_[:, 0, :, :]
+        res_shape = (kpts.shape[0], aos.shape[1], aos.shape[2], 0)
     if order == 0:
         return ao_
     result = {}
     i = 4
     for n in range(2, order + 1):
-        result[n] = jnp.empty((len(kpts), aos.shape[1], aos.shape[2], 0))
+        result[n] = jnp.empty(res_shape)
         for c in combinations_with_replacement("xyz", r=n):
             if len(set(c)) == 1:
                 result[n] = jnp.concatenate((result[n], jnp.expand_dims(ao_[:, i, :, :], axis=3)), axis=3)
             i += 1
     return result
+
+def calc_eri_with_pyscf(mf, kpts=None) -> np.ndarray:
+    r"""Calculate the ERIs using the method detected from the PySCF mean field object.
+    
+    Inputs
+    ----------
+    
+    mf:
+        PySCF mean field object
+    kpts:
+        Array of k-points (absolute, not fractional).
+
+    Outputs
+    ----------
+    np.ndarray
+    
+    The ERIs. Output shape is (nao, nao, nao, nao) for isolated molecules and gamma-point only
+    periodic calculations. For full BZ calculations, the output shape is (nkpt, nkpt, nao, nao, nao, nao).
+    """
+    # Solid or Isolated molecule?
+    if hasattr(mf, "cell"): # Periodic system
+        
+        # Check for the three density fitting methods. DF is always used for periodic calculations
+        if isinstance(mf.with_df, FFTDF):
+            density_fitter = FFTDF(mf.cell, kpts=kpts)
+        elif isinstance(mf.with_df, MDF): # Check for MDF before GDF becuase MDF inherits from GDF
+            density_fitter = MDF(mf.cell, kpts=kpts)
+        elif isinstance(mf.with_df, GDF):
+            density_fitter = GDF(mf.cell, kpts=kpts)
+        
+        # Calculate the Periodic ERI's.
+        if kpts is None:
+            # Assume Gamma point only
+            eri_compressed = density_fitter.get_eri(kpts=kpts)
+            eri = restore(1, eri_compressed, mf.cell.nao_nr())
+        else:
+            # Loop over all k-pairs. This will be a fall back in the future. We will encourage users
+            # to save ERIs to disk after a PySCF calculation.
+            nkpt = kpts.shape[0]
+            nao = mf.cell.nao_nr()
+            # Empty array for all k points in uncompressed format.
+            eri = np.empty(shape=(nkpt, nkpt, nao, nao, nao, nao), dtype=np.complex128)
+            for ikpt, jkpt in product(range(nkpt), range(nkpt)):
+                k_quartet = np.array([kpts[ikpt], kpts[ikpt], kpts[jkpt], kpts[jkpt]])
+                eri_kquartet =\
+                    density_fitter.get_eri(compact=False, kpts=k_quartet).reshape(nao, nao, nao, nao)
+                eri[ikpt, jkpt, :, :, :, :] = eri_kquartet
+                
+    else: # Isolated system
+        try:
+            _ = mf.with_df
+        except(AttributeError):
+            eri =  mf.mol.intor("int2e")
+            return eri
+        # Use default DF method when DF is used on molecules
+        density_fitter = df.DF(mf.mol)
+        eri_compressed = density_fitter.get_eri()
+        eri = restore(1, eri_compressed, mf.mol.nao_nr())
+    return eri
+        
+
 
 
 def _package_outputs(
@@ -742,7 +816,6 @@ def _package_outputs(
     if rdm1.ndim == 2 and not hasattr(mf, "cell"):
         ao_and_1deriv = numint.eval_ao(mf.mol, grids.coords, deriv=1)  # , non0tab=grids.non0tab)
         ao = ao_and_1deriv[0]
-        nao = ao.shape[1]
         grad_ao = ao_and_1deriv[1:4].transpose(1, 2, 0)
         grad_n_ao = ao_grads(mf.mol, jnp.array(mf.grids.coords), order=grad_order)
         s1e = mf.get_ovlp(mf.mol)
@@ -761,14 +834,13 @@ def _package_outputs(
         )  # The 2 is to compensate for the /2 in the definition of the density matrix
         dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
         fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
-        rep_tensor = mf.mol.intor("int2e")
+        rep_tensor = calc_eri_with_pyscf(mf)
         kpt_info = None
         
     # Unrestricted (spin polarized), open boundary conditions
     elif rdm1.ndim == 3 and not hasattr(mf, "cell"):
         ao_and_1deriv = numint.eval_ao(mf.mol, grids.coords, deriv=1)  # , non0tab=grids.non0tab)
         ao = ao_and_1deriv[0]
-        nao = ao.shape[1]
         grad_ao = ao_and_1deriv[1:4].transpose(1, 2, 0)
         grad_n_ao = ao_grads(mf.mol, jnp.array(mf.grids.coords), order=grad_order)
         s1e = mf.get_ovlp(mf.mol)
@@ -781,7 +853,7 @@ def _package_outputs(
         )  # The 2 is to compensate for the /2 in the definition of the density matrix
         dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
         fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
-        rep_tensor = mf.mol.intor("int2e")
+        rep_tensor = calc_eri_with_pyscf(mf)
         kpt_info = None
      
     # Restricted (non-spin polarized), periodic boundary conditions, full BZ sampling  
@@ -789,7 +861,6 @@ def _package_outputs(
         ao_and_1deriv = pbc_numint.eval_ao_kpts(mf.cell, grids.coords, kpts=mf.kpts, deriv=1)
         ao_and_1deriv = np.asarray(ao_and_1deriv)
         ao = ao_and_1deriv[:, 0, :, :]
-        nao = ao.shape[2]
         grad_ao = ao_and_1deriv[:, 1:4, :, :].transpose(0, 2, 3, 1)
         grad_n_ao = pbc_ao_grads(mf.cell, jnp.array(mf.grids.coords), order=grad_order, kpts=mf.kpts)
         # grad_n_ao = ao_grads(mf.mol, jnp.array(mf.grids.coords), order=grad_order)
@@ -812,18 +883,9 @@ def _package_outputs(
         dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
         fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
         
-        # Compute ERIs for all pairs of k-points. Needed for Coulomb energy calculation
-        all_kpts = mf.kpts
-        nkpt = all_kpts.shape[0]
-        density_fitter = df.DF(mf.cell, kpts=all_kpts)
-        rep_tensor = np.empty(shape=(nkpt, nkpt, nao, nao, nao, nao), dtype=np.complex128)
-        for ikpt in range(nkpt):
-            for jkpt in range(nkpt):
-                k_quartet = np.array([all_kpts[ikpt], all_kpts[ikpt], all_kpts[jkpt], all_kpts[jkpt]])
-                rep_tensor_kquartet =\
-                    density_fitter.get_eri(compact=False, kpts=k_quartet).reshape(nao, nao, nao, nao)
-                rep_tensor[ikpt, jkpt, :, :, :, :] = rep_tensor_kquartet
         kpt_info = kpt_info_from_pyscf(mf)
+        # Compute ERIs for all pairs of k-points. Needed for Coulomb energy calculation
+        rep_tensor = calc_eri_with_pyscf(mf, kpts=mf.kpts)
         
     # Unrestricted (spin polarized), periodic boundary conditions, full BZ sampling     
     elif rdm1.ndim == 4 and hasattr(mf, "cell") and rdm1.shape[1] != 1:
@@ -831,7 +893,6 @@ def _package_outputs(
         ao_and_1deriv = pbc_numint.eval_ao_kpts(mf.cell, grids.coords, kpts=mf.kpts, deriv=1)
         ao_and_1deriv = np.asarray(ao_and_1deriv)
         ao = ao_and_1deriv[:, 0, :, :]
-        nao = ao.shape[2]
         grad_ao = ao_and_1deriv[:, 1:4, :, :].transpose(0, 2, 3, 1)
         grad_n_ao = pbc_ao_grads(mf.cell, jnp.array(mf.grids.coords), order=grad_order, kpts=mf.kpts)
         
@@ -848,25 +909,15 @@ def _package_outputs(
         dm = mf.make_rdm1(mf.mo_coeff, mf.mo_occ)
         fock = np.stack([h1e, h1e], axis=0) + mf.get_veff(mf.mol, dm)
         
-        # Compute ERIs for all pairs of k-points. Needed for Coulomb energy calculation
-        all_kpts = mf.kpts
-        nkpt = all_kpts.shape[0]
-        density_fitter = df.DF(mf.cell, kpts=all_kpts)
-        rep_tensor = np.empty(shape=(nkpt, nkpt, nao, nao, nao, nao), dtype=np.complex128)
-        for ikpt in range(nkpt):
-            for jkpt in range(nkpt):
-                k_quartet = np.array([all_kpts[ikpt], all_kpts[ikpt], all_kpts[jkpt], all_kpts[jkpt]])
-                rep_tensor_kquartet =\
-                    density_fitter.get_eri(compact=False, kpts=k_quartet).reshape(nao, nao, nao, nao)
-                rep_tensor[ikpt, jkpt, :, :, :, :] = rep_tensor_kquartet
         kpt_info = kpt_info_from_pyscf(mf)
+        # Compute ERIs for all pairs of k-points. Needed for Coulomb energy calculation
+        rep_tensor = calc_eri_with_pyscf(mf, kpts=mf.kpts)
     
     # Restricted (non-spin polarized), periodic boundary conditions, gamma point only
     elif rdm1.ndim == 3 and hasattr(mf, "cell") and rdm1.shape[0] == 1:
         ao_and_1deriv = pbc_numint.eval_ao_kpts(mf.cell, grids.coords, kpts=mf.kpts, deriv=1)
         ao_and_1deriv = np.asarray(ao_and_1deriv)
         ao = ao_and_1deriv[:, 0, :, :]
-        nao = ao.shape[2]
         grad_ao = ao_and_1deriv[:, 1:4, :, :].transpose(0, 2, 3, 1)
         grad_n_ao = pbc_ao_grads(mf.cell, jnp.array(mf.grids.coords), order=grad_order)
         # Collapse the redundant extra dimension from k-points: gamma only
@@ -904,7 +955,7 @@ def _package_outputs(
         fock = np.squeeze(fock, axis=1)
         vj = np.squeeze(vj, axis=1)
         h1e = np.squeeze(h1e, axis=0)
-        rep_tensor = df.DF(mf.cell).get_eri(compact=False).reshape(nao, nao, nao, nao)
+        rep_tensor = calc_eri_with_pyscf(mf)
         kpt_info = None
         
     # Unrestricted (spin polarized), periodic boundary conditions, gamma point only    
@@ -912,7 +963,6 @@ def _package_outputs(
         ao_and_1deriv = pbc_numint.eval_ao_kpts(mf.cell, grids.coords, kpts=mf.kpts, deriv=1)
         ao_and_1deriv = np.asarray(ao_and_1deriv)
         ao = ao_and_1deriv[:, 0, :, :]
-        nao = ao.shape[2]
         grad_ao = ao_and_1deriv[:, 1:4, :, :].transpose(0, 2, 3, 1)
         grad_n_ao = pbc_ao_grads(mf.cell, jnp.array(mf.grids.coords), order=grad_order)
 
@@ -944,7 +994,7 @@ def _package_outputs(
         fock = np.squeeze(fock, axis=1)
         vj = np.squeeze(vj, axis=1)
         h1e = np.squeeze(h1e, axis=0)
-        rep_tensor = df.DF(mf.cell).get_ao_eri(compact=False).reshape(nao, nao, nao, nao)
+        rep_tensor = calc_eri_with_pyscf(mf)
         kpt_info = None
         
     else:

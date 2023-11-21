@@ -112,8 +112,8 @@ class Solid:
     atom_index: Int[Array, "n_atom"]
     lattice_vectors: Float[Array, "3 3"] 
     nuclear_pos: Float[Array, "n_atom 3"]
-    ao: Float[Array, "n_kpt n_flat_grid n_orbitals"] # ao = Crystal Atomic Orbitals in PBC case
-    grad_ao: Float[Array, "nkpt n_flat_grid n_orbitals 3"]
+    ao: Complex[Array, "n_kpt n_flat_grid n_orbitals"] # ao = Crystal Atomic Orbitals in PBC case
+    grad_ao: Complex[Array, "nkpt n_flat_grid n_orbitals 3"]
     grad_n_ao: PyTree
     rdm1: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
     nuclear_repulsion: Scalar
@@ -489,7 +489,7 @@ the whole 1BZ need to be considered which would involve use of rotation matrices
 @typechecked
 @partial(jit, static_argnames="precision")
 def density(rdm1: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"], 
-            ao: Float[Array, "n_flat_grid n_orbitals"], 
+            ao: Complex[Array, "n_kpt n_flat_grid n_orbitals"], 
             weights: Float[Array, "n_kpts_or_n_ir_kpts"],
             precision: Precision = Precision.HIGHEST
 ) -> Float[Array, "n_flat_grid n_spin"]:
@@ -499,8 +499,8 @@ def density(rdm1: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"],
     ----------
     rdm1 : Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
         The 1-body reduced density matrix.
-    ao : Float[Array, "n_flat_grid n_orbitals"]
-        Atomic orbitals.
+    ao : Complex[Array, "n_kpt n_flat_grid n_orbitals"]
+        Crystal atomic orbitals.
     weights : Float[Array, "n_kpts_or_n_ir_kpts"]
         The weights for each k-point which together sum to 1. If we are working
         in the full 1BZ, weights are equal. If we are working in the
@@ -514,7 +514,7 @@ def density(rdm1: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"],
     -------
     Float[Array, "n_flat_grid n_spin"]
     """
-    den = jnp.einsum("skab,ra,rb->rs", rdm1, ao, ao, precision=precision).real/weights.shape[0]
+    den = jnp.einsum("k,skab,kra,krb->rs", weights, rdm1, ao, ao, precision=precision).real
     # den = jnp.einsum("...kab,ra,rb->r...", rdm1, ao, ao, precision=precision)
     print(jnp.sum(den.imag))
     jax.debug.print("imag remainder is {x}", x=jnp.sum(den.imag))
@@ -524,21 +524,21 @@ def density(rdm1: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"],
 @partial(jit, static_argnames="precision")
 def grad_density(
     rdm1: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"], 
-    ao: Float[Array, "n_flat_grid n_orbitals"], 
-    grad_ao: Float[Array, "n_flat_grid n_orbitals 3"], 
+    ao: Complex[Array, "n_kpt n_flat_grid n_orbitals"], 
+    grad_ao: Complex[Array, "n_kpt n_flat_grid n_orbitals 3"], 
     weights: Float[Array, "n_kpts_or_n_ir_kpts"],
     precision: Precision = Precision.HIGHEST
 ) -> Float[Array, "n_flat_grid n_spin 3"]:
-    r"""Compute the electronic density gradient using atomic orbitals.
+    r"""Compute the electronic density gradient using crystal atomic orbitals.
 
     Parameters
     ----------
     rdm1 : Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
         The 1-body reduced density matrix.
-    ao : Float[Array, "n_flat_grid n_orbitals"]
-        Atomic orbitals.
-    grad_ao : Float[Array, "n_flat_grid n_orbitals 3"]
-        Gradients of atomic orbitals.
+    ao : Complex[Array, "n_kpt n_flat_grid n_orbitals"]
+        Crystal atomic orbitals.
+    grad_ao : Complex[Array, "n_kpt n_flat_grid n_orbitals 3"]
+        Gradients of crystal atomic orbitals.
     weights : Float[Array, "n_kpts_or_n_ir_kpts"]
         The weights for each k-point which together sum to 1. If we are working
         in the full 1BZ, weights are equal. If we are working in the
@@ -554,16 +554,16 @@ def grad_density(
         The density gradient: Float[Array, "n_flat_grid n_spin 3"]
     """
 
-    return 2 * jnp.einsum("k,...kab,ra,rbj->r...j", weights, rdm1, ao, grad_ao, precision=precision).real
+    return 2 * jnp.einsum("k,...kab,kra,krbj->r...j", weights, rdm1, ao, grad_ao, precision=precision).real
 
 @jaxtyped
 @typechecked
 @partial(jit, static_argnames="precision")
 def lapl_density(
     rdm1: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"], 
-    ao: Float[Array, "n_flat_grid n_orbitals"], 
-    grad_ao: Float[Array, "n_flat_grid n_orbitals 3"], 
-    grad_2_ao: Float[Array, "n_flat_grid n_orbitals 3"],
+    ao: Complex[Array, "n_kpt n_flat_grid n_orbitals"], 
+    grad_ao: Complex[Array, "n_kpt n_flat_grid n_orbitals 3"], 
+    grad_2_ao: Complex[Array, "n_kpt n_flat_grid n_orbitals 3"],
     weights: Float[Array, "n_kpts_or_n_ir_kpts"],
     precision: Precision = Precision.HIGHEST,
 ) -> Float[Array, "n_flat_grid n_spin"]:
@@ -573,12 +573,12 @@ def lapl_density(
     ----------
     rdm1 : Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
         The 1-body reduced density matrix.
-    ao : Float[Array, "b_flat_grid n_orbitals"]
-        Atomic orbitals.
-    grad_ao : Float[Array, "n_flat_grid n_orbitals 3"]
-        Gradients of atomic orbitals.
-    grad_2_ao : Float[Array, "n_flat_grid n_orbitals 3"]
-        Vector of second derivatives of atomic orbitals.
+    ao : Complex[Array, "b_flat_grid n_orbitals"]
+        Crystal atomic orbitals.
+    grad_ao : Complex[Array, "n_flat_grid n_orbitals 3"]
+        Gradients of crystal atomic orbitals.
+    grad_2_ao : Complex[Array, "n_flat_grid n_orbitals 3"]
+        Vector of second derivatives of crystal atomic orbitals.
     weights : Float[Array, "n_kpts_or_n_ir_kpts"]
         The weights for each k-point which together sum to 1. If we are working
         in the full 1BZ, weights are equal. If we are working in the
@@ -593,26 +593,26 @@ def lapl_density(
     Float[Array, "n_flat_grid n_spin"]
     """
     return (2 * jnp.einsum(
-        "k,...kab,raj,rbj->r...", weights, rdm1, grad_ao, grad_ao, precision=precision
-    ) + 2 * jnp.einsum("k,...kab,ra,rbi->r...", weights, rdm1, ao, grad_2_ao, precision=precision)).real
+        "k,...kab,kraj,krbj->r...", weights, rdm1, grad_ao, grad_ao, precision=precision
+    ) + 2 * jnp.einsum("k,...kab,kra,krbi->r...", weights, rdm1, ao, grad_2_ao, precision=precision)).real
 
 @jaxtyped
 @typechecked
 @partial(jit, static_argnames="precision")
 def kinetic_density(
     rdm1 : Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"],
-    grad_ao: Float[Array, "n_flat_grid n_orbitals 3"],
+    grad_ao: Complex[Array, "n_kpt n_flat_grid n_orbitals 3"],
     weights: Float[Array, "n_kpts_or_n_ir_kpts"],
     precision: Precision = Precision.HIGHEST
 ) -> Float[Array, "n_flat_grid n_spin"]:
-    r""" Compute the kinetic energy density using atomic orbitals.
+    r""" Compute the kinetic energy density using crystal atomic orbitals.
 
     Parameters
     ----------
     rdm1 : Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"]
         The 1-body reduced density matrix.
-    grad_ao : Float[Array, "n_flat_grid n_orbitals 3"]
-        Gradients of atomic orbitals.
+    grad_ao : Complex[Array, "n_kpt n_flat_grid n_orbitals 3"]
+        Gradients of crystal atomic orbitals.
     weights : Float[Array, "n_kpts_or_n_ir_kpts"]
         The weights for each k-point which together sum to 1. If we are working
         in the full 1BZ, weights are equal. If we are working in the
@@ -628,7 +628,7 @@ def kinetic_density(
         The kinetic energy density: Float[Array, "n_flat_grid n_spin"]
     """
 
-    return 0.5 * jnp.einsum("k,...kab,raj,rbj->r...", weights, rdm1, grad_ao, grad_ao, precision=precision).real
+    return 0.5 * jnp.einsum("k,...kab,kraj,krbj->r...", weights, rdm1, grad_ao, grad_ao, precision=precision).real
 
 @jaxtyped
 @typechecked
