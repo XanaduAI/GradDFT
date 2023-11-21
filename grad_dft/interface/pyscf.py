@@ -112,6 +112,9 @@ def molecule_from_pyscf(
     chunk_size: Optional[Scalar] = jnp.int32(1024),
     grad_order: Optional[Scalar] = jnp.int32(2),
 ) -> Molecule:
+    if hasattr(mf, "kpts"):
+        if not np.array_equal(mf.kpts, np.array([[0.0, 0.0, 0.0]])):
+             raise RuntimeError("Input was periodic with BZ sampling beyond gamma-point only. Use solid_from_pyscf instead.")
     # mf, grids = _maybe_run_kernel(mf, grids)
     grid = grid_from_pyscf(mf.grids, dtype=dtype)
 
@@ -209,6 +212,10 @@ def solid_from_pyscf(
 ) -> Solid:
     if np.array_equal(kmf.kpts, np.array([[0.0, 0.0, 0.0]])):
         raise RuntimeError("Use molecule_from_pyscf for Gamma point only calculations")
+    elif not hasattr(kmf, "cell"):
+        raise RuntimeError("Input was an isolated system. Use molecule_from_pyscf instead.")
+        
+         
     grid = grid_from_pyscf(kmf.grids, dtype=dtype)
     pyscf_dat = _package_outputs(kmf, kmf.grids, scf_iteration, grad_order)
     kpt_info = pyscf_dat[-1]
@@ -736,7 +743,7 @@ def pbc_ao_grads(cell: Cell, coords: Array, order=2, kpts=None) -> Dict:
             i += 1
     return result
 
-def calc_eri_with_pyscf(mf, kpts=None) -> np.ndarray:
+def calc_eri_with_pyscf(mf, kpts=np.zeros(3)) -> np.ndarray:
     r"""Calculate the ERIs using the method detected from the PySCF mean field object.
     
     Inputs
@@ -766,9 +773,9 @@ def calc_eri_with_pyscf(mf, kpts=None) -> np.ndarray:
             density_fitter = GDF(mf.cell, kpts=kpts)
         
         # Calculate the Periodic ERI's.
-        if kpts is None:
+        if np.array_equal(kpts, np.zeros(3)):
             # Assume Gamma point only
-            eri_compressed = density_fitter.get_eri(kpts=kpts)
+            eri_compressed = density_fitter.get_eri(kpts=np.zeros(3))
             eri = restore(1, eri_compressed, mf.cell.nao_nr())
         else:
             # Loop over all k-pairs. This will be a fall back in the future. We will encourage users
