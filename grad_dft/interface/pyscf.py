@@ -111,7 +111,7 @@ def molecule_from_pyscf(
     scf_iteration: Scalar = jnp.int32(50),
     chunk_size: Optional[Scalar] = jnp.int32(1024),
     grad_order: Optional[Scalar] = jnp.int32(2),
-) -> Molecule:
+) -> Molecule: 
     if hasattr(mf, "kpts"):
         if not np.array_equal(mf.kpts, np.array([[0.0, 0.0, 0.0]])):
              raise RuntimeError("Input was periodic with BZ sampling beyond gamma-point only. Use solid_from_pyscf instead.")

@@ -515,10 +515,8 @@ def density(rdm1: Complex[Array, "n_spin n_kpt n_orbitals n_orbitals"],
     Float[Array, "n_flat_grid n_spin"]
     """
     den = jnp.einsum("k,skab,kra,krb->rs", weights, rdm1, ao, ao, precision=precision).real
-    # den = jnp.einsum("...kab,ra,rb->r...", rdm1, ao, ao, precision=precision)
-    print(jnp.sum(den.imag))
-    jax.debug.print("imag remainder is {x}", x=jnp.sum(den.imag))
     return den
+
 @jaxtyped
 @typechecked
 @partial(jit, static_argnames="precision")

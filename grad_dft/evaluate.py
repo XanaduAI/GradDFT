@@ -187,7 +187,7 @@ def simple_scf_loop(
                 fock = atoms.fock
             else:
                 # Diagonalize Fock matrix
-                overlap = abs_clip(atoms.s1e, clip_cte)
+                overlap = atoms.s1e
                 mo_energy, mo_coeff = safe_fock_solver(fock, overlap)
                 atoms = atoms.replace(mo_coeff=mo_coeff)
                 atoms = atoms.replace(mo_energy=mo_energy)
@@ -204,12 +204,13 @@ def simple_scf_loop(
             if cycle == 0:
                 old_rdm1 = atoms.make_rdm1()
             else:
-                rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*abs_clip(atoms.make_rdm1(), clip_cte)
-                rdm1 = abs_clip(rdm1, clip_cte)
+                rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*atoms.make_rdm1()
                 atoms = atoms.replace(rdm1=rdm1)
                 old_rdm1 = rdm1
             
             computed_charge = jnp.einsum("r,rs->", atoms.grid.weights, atoms.density())
+            # This assertion was removed because the forward pass number of electrons is correct, but in backward pass, this assertion will fail.
+            # This doesn't mean there is an error though. Just because of batching in backwrd pass.
             assert jnp.isclose(
                 nelectron, computed_charge, atol=1e-3
             ), "Total charge is not conserved. given electrons: %.3f, computed electrons: %.3f" % (nelectron, computed_charge)
@@ -217,8 +218,7 @@ def simple_scf_loop(
             exc_start_time = time.time()
 
             predicted_e, fock = compute_energy(params, atoms, *args)
-            fock = abs_clip(fock, clip_cte)
-            
+                        
             exc_time = time.time()
 
             if verbose > 2:
