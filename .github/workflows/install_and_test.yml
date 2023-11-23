@@ -42,5 +42,6 @@ jobs:
           pytest -v tests/integration/molecules/test_predict_B88.py
           pytest -v tests/integration/molecules/test_training.py
           pytest -v tests/integration/solids/test_training.py
+          pytest -v tests/integration/solids/test_non_xc_energy.py
 
 
