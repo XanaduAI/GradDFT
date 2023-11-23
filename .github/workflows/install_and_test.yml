@@ -43,5 +43,6 @@ jobs:
           pytest -v tests/integration/molecules/test_training.py
           pytest -v tests/integration/solids/test_training.py
           pytest -v tests/integration/solids/test_non_xc_energy.py
+          pytest -v tests/integration/solids/test_functional_implementations.py
 
 
