@@ -102,9 +102,9 @@ rhoinputs = jax.random.normal(key, shape=[2, 7])
 params = functional.init(key, rhoinputs)
 
 #todo: change this
-loadcheckpoint = False # If true, do not forget to switch of the recreation of tx
-checkpoint_step = 0
-learning_rate = 3e-6
+loadcheckpoint = True # If true, do not forget to switch of the recreation of tx
+checkpoint_step = 323
+learning_rate = 1e-8
 momentum = 0.9
 tx = adam(learning_rate=learning_rate, b1=momentum)
 opt_state = tx.init(params)
@@ -187,10 +187,11 @@ epoch_results = {}
 
 results_path_json = os.path.normpath(dirpath + f'/checkpoints/epoch_results_{checkpoint_step}.json')
 
+'''
 initepoch = checkpoint_step
 num_epochs = 101-initepoch
 lr = 3e-6
-tx = adam(learning_rate=lr, b1=momentum)
+#tx = adam(learning_rate=lr, b1=momentum)
 kernel = jax.jit(train_kernel(tx, loss))
 opt_state = tx.init(params)
 cost_val = jnp.inf
@@ -223,10 +224,10 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
 
 
 
-initepoch = 101
-num_epochs = 100
+initepoch = checkpoint_step
+num_epochs = 201-initepoch
 lr = 1e-6
-tx = adam(learning_rate=lr, b1=momentum)
+#tx = adam(learning_rate=lr, b1=momentum)
 kernel = jax.jit(train_kernel(tx, loss))
 opt_state = tx.init(params)
 for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
@@ -285,6 +286,37 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
 
     with open(results_path_json, 'w') as fp:
         json.dump(epoch_results, fp, default=convert)
+'''
 
+initepoch = checkpoint_step
+num_epochs = 351-initepoch
+lr = 1e-8
+#tx = adam(learning_rate=lr, b1=momentum) #todo: change this
+kernel = jax.jit(train_kernel(tx, loss))
+opt_state = tx.init(params)
+cost_val = jnp.inf
 
+for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
+    # Use a separate PRNG key to permute input data during shuffling
+    # rng, input_rng = jax.random.split(rng)
+
+    # Run an optimization step over a training batch
+    state = params, opt_state, cost_val
+    state, metrics, epoch_metrics = train_epoch(state, training_files, training_data_dirpath)
+    params, opt_state, cost_val = state
+
+    # Save metrics and checkpoint
+    epoch_results[epoch] = epoch_metrics
+    print(f"Epoch {epoch} metrics:")
+    for k in epoch_metrics:
+        print(f"-> {k}: {epoch_metrics[k]:.5f}")
+    for metric in epoch_metrics.keys():
+        writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
+    writer.flush()
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer)
+    # print(f"-------------\n")
+    print(f"\n")
+
+    with open(results_path_json, 'w') as fp:
+        json.dump(epoch_results, fp, default=convert)
 
