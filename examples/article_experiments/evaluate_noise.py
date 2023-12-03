@@ -23,6 +23,9 @@ from optax import adam
 from tqdm import tqdm
 import os
 from orbax.checkpoint import PyTreeCheckpointer
+import json
+from matplotlib.ticker import MultipleLocator
+
 
 from grad_dft import (
     train_kernel, 
@@ -153,7 +156,7 @@ def load_energies(test_files, data_dirpath):
 
 # todo: Select here the file to evaluate
 
-noise_list = [0.0001, 0.001, 0.01, 0.1, 1]
+noise_list = [0.0001] #, 0.001, 0.01, 0.1, 1]
 seed_list = [0, 1, 2, 3, 4, 5]
 
 data_noise = []
@@ -271,4 +274,78 @@ plt.tight_layout()
 
 # Save the figure
 plotpath = os.path.join(dirpath, "checkpoints/noise/")
-fig.savefig('checkpoints/ckpts_noise/noise_vs_error_boxplot_horizontal.pdf', dpi=300)
+#fig.savefig('checkpoints/ckpts_noise/noise_vs_error_boxplot_horizontal.pdf', dpi=300)
+
+
+################################# Plot the MAE vs epoch #####################################
+
+noise_list = [1, 0.1, 0.01, 0.001, 0.0001]
+seed_list = [0, 1, 2, 3, 4, 5]
+
+mae = {}
+
+for noise in noise_list:
+    mae_noise = []
+    for seed in seed_list:
+
+        file_name = f"epoch_results_0_{seed}_{noise}.json"
+        file = os.path.join(dirpath, f"checkpoints/ckpts_noise/seed_{seed}_noise_{noise}/", file_name)
+
+        # for each noise, create an array with the mae at each epoch for all seeds, of size (n_seeds, n_epochs)
+        with open(file, "r") as f:
+            results = json.load(f)
+
+        mae_noise_seed = []
+        for epoch in results.keys():
+            mae_noise_seed.append(results[epoch]["mean_abs_error"])
+        mae_noise.append(mae_noise_seed)
+    mae[noise] = np.array(mae_noise)
+
+# Plot the mean MAE accross seeds vs epoch
+fig, ax = plt.subplots(figsize=(10, 6))
+
+for noise, color in zip(noise_list, ["#c23616", "#e1b12c", "#44bd32", "#0097e6", "#8c7ae6"]):
+    ax.plot(np.arange(441), np.mean(mae[noise], axis=0), color=color, label=f"noise = {noise}")
+
+# Plot shaded area for standard deviation
+for noise, color in zip(noise_list, ["#c23616", "#e1b12c", "#44bd32", "#0097e6", "#8c7ae6"]):
+    ax.fill_between(np.arange(441), np.mean(mae[noise], axis=0) - np.std(mae[noise], axis=0), np.mean(mae[noise], axis=0) + np.std(mae[noise], axis=0), color=color, alpha=0.1)
+
+# Set labels and title
+ax.set_xlabel('Epoch', fontsize=16)
+ax.set_ylabel('Mean absolute error (Ha)', fontsize=16)
+
+# Set y-axis to log scale
+ax.set_yscale('log')
+
+# Set tick font sizes
+ax.tick_params(axis='both', which='major', labelsize=14, direction='in')
+ax.tick_params(axis='both', which='minor', labelsize=14, direction='in')
+
+minor_locator = MultipleLocator(10)
+ax.xaxis.set_minor_locator(minor_locator)
+
+# Set plot limits
+ax.set_ylim([1e-2, 1e1])
+ax.set_xlim([0, 450])
+
+# add legend with text size = 14
+ax.legend(fontsize=14, loc = 'lower left')
+plt.tight_layout()
+
+# add verticle lines at 101, 201, 301, 391
+ax.axvline(x=100, color='lightgray', linestyle='-', linewidth=1)
+ax.axvline(x=200, color='lightgray', linestyle='-', linewidth=1)
+ax.axvline(x=300, color='lightgray', linestyle='-', linewidth=1)
+ax.axvline(x=390, color='lightgray', linestyle='-', linewidth=1)
+
+# add text at the middle of the space between the verticle lines saying "lr = 1e-4"
+ax.text(51, 8, r'lr = $10^{-4}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(151, 8, r'lr = $10^{-5}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(251, 8, r'lr = $10^{-6}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(351, 8, r'lr = $10^{-7}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(421, 8, r'lr = $10^{-8}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+
+
+# Save the figure
+fig.savefig('checkpoints/ckpts_noise/MAE_vs_epoch.pdf', dpi=300)

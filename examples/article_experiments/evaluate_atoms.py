@@ -118,7 +118,7 @@ rhoinputs = jax.random.normal(key, shape=[2, 7])
 params = functional.init(key, rhoinputs)
 
 checkpoint_step = 441 #todo: change this
-learning_rate = 3e-6
+learning_rate = 1e-7
 momentum = 0.9
 tx = adam(learning_rate=learning_rate, b1=momentum)
 opt_state = tx.init(params)
@@ -126,10 +126,10 @@ cost_val = jnp.inf
 
 orbax_checkpointer = PyTreeCheckpointer()
 
-ckpt_dir = os.path.join(dirpath, "ckpts/atoms/", "checkpoint_" + str(checkpoint_step) + "/")
+ckpt_dir = os.path.join(dirpath, "checkpoints/ckpts_atoms/", "checkpoint_" + str(checkpoint_step) + "/")
 if loadcheckpoint:
     train_state = functional.load_checkpoint(
-        tx=tx, step=checkpoint_step, orbax_checkpointer=orbax_checkpointer, ckpt_dir = "ckpts/atoms/"
+        tx=tx, step=checkpoint_step, orbax_checkpointer=orbax_checkpointer, ckpt_dir = ckpt_dir
     )
     params = train_state.params
     tx = train_state.tx
@@ -161,14 +161,45 @@ def predict(state, test_files, training_data_dirpath):
             del system
     return energies, true_energies
 
+def load_energies(test_files, data_dirpath):
+    """Predict molecules in file."""
+    true_energies = {}
+    for file in tqdm(test_files, "Files"):
+        fpath = os.path.join(data_dirpath, file)
+        print("Training on file: ", fpath, "\n")
+        load = loader(fname=fpath, randomize=True, training=True, config_omegas=[])
+        for _, system in tqdm(load, "Molecules/reactions per file"):
+            true_energies["".join(chr(num) for num in list(system.name))] = float(system.energy)
+            del system
+    return true_energies
+
 
 ######## Plotting the evaluation results ########
 
 # Predictions
 state = params, opt_state, cost_val
-predictions, targets = predict(state, test_files, training_data_dirpath)
+
+# If there is no predictions.json file, we generate it
+if not os.path.isfile(os.path.join(training_data_dirpath, "predictions.json")):
+    predictions, targets = predict(state, test_files, training_data_dirpath)
+else:
+    with open(os.path.join(training_data_dirpath, "predictions.json"), 'r') as fp:
+        predictions = json.load(fp)
+    targets = load_energies(test_files, training_data_dirpath)
+
+# Each key in dictionary predictions has the form "b'{}". Remove the b' and ' characters
+clean_targets = {}
+for k in targets.keys():
+    clean_targets[k[2:-1]] = targets[k]
+targets = clean_targets
+
 for k in predictions.keys():
     print(k, predictions[k], targets[k])
+
+# save predictions
+with open(os.path.join(training_data_dirpath, "predictions.json"), 'w') as fp:
+    json.dump(predictions, fp, default=convert)
+
 
 from pyscf.data.elements import ELEMENTS, CONFIGURATION
 
@@ -219,7 +250,7 @@ ax.plot(atoms, np.zeros(len(atoms)), 'k--')
 
 handles, labels = ax.get_legend_handles_labels()
 by_label = dict(zip(labels, handles))
-legend1 = ax.legend(by_label.values(), by_label.keys(), fontsize=14, loc ='center left' )
+legend1 = ax.legend(by_label.values(), by_label.keys(), fontsize=14, loc ='lower left')
 ax.add_artist(legend1)
 
 
@@ -234,14 +265,14 @@ for a, d in zip(atoms, diffs):
 ax2.plot(atoms, np.ones(len(atoms))*training_mean, '-', color = '#192a56', label='Training MAE')
 ax2.plot(atoms, np.ones(len(atoms))*test_mean, '--', color = '#00a8ff', label='Test MAE')
 # Now we print them also in the plot
-ax.text(0.6, 2., 'Training MAE: {:.1e} Ha'.format(training_mean), horizontalalignment='right', verticalalignment='center', transform=ax2.transAxes, color = '#192a56', fontsize=14)
-ax.text(0.6, 1.9, 'Test MAE: {:.1e} Ha'.format(test_mean), horizontalalignment='right', verticalalignment='center', transform=ax2.transAxes, color = '#00a8ff', fontsize=14)
+ax.text(0.4, 2., 'Training MAE: {:.1e} Ha'.format(training_mean), horizontalalignment='right', verticalalignment='center', transform=ax2.transAxes, color = '#192a56', fontsize=14)
+ax.text(0.4, 1.9, 'Test MAE: {:.1e} Ha'.format(test_mean), horizontalalignment='right', verticalalignment='center', transform=ax2.transAxes, color = '#00a8ff', fontsize=14)
 ax2.text(0.03, 0.9, '(b) Absolute error', transform=ax2.transAxes, fontsize = 14)
 #ax2.text(0.5, 0.85, 'Std: {:.4f} kcal/mol'.format(std), horizontalalignment='right', verticalalignment='center', transform=ax2.transAxes)
 
 handles, labels = ax2.get_legend_handles_labels()
 by_label = dict(zip(labels, handles))
-legend2 = ax.legend(by_label.values(), by_label.keys(), fontsize=14)
+legend2 = ax.legend(by_label.values(), by_label.keys(), fontsize=14, loc = (0.18, 0.025))
 ax.add_artist(legend2)
 
 ax2.set_ylabel('Absolute error (Ha)', fontsize=14)
@@ -273,5 +304,5 @@ plt.show()
 #save
 #tight layout
 plt.tight_layout()
-fig.savefig('atoms_generalization.pdf', dpi=100)
+fig.savefig('checkpoints/ckpts_atoms/atoms_generalization.pdf', dpi=100)
 

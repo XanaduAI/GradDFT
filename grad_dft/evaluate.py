@@ -173,6 +173,7 @@ def simple_scf_loop(
         """
 
         nelectron = atoms.atom_index.sum() - atoms.charge
+        true_energy = atoms.energy
 
         # predicted_e, fock = compute_energy(params, molecule, *args)
         # fock = abs_clip(fock, clip_cte)
@@ -229,9 +230,10 @@ def simple_scf_loop(
             # Compute the norm of the gradient
             norm_gorb = jnp.linalg.norm(atoms.get_mo_grads())
 
-            if verbose > 1:
+            if verbose > 0:
                 print(
-                    f"cycle: {cycle}, energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, seconds: {time.time() - start_time:.1e}"
+                    f"cycle: {cycle}, energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, seconds: {time.time() - start_time:.1e}, \
+                    true energy: {true_energy:.7e}, error: {abs(predicted_e - true_energy):.4e}"
                 )
             if verbose > 2:
                 print(
@@ -239,9 +241,10 @@ def simple_scf_loop(
                 )
             old_e = predicted_e
 
-        if verbose > 1:
+        if verbose > 0:
             print(
-                f"cycle: {cycle}, predicted energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}"
+                f"cycle: {cycle}, predicted energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}, \
+                true energy: {true_energy:.7e}, error: {abs(predicted_e - true_energy):.4e}"
             )
         # Ensure atoms are fully updated
         atoms = atoms.replace(fock=fock)

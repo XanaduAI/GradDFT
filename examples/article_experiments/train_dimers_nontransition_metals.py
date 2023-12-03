@@ -94,7 +94,7 @@ functional = NeuralFunctional(
 
 ####### Initializing the functional and some parameters #######
 
-key = PRNGKey(2)  # Jax-style random seed #todo: select this
+key = PRNGKey(1)  # Jax-style random seed #todo: select this
 
 # We generate the features from the molecule we created before, to initialize the parameters
 (key,) = split(key, 1)
@@ -187,11 +187,11 @@ epoch_results = {}
 
 results_path_json = os.path.normpath(dirpath + f'/checkpoints/epoch_results_{checkpoint_step}.json')
 
-'''
+
 initepoch = checkpoint_step
 num_epochs = 101-initepoch
 lr = 3e-6
-#tx = adam(learning_rate=lr, b1=momentum)
+tx = adam(learning_rate=lr, b1=momentum)
 kernel = jax.jit(train_kernel(tx, loss))
 opt_state = tx.init(params)
 cost_val = jnp.inf
@@ -286,7 +286,7 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
 
     with open(results_path_json, 'w') as fp:
         json.dump(epoch_results, fp, default=convert)
-'''
+
 
 initepoch = checkpoint_step
 num_epochs = 351-initepoch

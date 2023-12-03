@@ -41,18 +41,24 @@ def convert(o):
         return float(o)  
     return o
 
+seed = 5
+np.random.seed(seed)
+key = PRNGKey(seed)  # Jax-style random seed #todo: select this
+
+noise = 1
+
 # In this example we explain how to replicate the experiments that train
 # the functional in some points of the dissociation curve of H2 or H2^+.
 
 dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-training_data_dirpath = os.path.normpath(dirpath + "/data/training/dimers/")
-training_files = ["tm_dimers.h5"]
+training_data_dirpath = os.path.normpath(dirpath + "/data/training/noise/")
+training_files = [f"noise_{seed}_{noise}.h5"]
 
 ####### Model definition #######
 
 # Then we define the Functional, via an function whose output we will integrate.
 n_layers = 10
-width_layers = 512
+width_layers = 1024
 squash_offset = 1e-4
 layer_widths = [width_layers] * n_layers
 out_features = 4
@@ -94,17 +100,14 @@ functional = NeuralFunctional(
 
 ####### Initializing the functional and some parameters #######
 
-key = PRNGKey(3)  # Jax-style random seed #todo: select this
-
 # We generate the features from the molecule we created before, to initialize the parameters
 (key,) = split(key, 1)
 rhoinputs = jax.random.normal(key, shape=[2, 7])
 params = functional.init(key, rhoinputs)
 
-#todo: change this
-loadcheckpoint = False 
+loadcheckpoint = False #todo: change this
 checkpoint_step = 0
-learning_rate = 3e-6
+learning_rate = 1e-4
 momentum = 0.9
 tx = adam(learning_rate=learning_rate, b1=momentum)
 opt_state = tx.init(params)
@@ -112,10 +115,17 @@ cost_val = jnp.inf
 
 orbax_checkpointer = PyTreeCheckpointer()
 
-ckpt_dir = os.path.join(dirpath, "ckpts/tm_dimers", "checkpoint_" + str(checkpoint_step) + "/")
+# In ckpt_dir create a folder
+
+
+ckpt_dir = os.path.join(dirpath, f"ckpts/noise/seed_{seed}_noise_{noise}/")
+
+if not os.path.exists(ckpt_dir):
+    os.makedirs(ckpt_dir)
+
 if loadcheckpoint:
     train_state = functional.load_checkpoint(
-        tx=tx, ckpt_dir=ckpt_dir, step=checkpoint_step, orbax_checkpointer=orbax_checkpointer
+        tx=tx, step=checkpoint_step, orbax_checkpointer=orbax_checkpointer, ckpt_dir = os.path.join(ckpt_dir, "checkpoint_" + str(checkpoint_step) + "/")
     )
     params = train_state.params
     tx = train_state.tx
@@ -140,8 +150,6 @@ def loss(params, molecule, true_energy):
     # or even the satisfaction of the constraints in constraints.py.
 
     metrics = {
-        #"predicted_energy": predicted_energy,
-        #"ground_truth_energy": true_energy,
         "mean_abs_error": jnp.mean(jnp.abs(predicted_energy - true_energy)),
         "mean_sq_error": jnp.mean((predicted_energy - true_energy) ** 2),
         "cost_value": cost_value,
@@ -185,21 +193,19 @@ def train_epoch(state, training_files, training_data_dirpath):
 writer = SummaryWriter()
 epoch_results = {}
 
-results_path_json = os.path.normpath(dirpath + f'/ckpts/tm_dimers/epoch_results_{checkpoint_step}.json')
 
-
-initepoch = checkpoint_step
-num_epochs = 101-initepoch
-lr = 3e-6
+initepoch = 0
+num_epochs = 101
+lr = 1e-4
 tx = adam(learning_rate=lr, b1=momentum)
 kernel = jax.jit(train_kernel(tx, loss))
 opt_state = tx.init(params)
 cost_val = jnp.inf
 # save epoch results to json
+results_path_json = os.path.normpath(dirpath + f'/checkpoints/noise/epoch_results_{initepoch}_{seed}_{noise}.json')
 for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     # Use a separate PRNG key to permute input data during shuffling
     # rng, input_rng = jax.random.split(rng)
-    print(f"Epoch {epoch}")
 
     # Run an optimization step over a training batch
     state = params, opt_state, cost_val
@@ -214,56 +220,20 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     for metric in epoch_metrics.keys():
         writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
     writer.flush()
-    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer,
-                                ckpt_dir = os.path.join(os.path.join(dirpath, "ckpts/tm_dimers")))
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer, ckpt_dir = ckpt_dir)
     # print(f"-------------\n")
     print(f"\n")
 
     with open(results_path_json, 'w') as fp:
         json.dump(epoch_results, fp, default=convert)
-
 
 initepoch = 101
-num_epochs = 201-initepoch
-lr = 1e-6
-tx = adam(learning_rate=lr, b1=momentum)
-kernel = jax.jit(train_kernel(tx, loss))
-opt_state = tx.init(params)
-for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
-    # Use a separate PRNG key to permute input data during shuffling
-    # rng, input_rng = jax.random.split(rng)
-
-    # Run an optimization step over a training batch
-    state = params, opt_state, cost_val
-    state, metrics, epoch_metrics = train_epoch(state, training_files, training_data_dirpath)
-    params, opt_state, cost_val = state
-
-    # Save metrics and checkpoint
-    epoch_results[epoch] = epoch_metrics
-    print(f"Epoch {epoch} metrics:")
-    for k in epoch_metrics:
-        print(f"-> {k}: {epoch_metrics[k]:.5f}")
-    for metric in epoch_metrics.keys():
-        writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
-    writer.flush()
-    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer,
-                                ckpt_dir = os.path.join(os.path.join(dirpath, "ckpts/tm_dimers")))
-    # print(f"-------------\n")
-    print(f"\n")
-
-    with open(results_path_json, 'w') as fp:
-        json.dump(epoch_results, fp, default=convert)
-
-
-#todo: change this
-initepoch = 201
-num_epochs = 301-initepoch
-lr = 1e-7
+num_epochs = 100
+lr = 1e-5
 tx = adam(learning_rate=lr, b1=momentum)
 kernel = jax.jit(train_kernel(tx, loss))
 opt_state = tx.init(params)
 cost_val = jnp.inf
-
 for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     # Use a separate PRNG key to permute input data during shuffling
     # rng, input_rng = jax.random.split(rng)
@@ -281,8 +251,41 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     for metric in epoch_metrics.keys():
         writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
     writer.flush()
-    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer,
-                                ckpt_dir = os.path.join(os.path.join(dirpath, "ckpts/tm_dimers")))
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer, ckpt_dir = ckpt_dir)
+    # print(f"-------------\n")
+    print(f"\n")
+
+    with open(results_path_json, 'w') as fp:
+        json.dump(epoch_results, fp, default=convert)
+
+
+
+
+initepoch = 201
+num_epochs = 100
+lr = 1e-6
+tx = adam(learning_rate=lr, b1=momentum)
+kernel = jax.jit(train_kernel(tx, loss))
+opt_state = tx.init(params)
+cost_val = jnp.inf
+for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
+    # Use a separate PRNG key to permute input data during shuffling
+    # rng, input_rng = jax.random.split(rng)
+
+    # Run an optimization step over a training batch
+    state = params, opt_state, cost_val
+    state, metrics, epoch_metrics = train_epoch(state, training_files, training_data_dirpath)
+    params, opt_state, cost_val = state
+
+    # Save metrics and checkpoint
+    epoch_results[epoch] = epoch_metrics
+    print(f"Epoch {epoch} metrics:")
+    for k in epoch_metrics:
+        print(f"-> {k}: {epoch_metrics[k]:.5f}")
+    for metric in epoch_metrics.keys():
+        writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
+    writer.flush()
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer, ckpt_dir = ckpt_dir)
     # print(f"-------------\n")
     print(f"\n")
 
@@ -291,13 +294,12 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
 
 
 initepoch = 301
-num_epochs = 50
-lr = 1e-8
+num_epochs = 90
+lr = 1e-7
 tx = adam(learning_rate=lr, b1=momentum)
 kernel = jax.jit(train_kernel(tx, loss))
 opt_state = tx.init(params)
 cost_val = jnp.inf
-
 for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     # Use a separate PRNG key to permute input data during shuffling
     # rng, input_rng = jax.random.split(rng)
@@ -315,8 +317,39 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     for metric in epoch_metrics.keys():
         writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
     writer.flush()
-    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer,
-                                ckpt_dir = os.path.join(os.path.join(dirpath, "ckpts/tm_dimers")))
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer, ckpt_dir = ckpt_dir)
+    # print(f"-------------\n")
+    print(f"\n")
+
+    with open(results_path_json, 'w') as fp:
+        json.dump(epoch_results, fp, default=convert)
+
+
+initepoch = 391
+num_epochs = 50
+lr = 1e-8
+tx = adam(learning_rate=lr, b1=momentum)
+kernel = jax.jit(train_kernel(tx, loss))
+opt_state = tx.init(params)
+cost_val = jnp.inf
+for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
+    # Use a separate PRNG key to permute input data during shuffling
+    # rng, input_rng = jax.random.split(rng)
+
+    # Run an optimization step over a training batch
+    state = params, opt_state, cost_val
+    state, metrics, epoch_metrics = train_epoch(state, training_files, training_data_dirpath)
+    params, opt_state, cost_val = state
+
+    # Save metrics and checkpoint
+    epoch_results[epoch] = epoch_metrics
+    print(f"Epoch {epoch} metrics:")
+    for k in epoch_metrics:
+        print(f"-> {k}: {epoch_metrics[k]:.5f}")
+    for metric in epoch_metrics.keys():
+        writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
+    writer.flush()
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer, ckpt_dir = ckpt_dir)
     # print(f"-------------\n")
     print(f"\n")
 

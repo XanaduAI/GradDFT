@@ -1039,18 +1039,8 @@ def process_mol(
     grid_level: int = 2,
     training: bool = False,
     max_cycle: Optional[int] = None,
-    xc_functional="b3lyp",
+    xc_functional="wB97M_V",
 ) -> Tuple[Optional[float], Union[dft.RKS, dft.UKS]]:
-    if compute_energy:
-        if mol.multiplicity == 1:
-            mf2 = scf.RHF(mol)
-        else:
-            mf2 = scf.UHF(mol)
-        mf2.kernel()
-        mycc = cc.CCSD(mf2).run()
-        energy = mycc.e_tot
-    else:
-        energy = None
     if mol.multiplicity == 1:
         mf = dft.RKS(mol)
     else:
@@ -1067,7 +1057,9 @@ def process_mol(
         mf.max_cycle = max_cycle
     elif not training:
         mf.max_cycle = 0
-    mf.kernel()
+    energy = mf.kernel()
+    if not compute_energy:
+        energy = None
 
     return energy, mf
 
