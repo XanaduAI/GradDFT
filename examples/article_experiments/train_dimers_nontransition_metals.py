@@ -102,9 +102,9 @@ rhoinputs = jax.random.normal(key, shape=[2, 7])
 params = functional.init(key, rhoinputs)
 
 #todo: change this
-loadcheckpoint = True # If true, do not forget to switch of the recreation of tx
-checkpoint_step = 323
-learning_rate = 1e-8
+loadcheckpoint = False # If true, do not forget to switch of the recreation of tx
+checkpoint_step = 0
+learning_rate = 3e-6
 momentum = 0.9
 tx = adam(learning_rate=learning_rate, b1=momentum)
 opt_state = tx.init(params)
@@ -112,7 +112,7 @@ cost_val = jnp.inf
 
 orbax_checkpointer = PyTreeCheckpointer()
 
-ckpt_dir = os.path.join(dirpath, "ckpts/", "checkpoint_" + str(checkpoint_step) + "/")
+ckpt_dir = os.path.join(dirpath, "ckpts/nontm_dimers/", "checkpoint_" + str(checkpoint_step) + "/")
 if loadcheckpoint:
     train_state = functional.load_checkpoint(
         tx=tx, ckpt_dir=ckpt_dir, step=checkpoint_step, orbax_checkpointer=orbax_checkpointer
@@ -185,8 +185,7 @@ def train_epoch(state, training_files, training_data_dirpath):
 writer = SummaryWriter()
 epoch_results = {}
 
-results_path_json = os.path.normpath(dirpath + f'/checkpoints/epoch_results_{checkpoint_step}.json')
-
+results_path_json = os.path.normpath(dirpath + f'/ckpts/nontm_dimers/epoch_results_{checkpoint_step}.json')
 
 initepoch = checkpoint_step
 num_epochs = 101-initepoch
@@ -214,7 +213,8 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     for metric in epoch_metrics.keys():
         writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
     writer.flush()
-    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer)
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer,
+                                ckpt_dir = os.path.join(os.path.join(dirpath, "ckpts/nontm_dimers")))
     # print(f"-------------\n")
     print(f"\n")
 
@@ -248,7 +248,8 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     for metric in epoch_metrics.keys():
         writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
     writer.flush()
-    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer)
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer,
+                                ckpt_dir = os.path.join(os.path.join(dirpath, "ckpts/nontm_dimers")))
     # print(f"-------------\n")
     print(f"\n")
 
@@ -259,7 +260,7 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
 initepoch = 201
 num_epochs = 100
 lr = 1e-7
-tx = adam(learning_rate=lr, b1=momentum) #todo: change this
+tx = adam(learning_rate=lr, b1=momentum)
 kernel = jax.jit(train_kernel(tx, loss))
 opt_state = tx.init(params)
 cost_val = jnp.inf
@@ -282,7 +283,8 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     for metric in epoch_metrics.keys():
         writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
     writer.flush()
-    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer)
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer,
+                                ckpt_dir = os.path.join(os.path.join(dirpath, "ckpts/nontm_dimers")))
     # print(f"-------------\n")
     print(f"\n")
 
@@ -293,7 +295,7 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
 initepoch = 301
 num_epochs = 351-initepoch
 lr = 1e-8
-tx = adam(learning_rate=lr, b1=momentum) #todo: change this
+tx = adam(learning_rate=lr, b1=momentum)
 kernel = jax.jit(train_kernel(tx, loss))
 opt_state = tx.init(params)
 cost_val = jnp.inf
@@ -316,7 +318,8 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     for metric in epoch_metrics.keys():
         writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
     writer.flush()
-    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer)
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer,
+                                ckpt_dir = os.path.join(os.path.join(dirpath, "ckpts/nontm_dimers")))
     # print(f"-------------\n")
     print(f"\n")
 
