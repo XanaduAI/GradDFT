@@ -18,6 +18,7 @@ import jax
 from jax.random import split, PRNGKey
 from jax import numpy as jnp
 from jax.nn import gelu
+from matplotlib.ticker import MultipleLocator
 import numpy as np
 from optax import adam
 from tqdm import tqdm
@@ -58,7 +59,7 @@ dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 test_files = ["tm_dimers.h5", "non_tm_dimers.h5"]
 
 # Select here the folder where the checkpoints are stored
-ckpt_folder = "checkpoints/ckpts_tms/"
+ckpt_folder = "checkpoints/ckpts_tms_seed_2/"
 data_dirpath = os.path.join(dirpath, ckpt_folder) 
 
 tms = ['Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn']
@@ -126,7 +127,7 @@ cost_val = jnp.inf
 
 orbax_checkpointer = PyTreeCheckpointer()
 
-ckpt_dir = os.path.join(dirpath, "checkpoints/ckpts_tms/", "checkpoint_" + str(checkpoint_step) + "/")
+ckpt_dir = os.path.join(dirpath, "checkpoints/ckpts_tms_seed_2/", "checkpoint_" + str(checkpoint_step) + "/")
 if loadcheckpoint:
     train_state = functional.load_checkpoint(
         tx=tx, step=checkpoint_step, orbax_checkpointer=orbax_checkpointer, ckpt_dir = ckpt_dir
@@ -173,7 +174,7 @@ targets = load_energies(test_files, data_dirpath)
 #predictions, targets = predict(state, test_files, data_dirpath)
 
 # Load predictions from json file
-with open('checkpoints/ckpts_tms/dimers_predictions.json') as json_file:
+with open('checkpoints/ckpts_tms_seed_2/dimers_predictions.json') as json_file:
     predictions = json.load(json_file)
 
 # change the keys from f"b'{atom}'" to f"{atom}".
@@ -317,7 +318,80 @@ plt.title('(b) Training on dimers with transition metals', fontsize = 18, y = -0
 file = os.path.join(data_dirpath, "dimer_tm_heatmap.pdf")
 #plt.tight_layout()
 plt.subplots_adjust(bottom=0.15)
-fig.savefig(file, dpi = 300)
+#fig.savefig(file, dpi = 300)
 plt.close()
 
 print('When trained on transition metals, the MAE (Ha) for dimers containing / not-containing transition metals is: ', np.round(average_error(predictions, targets)[0],4), np.round(average_error(predictions, targets)[1],4))
+
+
+
+
+################################# Plot the MAE vs epoch #####################################
+
+
+seed_list = [0, 1, 2, 3]
+
+mae = []
+for seed in seed_list:
+
+    file_name = "epoch_results.json"
+    file = os.path.join(dirpath, f"checkpoints/ckpts_tms_seed_{seed}/", file_name)
+
+    # for each noise, create an array with the mae at each epoch for all seeds, of size (n_seeds, n_epochs)
+    with open(file, "r") as f:
+        results = json.load(f)
+
+    mae_noise_seed = []
+    for epoch in results.keys():
+        mae_noise_seed.append(results[epoch]["mean_abs_error"])
+    mae.append(mae_noise_seed)
+
+
+# Plot the mean MAE accross seeds vs epoch
+fig, ax = plt.subplots(figsize=(12, 4))
+
+ax.plot(np.arange(351), np.mean(mae, axis=0), color='#e1b12c', label=f"Transition metals")
+
+# Plot shaded area for standard deviation
+ax.fill_between(np.arange(351), np.mean(mae, axis=0) - np.std(mae, axis=0), np.mean(mae, axis=0) + np.std(mae, axis=0), color='#e1b12c', alpha=0.1)
+
+# Set labels and title
+#ax.set_xlabel('Epoch', fontsize=16)
+ax.set_ylabel('Mean absolute error (Ha)', fontsize=16)
+
+# Set y-axis to log scale
+ax.set_yscale('log')
+
+# Set tick font sizes
+ax.tick_params(axis='both', which='major', labelsize=14, direction='in')
+ax.tick_params(axis='both', which='minor', labelsize=14, direction='in')
+
+minor_locator = MultipleLocator(10)
+ax.xaxis.set_minor_locator(minor_locator)
+
+ax.set_xticklabels([])
+
+# Set plot limits
+#ax.set_ylim([1e-2, 1e1])
+ax.set_xlim([0, 450])
+
+# add legend with text size = 14
+ax.legend(fontsize=14, loc = 'lower left')
+plt.tight_layout()
+
+# add verticle lines at 101, 201, 301, 391
+ax.axvline(x=100, color='lightgray', linestyle='-', linewidth=1)
+ax.axvline(x=200, color='lightgray', linestyle='-', linewidth=1)
+ax.axvline(x=300, color='lightgray', linestyle='-', linewidth=1)
+
+# add text at the middle of the space between the verticle lines saying "lr = 1e-4"
+ax.text(51, 2.75, r'lr = $3\cdot 10^{-6}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(151, 2.75, r'lr = $10^{-6}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(251, 2.75, r'lr = $10^{-7}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(351, 2.75, r'lr = $10^{-8}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+
+ax.text(11, 4.5, r'(a) Dimers experiment', ha='left', va='top', transform=ax.transData, fontsize=14, color='black')
+
+
+# Save the figure
+fig.savefig('checkpoints/ckpts_tms_seed_2/MAE_vs_epoch_dimers.pdf', dpi=300)

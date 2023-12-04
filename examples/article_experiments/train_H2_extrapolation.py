@@ -29,7 +29,8 @@ from grad_dft import (
     canonicalize_inputs,
     dm21_coefficient_inputs,
     dm21_densities,
-    loader
+    loader,
+    dm21_grad_regularization,
 )
 
 from torch.utils.tensorboard import SummaryWriter
@@ -40,7 +41,7 @@ import jax
 
 dirpath = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 training_data_dirpath = os.path.normpath(dirpath + "/data/training/dissociation/")
-training_files = ["H2plus_extrapolation_train.h5"]
+training_files = ["H2_extrapolation_train.h5"]
 # alternatively, use "H2plus_extrapolation.h5". You will have needed to execute in data_processing.py
 # distances = [0.5, 0.75, 1, 1.25, 1.5]
 # process_dissociation(atom1 = 'H', atom2 = 'H', charge = 0, spin = 0, file = 'H2_dissociation.xlsx', energy_column_name='cc-pV5Z', training_distances=distances)
@@ -110,7 +111,7 @@ cost_val = jnp.inf
 
 orbax_checkpointer = PyTreeCheckpointer()
 
-ckpt_dir = os.path.join(dirpath, "ckpts/", "checkpoint_" + str(checkpoint_step) + "/")
+ckpt_dir = os.path.join(dirpath, "ckpts/H2_extrapolation", "checkpoint_" + str(checkpoint_step) + "/")
 if loadcheckpoint:
     train_state = functional.load_checkpoint(
         tx=tx, ckpt_dir=ckpt_dir, step=checkpoint_step, orbax_checkpointer=orbax_checkpointer
@@ -143,8 +144,9 @@ def loss(params, molecule, true_energy):
         "mean_abs_error": jnp.mean(jnp.abs(predicted_energy - true_energy)),
         "mean_sq_error": jnp.mean((predicted_energy - true_energy) ** 2),
         "cost_value": cost_value,
-        #'regularization': regularization_logs
     }
+
+    cost_value = cost_value
 
     return cost_value, metrics
 
@@ -203,7 +205,7 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     for metric in epoch_metrics.keys():
         writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
     writer.flush()
-    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer)
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer, ckpt_dir = os.path.join(dirpath, "ckpts/H2_extrapolation"))
     # print(f"-------------\n")
     print(f"\n")
 
@@ -228,7 +230,7 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     for metric in epoch_metrics.keys():
         writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
     writer.flush()
-    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer)
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer, ckpt_dir = os.path.join(dirpath, "ckpts/H2_extrapolation"))
     print(f"-------------\n")
     print(f"\n")
 
@@ -253,6 +255,6 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     for metric in epoch_metrics.keys():
         writer.add_scalar(f"/{metric}/train", epoch_metrics[metric], epoch)
     writer.flush()
-    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer)
+    functional.save_checkpoints(params, tx, step=epoch, orbax_checkpointer=orbax_checkpointer, ckpt_dir = os.path.join(dirpath, "ckpts/H2_extrapolation"))
     print(f"-------------\n")
     print(f"\n")

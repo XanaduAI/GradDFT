@@ -340,12 +340,13 @@ ax.axvline(x=300, color='lightgray', linestyle='-', linewidth=1)
 ax.axvline(x=390, color='lightgray', linestyle='-', linewidth=1)
 
 # add text at the middle of the space between the verticle lines saying "lr = 1e-4"
-ax.text(51, 8, r'lr = $10^{-4}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
-ax.text(151, 8, r'lr = $10^{-5}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
-ax.text(251, 8, r'lr = $10^{-6}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
-ax.text(351, 8, r'lr = $10^{-7}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
-ax.text(421, 8, r'lr = $10^{-8}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(51, 4.5, r'lr = $10^{-4}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(151, 4.5, r'lr = $10^{-5}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(251, 4.5, r'lr = $10^{-6}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(351, 4.5, r'lr = $10^{-7}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(421, 4.5, r'lr = $10^{-8}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
 
+ax.text(61, 8, r'(b) Noise experiment', ha='center', va='top', transform=ax.transData, fontsize=14, color='black')
 
 # Save the figure
-fig.savefig('checkpoints/ckpts_noise/MAE_vs_epoch.pdf', dpi=300)
+fig.savefig('checkpoints/ckpts_noise/MAE_vs_epoch_noise.pdf', dpi=300)
