@@ -8,4 +8,5 @@ tensorflow-hub>=0.14.0
 typeguard==2.13.3
 typing_extensions>=4.8.0
 jaxtyping
-pytest
+pytest>=7.4.3
+
