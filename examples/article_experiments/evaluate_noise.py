@@ -210,7 +210,7 @@ for noise, seed in itertools.product(noise_list, seed_list):
             json.dump(predictions, f, default=convert)
 
     # clean data targets
-    clean_data_dirpath = os.path.join(dirpath, "data/training/noise/")
+    clean_data_dirpath = os.path.join(dirpath, "checkpoints/ckpts_noise/")
     clean_targets = load_energies(["noise_0_0.hdf5"], clean_data_dirpath)
 
     mae_noisy, mae_clean = average_error(predictions, noisy_targets, clean_targets)
