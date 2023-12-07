@@ -158,7 +158,7 @@ def load_energies(test_files, data_dirpath):
 # todo: Select here the file to evaluate
 
 noise_list = [0.0001, 0.001, 0.01, 0.1, 1]
-seed_list = [1, 2, 3, 4, 5]
+seed_list = [0, 1, 2, 3, 4, 5]
 
 data_noise = []
 resulting_error = []
