@@ -18,6 +18,7 @@ import re
 from jax.random import split, PRNGKey
 from jax import numpy as jnp, value_and_grad
 from jax.nn import gelu
+from matplotlib import lines
 import numpy as np
 from optax import adam
 from tqdm import tqdm
@@ -156,8 +157,8 @@ def load_energies(test_files, data_dirpath):
 
 # todo: Select here the file to evaluate
 
-noise_list = [0.0001] #, 0.001, 0.01, 0.1, 1]
-seed_list = [0, 1, 2, 3, 4, 5]
+noise_list = [0.0001, 0.001, 0.01, 0.1, 1]
+seed_list = [1, 2, 3, 4, 5]
 
 data_noise = []
 resulting_error = []
@@ -302,10 +303,13 @@ for noise in noise_list:
     mae[noise] = np.array(mae_noise)
 
 # Plot the mean MAE accross seeds vs epoch
-fig, ax = plt.subplots(figsize=(10, 6))
+fig, ax = plt.subplots(figsize=(12, 4))
+
+lines_ = []
 
 for noise, color in zip(noise_list, ["#c23616", "#e1b12c", "#44bd32", "#0097e6", "#8c7ae6"]):
-    ax.plot(np.arange(441), np.mean(mae[noise], axis=0), color=color, label=f"noise = {noise}")
+    line, = ax.plot(np.arange(441), np.mean(mae[noise], axis=0), color=color, label=f"noise = {noise}")
+    lines_.append(line)
 
 # Plot shaded area for standard deviation
 for noise, color in zip(noise_list, ["#c23616", "#e1b12c", "#44bd32", "#0097e6", "#8c7ae6"]):
@@ -330,7 +334,13 @@ ax.set_ylim([1e-2, 1e1])
 ax.set_xlim([0, 450])
 
 # add legend with text size = 14
-ax.legend(fontsize=14, loc = 'lower left')
+
+legend1 = ax.legend(handles=lines_[:3], loc = 'lower left', fontsize=14)
+ax.add_artist(legend1)
+
+legend2 = ax.legend(handles=lines_[3:], loc = (0.2, 0.03), fontsize=14)
+ax.add_artist(legend2)
+
 plt.tight_layout()
 
 # add verticle lines at 101, 201, 301, 391
@@ -346,7 +356,8 @@ ax.text(251, 4.5, r'lr = $10^{-6}$', ha='center', va='top', transform=ax.transDa
 ax.text(351, 4.5, r'lr = $10^{-7}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
 ax.text(421, 4.5, r'lr = $10^{-8}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
 
-ax.text(61, 8, r'(b) Noise experiment', ha='center', va='top', transform=ax.transData, fontsize=14, color='black')
+ax.text(11, 8, r'(b) Noise experiment', ha='left', va='top', transform=ax.transData, fontsize=14, color='black')
 
 # Save the figure
+plt.tight_layout()
 fig.savefig('checkpoints/ckpts_noise/MAE_vs_epoch_noise.pdf', dpi=300)

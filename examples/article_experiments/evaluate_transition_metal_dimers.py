@@ -38,7 +38,6 @@ import re
 import seaborn as sns
 
 from grad_dft import (
-    train_kernel, 
     energy_predictor,
     NeuralFunctional,
     canonicalize_inputs,
@@ -329,31 +328,35 @@ print('When trained on transition metals, the MAE (Ha) for dimers containing / n
 ################################# Plot the MAE vs epoch #####################################
 
 
-seed_list = [0, 1, 2, 3]
-
-mae = []
-for seed in seed_list:
-
-    file_name = "epoch_results.json"
-    file = os.path.join(dirpath, f"checkpoints/ckpts_tms_seed_{seed}/", file_name)
-
-    # for each noise, create an array with the mae at each epoch for all seeds, of size (n_seeds, n_epochs)
-    with open(file, "r") as f:
-        results = json.load(f)
-
-    mae_noise_seed = []
-    for epoch in results.keys():
-        mae_noise_seed.append(results[epoch]["mean_abs_error"])
-    mae.append(mae_noise_seed)
-
+seed_list = [0, 1, 2, 3, 4]
 
 # Plot the mean MAE accross seeds vs epoch
 fig, ax = plt.subplots(figsize=(12, 4))
 
-ax.plot(np.arange(351), np.mean(mae, axis=0), color='#e1b12c', label=f"Transition metals")
+for dimers, color, label in zip(['tms', 'nontms'], ['#e1b12c', '#192a56'], ['Transition metals', 'Non transition metals']):
+    mae = []
+    for seed in seed_list:
 
-# Plot shaded area for standard deviation
-ax.fill_between(np.arange(351), np.mean(mae, axis=0) - np.std(mae, axis=0), np.mean(mae, axis=0) + np.std(mae, axis=0), color='#e1b12c', alpha=0.1)
+        file_name = "epoch_results.json"
+        file = os.path.join(dirpath, f"checkpoints/ckpts_{dimers}_seed_{seed}/", file_name)
+
+        # for each noise, create an array with the mae at each epoch for all seeds, of size (n_seeds, n_epochs)
+        try:
+            with open(file, "r") as f:
+                results = json.load(f)
+        except:
+            print("File not found: ", file)
+            continue
+
+        mae_noise_seed = []
+        for epoch in results.keys():
+            mae_noise_seed.append(results[epoch]["mean_abs_error"])
+        mae.append(mae_noise_seed)
+
+    ax.plot(np.arange(351), np.mean(mae, axis=0), color=color, label=label)
+
+    # Plot shaded area for standard deviation
+    ax.fill_between(np.arange(351), np.mean(mae, axis=0) - np.std(mae, axis=0), np.mean(mae, axis=0) + np.std(mae, axis=0), color=color, alpha=0.1)
 
 # Set labels and title
 #ax.set_xlabel('Epoch', fontsize=16)
@@ -369,14 +372,16 @@ ax.tick_params(axis='both', which='minor', labelsize=14, direction='in')
 minor_locator = MultipleLocator(10)
 ax.xaxis.set_minor_locator(minor_locator)
 
-ax.set_xticklabels([])
+#ax.set_xticklabels([])
 
 # Set plot limits
 #ax.set_ylim([1e-2, 1e1])
 ax.set_xlim([0, 450])
 
-# add legend with text size = 14
-ax.legend(fontsize=14, loc = 'lower left')
+loc = 'center right'
+legenda = ax.legend(fontsize=14, loc = loc, title_fontsize='14') # title = '(a) Dimers experiment',
+
+ax.add_artist(legenda)
 plt.tight_layout()
 
 # add verticle lines at 101, 201, 301, 391
@@ -385,13 +390,13 @@ ax.axvline(x=200, color='lightgray', linestyle='-', linewidth=1)
 ax.axvline(x=300, color='lightgray', linestyle='-', linewidth=1)
 
 # add text at the middle of the space between the verticle lines saying "lr = 1e-4"
-ax.text(51, 2.75, r'lr = $3\cdot 10^{-6}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
-ax.text(151, 2.75, r'lr = $10^{-6}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
-ax.text(251, 2.75, r'lr = $10^{-7}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
-ax.text(351, 2.75, r'lr = $10^{-8}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(51, 3, r'lr = $3\cdot 10^{-6}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(151, 3, r'lr = $10^{-6}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(251, 3, r'lr = $10^{-7}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
+ax.text(331, 3, r'lr = $10^{-8}$', ha='center', va='top', transform=ax.transData, fontsize=14, color='gray')
 
 ax.text(11, 4.5, r'(a) Dimers experiment', ha='left', va='top', transform=ax.transData, fontsize=14, color='black')
 
-
 # Save the figure
+plt.tight_layout()
 fig.savefig('checkpoints/ckpts_tms_seed_2/MAE_vs_epoch_dimers.pdf', dpi=300)

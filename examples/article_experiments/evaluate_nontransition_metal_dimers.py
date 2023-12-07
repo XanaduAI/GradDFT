@@ -37,7 +37,6 @@ import re
 import seaborn as sns
 
 from grad_dft import (
-    train_kernel, 
     energy_predictor,
     NeuralFunctional,
     canonicalize_inputs,

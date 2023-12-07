@@ -94,7 +94,7 @@ functional = NeuralFunctional(
 
 ####### Initializing the functional and some parameters #######
 
-key = PRNGKey(3)  # Jax-style random seed #todo: select this
+key = PRNGKey(2)  # Jax-style random seed #todo: select this
 
 # We generate the features from the molecule we created before, to initialize the parameters
 (key,) = split(key, 1)
@@ -223,7 +223,7 @@ for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
         json.dump(epoch_results, fp, default=convert)
 
 
-initepoch = 101
+initepoch = checkpoint_step
 num_epochs = 201-initepoch
 lr = 1e-6
 tx = adam(learning_rate=lr, b1=momentum)
@@ -232,6 +232,7 @@ opt_state = tx.init(params)
 for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     # Use a separate PRNG key to permute input data during shuffling
     # rng, input_rng = jax.random.split(rng)
+    print(f"Epoch {epoch}")
 
     # Run an optimization step over a training batch
     state = params, opt_state, cost_val
@@ -267,6 +268,7 @@ cost_val = jnp.inf
 for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     # Use a separate PRNG key to permute input data during shuffling
     # rng, input_rng = jax.random.split(rng)
+    print(f"Epoch {epoch}")
 
     # Run an optimization step over a training batch
     state = params, opt_state, cost_val
@@ -301,6 +303,7 @@ cost_val = jnp.inf
 for epoch in range(initepoch + 1, num_epochs + initepoch + 1):
     # Use a separate PRNG key to permute input data during shuffling
     # rng, input_rng = jax.random.split(rng)
+    print(f"Epoch {epoch}")
 
     # Run an optimization step over a training batch
     state = params, opt_state, cost_val
