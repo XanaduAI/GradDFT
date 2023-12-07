@@ -213,7 +213,7 @@ for noise, seed in itertools.product(noise_list, seed_list):
     clean_data_dirpath = os.path.join(dirpath, "data/training/noise/")
     clean_targets = load_energies(["noise_0_0.hdf5"], clean_data_dirpath)
 
-    mae_clean, mae_noisy = average_error(predictions, noisy_targets, clean_targets)
+    mae_noisy, mae_clean = average_error(predictions, noisy_targets, clean_targets)
 
     data_noise.append(noise)
     resulting_error.append(mae_clean)
@@ -275,7 +275,7 @@ plt.tight_layout()
 
 # Save the figure
 plotpath = os.path.join(dirpath, "checkpoints/noise/")
-#fig.savefig('checkpoints/ckpts_noise/noise_vs_error_boxplot_horizontal.pdf', dpi=300)
+fig.savefig('checkpoints/ckpts_noise/noise_vs_error_boxplot_horizontal.pdf', dpi=300)
 
 
 ################################# Plot the MAE vs epoch #####################################
