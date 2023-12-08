@@ -24,6 +24,9 @@ from .molecule import (
     grad_density,
     coulomb_energy
 )
+from .solid import (
+    Solid
+)
 from .functional import (
     DispersionFunctional,
     Functional, 
@@ -59,7 +62,8 @@ from .evaluate import (
     diff_scf_loop
 )
 from .interface import (
-    molecule_from_pyscf, 
+    molecule_from_pyscf,
+    solid_from_pyscf, 
     loader, 
     saver
 )

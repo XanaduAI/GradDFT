@@ -10,7 +10,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License.
+# limitations under the License. 
 
 from typing import List, Optional, Union, Sequence, Tuple, NamedTuple
 from dataclasses import fields
@@ -36,9 +36,6 @@ class Grid:
     r""" Base class for the grid coordinates and integration grids."""
     coords: Array
     weights: Array
-
-    # def __repr__(self):
-    #    return f"{self.__class__.__name__}(size={len(self)})"
 
     def __len__(self):
         return self.weights.shape[0]
@@ -107,6 +104,15 @@ class Molecule:
     @property
     def grid_size(self):
         return len(self.grid)
+    
+    def get_coulomb_potential(self, *args, **kwargs) -> Float[Array, "orbitals orbitals"]:
+        r"""Compute the Coulomb potential matrix.
+
+        Returns
+        -------
+        Float[Array, "spin orbitals orbitals"]
+        """
+        return coulomb_potential(self.rdm1.sum(axis=0), self.rep_tensor, *args, **kwargs)
 
     def density(self, *args, **kwargs) -> Array:
         r""" Computes the electronic density of a molecule at each grid point.
@@ -312,6 +318,16 @@ class Molecule:
         nelecs = jnp.array([self.mo_occ[i].sum() for i in range(2)], dtype=jnp.int64)
         naos = self.mo_occ.shape[1]
         return get_occ(self.mo_energy, nelecs, naos)
+    
+    def get_mo_grads(self, *args, **kwargs):
+        r"""Compute the gradient of the electronic energy with respect 
+        to the molecular orbital coefficients.
+
+        Returns:
+        -------
+        Float[Array, "orbitals orbitals"]
+        """
+        return orbital_grad(self.mo_coeff, self.mo_occ, self.fock, *args, **kwargs)
 
     def to_dict(self) -> dict:
         r""" Returns a dictionary with the attributes of the molecule."""
@@ -331,7 +347,8 @@ def orbital_grad(
         F: Float[Array, "spin orbitals orbitals"],
         precision: Precision = Precision.HIGHEST
     ) -> Float[Array, "orbitals orbitals"]:
-    r""" Computes the restricted Hartree Fock orbital gradients
+    r"""Compute the gradient of the electronic energy with respect 
+    to the molecular orbital coefficients.
 
     Parameters:
     ----------
@@ -350,7 +367,7 @@ def orbital_grad(
 
     Notes:
     -----
-    # Similar to pyscf/scf/hf.py:
+    # Performs same task as pyscf/scf/hf.py:
     occidx = mo_occ > 0
     viridx = ~occidx
     g = reduce(jnp.dot, (mo_coeff[:,viridx].conj().T, fock_ao,

@@ -23,16 +23,16 @@ from jax.lax import cond, fori_loop
 
 import sys
 
-from typing import Callable, Tuple, Optional
+from typing import Callable, Tuple, Optional, Union
 from functools import partial, reduce
 import time
 from scipy.optimize import bisect
 
 from grad_dft import (
-    Molecule, 
+    Molecule,
+    Solid, 
     abs_clip, 
     make_rdm1, 
-    orbital_grad,
     Functional,
     energy_predictor,
 )
@@ -91,7 +91,7 @@ def non_scf_predictor(
     **kwargs,
 ) -> Callable:
     r"""
-    Creates an non_scf_predictor function which when called non-self consistently
+    Creates an non_scf_predictor function, which when called, non-self consistently
     calculates the total energy at a fixed density.
 
     Main parameters
@@ -103,25 +103,25 @@ def non_scf_predictor(
     Callable
     """
     compute_energy = energy_predictor(functional, chunk_size=chunk_size, **kwargs)
-    def non_scf_predictor(params: PyTree, molecule: Molecule, *args) -> Molecule:
+    def non_scf_predictor(params: PyTree, atoms: Union[Molecule, Solid], *args) -> Union[Molecule, Solid]:
         r"""Calculates the total energy at a fixed density non-self consistently.
 
         Main parameters
         ---------------
         params: Pytree
             Parameters of the neural functional
-        molecule: Molecule
-            A Grad-DFT molecule object
+        atoms: Union[Molecule, Solid]
+            A Grad-DFT Molecule or Solid object
 
         Returns
         ---------
         Molecule
-            A Grad-DFT Molecule object with updated attributes 
+            A Grad-DFT Molecule or Solid object with updated attributes 
         """
-        predicted_e, fock = compute_energy(params, molecule, *args)
-        molecule = molecule.replace(fock=fock)
-        molecule = molecule.replace(energy=predicted_e)
-        return molecule
+        predicted_e, fock = compute_energy(params, atoms, *args)
+        atoms = atoms.replace(fock=fock)
+        atoms = atoms.replace(energy=predicted_e)
+        return atoms
     
     return non_scf_predictor
 
@@ -156,7 +156,7 @@ def simple_scf_loop(
 
     compute_energy = energy_predictor(functional, chunk_size=chunk_size, **kwargs)
 
-    def simple_scf_iterator(params: PyTree, molecule: Molecule, clip_cte = 1e-30, *args) -> Molecule:
+    def simple_scf_iterator(params: PyTree, atoms: Union[Molecule, Solid], clip_cte = 1e-30, *args) -> Union[Molecule, Solid]:
         r"""
         Implements a scf loop for a Molecule and a functional implicitly defined compute_energy with
         parameters params
@@ -164,15 +164,15 @@ def simple_scf_loop(
         Parameters
         ----------
         params: PyTree
-        molecule: Molecule
+        atoms: Molecule or Solid class
         *args: Arguments to be passed to compute_energy function
 
         Returns
         -------
-        Molecule
+        Molecule or solid class with updated attributes
         """
 
-        nelectron = molecule.atom_index.sum() - molecule.charge
+        nelectron = atoms.atom_index.sum() - atoms.charge
 
         # predicted_e, fock = compute_energy(params, molecule, *args)
         # fock = abs_clip(fock, clip_cte)
@@ -181,21 +181,20 @@ def simple_scf_loop(
         for cycle in range(cycles):
             # Convergence criterion is energy difference (default 1) kcal/mol and norm of gradient of orbitals < g_conv
             start_time = time.time()
-            # old_e = molecule.energy
             if cycle == 0:
-                mo_energy = molecule.mo_energy
-                mo_coeff = molecule.mo_coeff
-                fock = molecule.fock
+                mo_energy = atoms.mo_energy
+                mo_coeff = atoms.mo_coeff
+                fock = atoms.fock
             else:
                 # Diagonalize Fock matrix
-                overlap = abs_clip(molecule.s1e, clip_cte)
+                overlap = atoms.s1e
                 mo_energy, mo_coeff = safe_fock_solver(fock, overlap)
-                molecule = molecule.replace(mo_coeff=mo_coeff)
-                molecule = molecule.replace(mo_energy=mo_energy)
+                atoms = atoms.replace(mo_coeff=mo_coeff)
+                atoms = atoms.replace(mo_energy=mo_energy)
 
             # Update the molecular occupation
-            mo_occ = molecule.get_occ()
-            molecule = molecule.replace(mo_occ=mo_occ)
+            mo_occ = atoms.get_occ()
+            atoms = atoms.replace(mo_occ=mo_occ)
             if verbose > 2:
                 print(
                     f"Cycle {cycle} took {time.time() - start_time:.1e} seconds to compute and diagonalize Fock matrix"
@@ -203,26 +202,23 @@ def simple_scf_loop(
 
             # Update the density matrix
             if cycle == 0:
-                old_rdm1 = molecule.make_rdm1()
+                old_rdm1 = atoms.make_rdm1()
             else:
-                rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*abs_clip(molecule.make_rdm1(), clip_cte)
-                rdm1 = abs_clip(rdm1, clip_cte)
-                molecule = molecule.replace(rdm1=rdm1)
+                rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*atoms.make_rdm1()
+                atoms = atoms.replace(rdm1=rdm1)
                 old_rdm1 = rdm1
             
-
-            computed_charge = jnp.einsum(
-                "r,ra,rb,sab->", molecule.grid.weights, molecule.ao, molecule.ao, molecule.rdm1
-            )
+            computed_charge = jnp.einsum("r,rs->", atoms.grid.weights, atoms.density())
+            # This assertion was removed because the forward pass number of electrons is correct, but in backward pass, this assertion will fail.
+            # This doesn't mean there is an error though. Just because of batching in backwrd pass.
             assert jnp.isclose(
                 nelectron, computed_charge, atol=1e-3
-            ), "Total charge is not conserved"
+            ), "Total charge is not conserved. given electrons: %.3f, computed electrons: %.3f" % (nelectron, computed_charge)
 
             exc_start_time = time.time()
 
-            predicted_e, fock = compute_energy(params, molecule, *args)
-            fock = abs_clip(fock, clip_cte)
-            
+            predicted_e, fock = compute_energy(params, atoms, *args)
+                        
             exc_time = time.time()
 
             if verbose > 2:
@@ -231,7 +227,7 @@ def simple_scf_loop(
                 )
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(atoms.get_mo_grads())
 
             if verbose > 1:
                 print(
@@ -247,10 +243,10 @@ def simple_scf_loop(
             print(
                 f"cycle: {cycle}, predicted energy: {predicted_e:.7e}, energy difference: {abs(predicted_e - old_e):.4e}, norm_gradient_orbitals: {norm_gorb:.2e}"
             )
-        # Ensure molecule is fully updated
-        molecule = molecule.replace(fock=fock)
-        molecule = molecule.replace(energy=predicted_e)
-        return molecule
+        # Ensure atoms are fully updated
+        atoms = atoms.replace(fock=fock)
+        atoms = atoms.replace(energy=predicted_e)
+        return atoms
 
     return simple_scf_iterator
 
@@ -276,25 +272,25 @@ def diff_simple_scf_loop(functional: Functional, cycles: int = 25, mixing_factor
     @jit
     def simple_scf_jitted_iterator(
         params: PyTree, 
-        molecule: Molecule, 
+        atoms: Union[Molecule, Solid], 
         *args
-    ) -> Molecule:
+    ) -> Union[Molecule, Solid]:
 
         r"""
         Implements a scf loop intented for use in a jax.jit compiled function (training loop).
         If you are looking for a more flexible but not differentiable scf loop, see evaluate.py scf_loop.
-        It asks for a Molecule and a functional implicitly defined compute_energy with
+        It asks for a Molecule or Solid and a functional implicitly defined compute_energy with
         parameters params
 
         Parameters
         ----------
         params: PyTree
-        molecule: Molecule
+        atoms: Molecule or Solid
         *args: Arguments to be passed to compute_energy function
 
         Returns
         -------
-        molecule: Molecule
+        atoms: Molecule or Solid with updated attributes
 
         Notes:
         ------
@@ -305,50 +301,50 @@ def diff_simple_scf_loop(functional: Functional, cycles: int = 25, mixing_factor
         old_e = jnp.inf
         norm_gorb = jnp.inf
 
-        predicted_e, fock = compute_energy(params, molecule, *args)
-        molecule = molecule.replace(fock=fock)
-        molecule = molecule.replace(energy=predicted_e)
+        predicted_e, fock = compute_energy(params, atoms, *args)
+        atoms = atoms.replace(fock=fock)
+        atoms = atoms.replace(energy=predicted_e)
         
 
-        state = (molecule, predicted_e, old_e, norm_gorb)
+        state = (atoms, predicted_e, old_e, norm_gorb)
 
         def loop_body(cycle, state):
             old_state = state
-            molecule, predicted_e, old_e, norm_gorb = old_state
+            atoms, predicted_e, old_e, norm_gorb = old_state
             old_e = predicted_e
-            old_rdm1 = molecule.rdm1
-            fock = molecule.fock
+            old_rdm1 = atoms.rdm1
+            fock = atoms.fock
 
             # Diagonalize Fock matrix
-            mo_energy, mo_coeff = safe_fock_solver(fock, molecule.s1e)
-            molecule = molecule.replace(mo_coeff=mo_coeff)
-            molecule = molecule.replace(mo_energy=mo_energy)
+            mo_energy, mo_coeff = safe_fock_solver(fock, atoms.s1e)
+            atoms = atoms.replace(mo_coeff=mo_coeff)
+            atoms = atoms.replace(mo_energy=mo_energy)
 
             # Update the molecular occupation
-            mo_occ = molecule.get_occ()
-            molecule = molecule.replace(mo_occ=mo_occ)
+            mo_occ = atoms.get_occ()
+            atoms = atoms.replace(mo_occ=mo_occ)
 
             # Update the density matrix with linear mixing
-            unmixed_new_rdm1 =  molecule.make_rdm1()
+            unmixed_new_rdm1 =  atoms.make_rdm1()
             rdm1 = (1 - mixing_factor)*old_rdm1 + mixing_factor*unmixed_new_rdm1
-            molecule = molecule.replace(rdm1=rdm1)
+            atoms = atoms.replace(rdm1=rdm1)
 
             # Compute the new energy and Fock matrix
-            predicted_e, fock = compute_energy(params, molecule, *args)
-            molecule = molecule.replace(fock=fock)
+            predicted_e, fock = compute_energy(params, atoms, *args)
+            atoms = atoms.replace(fock=fock)
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(atoms.get_mo_grads())
 
-            state = (molecule, predicted_e, old_e, norm_gorb)
+            state = (atoms, predicted_e, old_e, norm_gorb)
 
             return state
 
         # Compute the scf loop
         final_state = fori_loop(0, cycles, body_fun=loop_body, init_val=state)
-        molecule, predicted_e, old_e, norm_gorb = final_state
-        molecule = molecule.replace(energy=predicted_e)
-        return molecule
+        atoms, predicted_e, old_e, norm_gorb = final_state
+        atoms = atoms.replace(energy=predicted_e)
+        return atoms
 
     return simple_scf_jitted_iterator
 
@@ -400,7 +396,8 @@ def scf_loop(
         -------
         Molecule
         """
-
+        if isinstance(molecule, Solid):
+            raise NotImplementedError("Solids with full BZ zampling not yet supported. Use simple_scf_loop or diff_simple_scf_loop instead.")
         # Needed to be able to update the chi tensor
         mol = mol_from_Molecule(molecule)
         _, mf = process_mol(
@@ -535,7 +532,7 @@ def scf_loop(
                 )
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads())
 
             if verbose > 1:
                 print(
@@ -578,7 +575,7 @@ def scf_loop(
             predicted_e, fock = compute_energy(params, molecule, *args)
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads())
 
         if verbose > 1:
             print(
@@ -716,7 +713,8 @@ def mol_orb_optimizer(
         -------
         molecule: Molecule
         """
-
+        if isinstance(molecule, Solid):
+            raise NotImplementedError("Solids with full BZ zampling not yet supported. Use simple_scf_loop instead.")
         old_e = jnp.inf
         cycle = 0
 
@@ -931,6 +929,8 @@ def diff_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> Callabl
 
     compute_energy = energy_predictor(functional, chunk_size=None, **kwargs)
 
+    @jaxtyped
+    @typechecked
     @jit
     def scf_jitted_iterator(
         params: PyTree, 
@@ -1006,7 +1006,7 @@ def diff_scf_loop(functional: Functional, cycles: int = 25, **kwargs) -> Callabl
             molecule = molecule.replace(fock=fock)
 
             # Compute the norm of the gradient
-            norm_gorb = jnp.linalg.norm(orbital_grad(mo_coeff, mo_occ, fock))
+            norm_gorb = jnp.linalg.norm(molecule.get_mo_grads())
 
             state = (molecule, predicted_e, old_e, norm_gorb, diis_data)
 
