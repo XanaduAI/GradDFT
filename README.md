@@ -8,6 +8,7 @@
 
 [![build](https://img.shields.io/badge/build-passing-graygreen.svg "https://github.com/XanaduAI/GradDFT/actions")](https://github.com/XanaduAI/GradDFT/actions)
 [![arXiv](http://img.shields.io/badge/arXiv-2309.15127-B31B1B.svg "Grad-DFT")](https://arxiv.org/abs/2309.15127)
+[![arXiv](http://img.shields.io/badge/2024-JCP-273c75.svg "Grad-DFT")](https://doi.org/10.1063/5.0181037)
 [![License](https://img.shields.io/badge/License-Apache%202.0-9F9F9F "https://github.com/XanaduAI/GradDFT/blob/main/LICENSE")](https://github.com/XanaduAI/GradDFT/blob/main/LICENSE)
 
 </div>
@@ -194,12 +195,18 @@ GradDFT often follows similar calculations and naming conventions as PySCF, thou
 ## Bibtex
 
 ```latex
-@article{casares2023graddft,
-      title={Grad DFT: a software library for machine learning enhanced density functional theory}, 
-      author={Pablo A. M. Casares and Jack S. Baker and Matija Medvidovic and Roberto dos Reis and Juan Miguel Arrazola},
-      year={2023},
-      eprint={2309.15127},
-      archivePrefix={arXiv},
-      primaryClass={physics.chem-ph}
+@article{casares2024graddft,
+    author = {Moreno Casares, Pablo Antonio and Baker, Jack S. and Medvidović, Matija and Reis, Roberto dos and Arrazola, Juan Miguel},
+    title = "{GradDFT. A software library for machine learning enhanced density functional theory}",
+    journal = {The Journal of Chemical Physics},
+    volume = {160},
+    number = {6},
+    pages = {062501},
+    year = {2024},
+    month = {02},
+    issn = {0021-9606},
+    doi = {10.1063/5.0181037},
+    url = {https://doi.org/10.1063/5.0181037},
+    eprint = {https://pubs.aip.org/aip/jcp/article-pdf/doi/10.1063/5.0181037/19663145/062501\_1\_5.0181037.pdf},
 }
 ```
