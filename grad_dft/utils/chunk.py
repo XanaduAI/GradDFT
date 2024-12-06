@@ -19,7 +19,7 @@ from jax import lax
 from jax import numpy as jnp
 
 from jax.tree_util import tree_leaves, tree_map
-from jax import linear_util as lu
+from jax.extend import linear_util as lu
 from jax.api_util import argnums_partial
 
 from .types import Array
